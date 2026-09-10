@@ -39,7 +39,8 @@
     el.innerHTML = '<article class="empty-card"><span>⏳</span><h3>Chargement…</h3></article>';
     try {
       const data = await fetchJson('./api/studio', { headers: { 'x-telegram-init-data': initData() }, cache: 'no-store' });
-      el.innerHTML = [renderComposer(), renderBackfill(), renderKpis(data), renderTelegraph(data), renderDrafts(data), renderTickets(data), renderPayments(data)].join('');
+      currentLives = data.liveSchedules || [];
+      el.innerHTML = [renderComposer(), renderBackfill(), renderKpis(data), renderLive(data), renderTelegraph(data), renderDrafts(data), renderTickets(data), renderPayments(data)].join('');
       bindStudioEvents();
     } catch (error) {
       el.innerHTML = `<article class="empty-card"><span>⚠️</span><h3>Studio indisponible</h3><p>${escapeHtml(error.message)}</p></article>`;
@@ -80,6 +81,115 @@
 <article class="kpi-card"><small>Audios</small><strong>${t.audio || 0}</strong></article>
 <article class="kpi-card"><small>Étoiles</small><strong>${Number(data.stars || 0).toLocaleString('fr-FR')} ⭐</strong><span>${data.supporters || 0} soutien(s)</span></article>
 </div>`;
+  }
+
+  // — Directs : programmation publique (le direct reste diffusé sur sa plateforme externe)
+  let editingLiveId = null;
+  let currentLives = [];
+
+  function liveStatusLabel(status) {
+    return { scheduled: 'programmé', live: 'en direct', cancelled: 'annulé', completed: 'terminé' }[status] || status;
+  }
+
+  function toDatetimeLocal(value) {
+    const date = value ? new Date(value) : null;
+    if (!date || isNaN(date)) return '';
+    const pad = (part) => String(part).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function renderLive(data) {
+    return `<article class="studio-card">
+<p class="card-kicker">DIRECTS</p>
+<h3>Programmation des directs</h3>
+<p class="studio-muted">Planifiez un direct : il apparaît sur l’accueil public (« Prochain direct »). Le direct reste diffusé sur sa plateforme (lien fourni).</p>
+<form id="liveForm" class="publish-form">
+<input id="liveTitle" type="text" maxlength="256" placeholder="Titre du direct" required>
+<textarea id="liveDescription" rows="3" maxlength="4000" placeholder="Description (optionnelle)"></textarea>
+<input id="liveDate" type="datetime-local" required>
+<p class="article-hint">Heure de votre appareil — l’audience verra l’heure convertie dans son propre fuseau horaire.</p>
+<input id="liveLink" type="text" maxlength="512" placeholder="Lien du direct (YouTube, …) — optionnel">
+<select id="liveStatus"><option value="scheduled">Programmé</option><option value="live">En direct</option><option value="completed">Terminé</option></select>
+<div class="composer-actions"><button id="liveSubmit" class="primary-button" type="submit">Planifier le direct</button></div>
+<p id="liveStatusText" class="form-status" aria-live="polite"></p>
+</form>
+${currentLives.map((live) => `<div class="draft-row" data-live="${escapeAttribute(live.id)}"><div><strong>${escapeHtml(live.title)}</strong><small>${formatDate(live.scheduledAt)} · ${escapeHtml(liveStatusLabel(live.status))}${live.link ? ' · lien fourni' : ''}</small></div><div class="ticket-actions"><button class="secondary-button live-edit" type="button">Modifier</button><button class="secondary-button live-cancel" type="button">Annuler</button></div></div>`).join('') || '<p class="studio-muted">Aucun direct programmé.</p>'}
+</article>`;
+  }
+
+  function resetLiveForm() {
+    editingLiveId = null;
+    const form = document.getElementById('liveForm');
+    if (form) form.reset();
+    const button = document.getElementById('liveSubmit');
+    if (button) button.textContent = 'Planifier le direct';
+    const status = document.getElementById('liveStatusText');
+    if (status) status.textContent = '';
+  }
+
+  async function submitLive(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = document.getElementById('liveSubmit');
+    const status = document.getElementById('liveStatusText');
+    const title = form.querySelector('#liveTitle')?.value.trim() || '';
+    const scheduledAtRaw = form.querySelector('#liveDate')?.value || '';
+    if (!title || !scheduledAtRaw) return;
+    // datetime-local est un horaire « mural » sans fuseau : on le convertit côté client avec le
+    // fuseau réel de l'appareil, pour que le serveur (UTC) stocke le bon instant, sans décalage silencieux.
+    const scheduledAtIso = new Date(scheduledAtRaw).toISOString();
+    const payload = {
+      action: editingLiveId ? 'live_update' : 'live_create',
+      title,
+      description: form.querySelector('#liveDescription')?.value.trim() || '',
+      scheduledAt: scheduledAtIso,
+      link: form.querySelector('#liveLink')?.value.trim() || '',
+      status: form.querySelector('#liveStatus')?.value || 'scheduled',
+      ...(editingLiveId ? { liveId: editingLiveId } : {}),
+    };
+    button.disabled = true; button.textContent = 'Enregistrement…';
+    try {
+      const response = await studioAction(payload);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Impossible d’enregistrer le direct.');
+      resetLiveForm();
+      status.textContent = editingLiveId ? 'Direct mis à jour.' : `Direct planifié (${data.liveId}).`;
+      await load();
+    } catch (error) { status.textContent = error.message || 'Impossible d’enregistrer le direct.'; }
+    finally { button.disabled = false; button.textContent = 'Planifier le direct'; }
+  }
+
+  function editLive(button) {
+    const row = button.closest('[data-live]');
+    const live = currentLives.find((item) => item.id === row?.dataset.live);
+    const form = document.getElementById('liveForm');
+    if (!live || !form) return;
+    editingLiveId = live.id;
+    form.querySelector('#liveTitle').value = live.title || '';
+    form.querySelector('#liveDescription').value = live.description || '';
+    form.querySelector('#liveDate').value = toDatetimeLocal(live.scheduledAt);
+    form.querySelector('#liveLink').value = live.link || '';
+    form.querySelector('#liveStatus').value = live.status || 'scheduled';
+    const submit = document.getElementById('liveSubmit');
+    if (submit) submit.textContent = 'Enregistrer les modifications';
+    const status = document.getElementById('liveStatusText');
+    if (status) status.textContent = `Modification de « ${live.title} » — soumettez pour enregistrer.`;
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  async function cancelLive(button) {
+    const row = button.closest('[data-live]');
+    const liveId = row?.dataset.live;
+    if (!liveId) return;
+    button.disabled = true;
+    try {
+      const response = await studioAction({ action: 'live_cancel', liveId });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Annulation impossible.');
+      if (editingLiveId === liveId) resetLiveForm();
+      await load();
+    } catch (error) { popup('Annulation impossible', error.message || 'Réessayez dans un instant.'); }
+    finally { button.disabled = false; }
   }
 
   function renderTelegraph(data) {
@@ -231,6 +341,9 @@ ${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>�
     document.getElementById('draftButton')?.addEventListener('click', saveDraft);
     document.getElementById('backfillSupportButton')?.addEventListener('click', backfillSupport);
     document.getElementById('telegraphSetupButton')?.addEventListener('click', telegraphSetup);
+    document.getElementById('liveForm')?.addEventListener('submit', submitLive);
+    document.querySelectorAll('.live-edit').forEach((button) => button.addEventListener('click', () => editLive(button)));
+    document.querySelectorAll('.live-cancel').forEach((button) => button.addEventListener('click', () => cancelLive(button)));
     document.querySelectorAll('.draft-load').forEach((button) => button.addEventListener('click', () => {
       const input = document.getElementById('publishText');
       if (input) { input.value = button.dataset.draft || ''; input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }

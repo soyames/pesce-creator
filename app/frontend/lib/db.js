@@ -242,9 +242,77 @@ export async function updateSupportTicket(ticketId, data) {
   return String(ticketId);
 }
 
+// — Programmation des directs (le média reste sur la plateforme externe ; seules les métadonnées sont stockées)
+export const LIVE_STATUSES = ['scheduled', 'live', 'cancelled', 'completed'];
+
+const mapLive = (row) => row && ({
+  id: row.id,
+  title: row.title,
+  description: row.description,
+  scheduledAt: row.scheduled_at,
+  link: row.link,
+  status: row.status,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+export async function createLiveSchedule(schedule) {
+  await db().query(
+    `INSERT INTO pesce_live_schedules (id, title, description, scheduled_at, link, status, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, now(), now())`,
+    [schedule.id, schedule.title, schedule.description || '', schedule.scheduledAt, schedule.link ?? null, schedule.status || 'scheduled']
+  );
+  return schedule.id;
+}
+
+export async function updateLiveSchedule(liveId, data) {
+  const sets = [];
+  const values = [String(liveId)];
+  const add = (column, value) => {
+    values.push(value);
+    sets.push(`${column} = $${values.length}`);
+  };
+  if (data.title !== undefined) add('title', data.title);
+  if (data.description !== undefined) add('description', data.description);
+  if (data.scheduledAt !== undefined) add('scheduled_at', data.scheduledAt);
+  if (data.link !== undefined) add('link', data.link);
+  if (data.status !== undefined) add('status', data.status);
+  if (sets.length === 0) return String(liveId);
+  await db().query(
+    `UPDATE pesce_live_schedules SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`,
+    values
+  );
+  return String(liveId);
+}
+
+export async function listLiveSchedules({ statuses, limit = 50 } = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const statusList = Array.isArray(statuses) && statuses.length > 0 ? statuses.filter((s) => LIVE_STATUSES.includes(s)) : LIVE_STATUSES;
+  const result = await db().query(
+    `SELECT * FROM pesce_live_schedules
+     WHERE status = ANY($1::text[])
+     ORDER BY scheduled_at DESC NULLS LAST, id DESC
+     LIMIT $2`,
+    [statusList, safeLimit]
+  );
+  return result.rows.map(mapLive);
+}
+
+// Prochains directs publics : programmés ou en cours, à venir (tolérance d'une heure pour un direct qui démarre).
+export async function getUpcomingLive({ now = new Date() } = {}) {
+  const result = await db().query(
+    `SELECT * FROM pesce_live_schedules
+     WHERE status IN ('scheduled', 'live') AND scheduled_at >= ($1::timestamptz - interval '1 hour')
+     ORDER BY scheduled_at ASC, id ASC
+     LIMIT 3`,
+    [now]
+  );
+  return result.rows.map(mapLive);
+}
+
 // — Vue d'ensemble du studio (indicateurs + listes récentes)
 export async function getStudioOverview() {
-  const [totalsResult, starsResult, supportersResult, openTicketsResult, recentPosts, recentPayments, recentTickets, drafts] = await Promise.all([
+  const [totalsResult, starsResult, supportersResult, openTicketsResult, recentPosts, recentPayments, recentTickets, drafts, liveSchedules] = await Promise.all([
     db().query('SELECT content_type, COUNT(*)::int AS count FROM pesce_posts WHERE published = true GROUP BY content_type'),
     db().query('SELECT COALESCE(SUM(amount), 0)::int AS stars, COUNT(*)::int AS payments FROM pesce_payments'),
     db().query('SELECT COUNT(DISTINCT user_id)::int AS supporters FROM pesce_payments WHERE user_id IS NOT NULL'),
@@ -253,6 +321,7 @@ export async function getStudioOverview() {
     listPayments({ limit: 10 }),
     listSupportTickets({ status: 'open', limit: 10 }),
     listDrafts({ limit: 20 }),
+    listLiveSchedules({ limit: 20 }),
   ]);
 
   const totals = { total: 0, text: 0, photo: 0, audio: 0, video: 0, document: 0, other: 0 };
@@ -271,5 +340,6 @@ export async function getStudioOverview() {
     recentPayments: recentPayments,
     recentTickets: recentTickets,
     drafts,
+    liveSchedules,
   };
 }

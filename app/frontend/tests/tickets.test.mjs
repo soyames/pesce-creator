@@ -1,7 +1,7 @@
 // Tests de lib/tickets.js : générateurs d'identifiants (tickets de support, brouillons).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newDraftId, newTicketId } from '../lib/tickets.js';
+import { newDraftId, newLiveId, newTicketId } from '../lib/tickets.js';
 
 test('newTicketId : forme PS-YYYYMMDD-XXXXX', () => {
   const id = newTicketId(new Date('2026-09-10T12:00:00Z'));
@@ -21,4 +21,13 @@ test('newDraftId : forme draft_<timestamp>_<6 caractères>', () => {
 
 test('newDraftId : deux identifiants diffèrent', () => {
   assert.notEqual(newDraftId(), newDraftId());
+});
+
+test('newLiveId : forme live_<timestamp>_<6 caractères>', () => {
+  const id = newLiveId(1726000000000, 0.25);
+  assert.match(id, /^live_1726000000000_[a-z0-9]{6}$/);
+});
+
+test('newLiveId : deux identifiants diffèrent', () => {
+  assert.notEqual(newLiveId(), newLiveId());
 });

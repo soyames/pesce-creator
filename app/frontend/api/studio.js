@@ -1,9 +1,9 @@
 // Studio créatrice (privé). Toute action exige une initData valide ET l'identifiant créatrice configuré.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
-import { createDraft, getStudioOverview, listChannelPosts, listSupportTickets, updateSupportTicket } from '../lib/db.js';
+import { createDraft, createLiveSchedule, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, updateLiveSchedule, updateSupportTicket } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
-import { newDraftId } from '../lib/tickets.js';
+import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { createTelegraphAccount, createTelegraphPage, nodesFromPlainText } from '../lib/telegraph.js';
 import { CHANNEL_HANDLE, CREATOR_NAME, SUPPORT_URL } from '../lib/config.js';
 
@@ -66,6 +66,48 @@ export default async function handler(req, res) {
         }
       }
       return res.status(200).json({ ok: true, updated, checked: posts.length });
+    }
+
+    if (action === 'live_create') {
+      const title = String(body.title || '').trim().slice(0, 256);
+      const scheduledAt = new Date(body.scheduledAt);
+      if (!title || !body.scheduledAt || isNaN(scheduledAt.getTime())) return res.status(400).json({ message: 'Le titre et la date/heure du direct sont requis.' });
+      const status = LIVE_STATUSES.includes(body.status) ? body.status : 'scheduled';
+      const id = newLiveId();
+      await createLiveSchedule({
+        id,
+        title,
+        description: String(body.description || '').trim().slice(0, 4000),
+        scheduledAt,
+        link: String(body.link || '').trim().slice(0, 512) || null,
+        status,
+      });
+      return res.status(200).json({ ok: true, liveId: id });
+    }
+
+    if (action === 'live_update' || action === 'live_cancel') {
+      const liveId = String(body.liveId || '').trim();
+      if (!liveId) return res.status(400).json({ message: 'Direct manquant.' });
+      if (action === 'live_cancel') {
+        await updateLiveSchedule(liveId, { status: 'cancelled' });
+        return res.status(200).json({ ok: true });
+      }
+      const fields = {};
+      if (body.title !== undefined) fields.title = String(body.title).trim().slice(0, 256);
+      if (body.description !== undefined) fields.description = String(body.description).trim().slice(0, 4000);
+      if (body.link !== undefined) fields.link = String(body.link).trim().slice(0, 512) || null;
+      if (body.scheduledAt !== undefined) {
+        const date = new Date(body.scheduledAt);
+        if (isNaN(date.getTime())) return res.status(400).json({ message: 'Date/heure du direct invalide.' });
+        fields.scheduledAt = date;
+      }
+      if (body.status !== undefined) {
+        if (!LIVE_STATUSES.includes(body.status)) return res.status(400).json({ message: 'Statut de direct invalide.' });
+        fields.status = body.status;
+      }
+      if (Object.keys(fields).length === 0) return res.status(400).json({ message: 'Aucune modification.' });
+      await updateLiveSchedule(liveId, fields);
+      return res.status(200).json({ ok: true });
     }
 
     if (action === 'telegraph_setup') {

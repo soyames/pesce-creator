@@ -91,6 +91,7 @@ Accessible uniquement au compte Telegram configuré dans `PESCE_CREATOR_TELEGRAM
 - publier directement sur `@PesceHounyoOfficiel` ;
 - ajouter automatiquement le bouton `⭐ Soutenir le travail de Pesce` aux nouvelles publications, ou le réappliquer aux publications récentes ;
 - répondre et résoudre les demandes de support ;
+- **planifier, modifier et annuler des directs** (titre, description, date/heure, lien externe, statut) affichés sur l’accueil public (« Prochain direct ») ;
 - consulter les indicateurs (contenus, vidéos, photos, audios, Étoiles), les soutiens et les demandes.
 
 Pour les photos, audios et vidéos, la publication directe depuis Telegram reste le chemin privilégié en V1 : le webhook synchronise ensuite le contenu dans la base sans dupliquer le média.
@@ -128,6 +129,7 @@ pesce-creator/
 │       ├── api/
 │       │   ├── content.js                  # flux public (posts signés pour les médias)
 │       │   ├── create-invoice.js           # facture Stars
+│       │   ├── live.js                     # prochains directs publics (lecture seule)
 │       │   ├── media.js                    # proxy média Telegram (jeton HMAC)
 │       │   ├── me.js                       # rôle de l'utilisateur (sans base de données)
 │       │   ├── studio.js                   # studio créatrice (privé)
@@ -220,6 +222,7 @@ Neon (PostgreSQL managé, intégré à Vercel) est la base de données unique de
 - `pesce_support_sessions` — état temporaire d’une conversation de support
 - `pesce_support_tickets` — demandes de support
 - `pesce_drafts` — brouillons créés dans le Studio
+- `pesce_live_schedules` — programmation des directs (métadonnées uniquement ; le direct reste sur sa plateforme externe)
 - `schema_migrations` — suivi des migrations appliquées
 
 Les lignes `pesce_posts` contiennent notamment le type de contenu, le texte/caption, l’identifiant du message Telegram, l’URL publique du post et le `file_id` Telegram lorsqu’un média est présent.
@@ -257,6 +260,7 @@ Phase 4 — base de données migrée de Firestore vers PostgreSQL/Neon, espace p
 - publication texte et **articles Telegraph** depuis le Studio
 - bouton de soutien automatique + backfill
 - brouillons, indicateurs, réponses/résolutions de tickets, paiements
+- programmation des directs (Studio) + « Prochain direct » sur l’accueil public
 - médias servis via URLs signées (HMAC, 12 h)
 - persistance des publications, paiements, supports et brouillons via PostgreSQL/Neon (migrations + vérification locale `scripts/smoke.mjs`)
 - politique de confidentialité publique

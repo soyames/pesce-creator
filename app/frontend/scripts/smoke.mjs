@@ -3,9 +3,9 @@
 // Usage : node scripts/migrate.mjs && node scripts/smoke.mjs  (aucun secret journalisé)
 import assert from 'node:assert/strict';
 import {
-  createDraft, createSupportTicket, deleteSupportSession, getStudioOverview, getSupportSession,
-  listChannelPosts, listDrafts, listPayments, listSupportTickets, setSupportSession,
-  updateSupportTicket, upsertChannelPost, upsertPayment, db,
+  createDraft, createLiveSchedule, createSupportTicket, deleteSupportSession, getStudioOverview, getSupportSession,
+  getUpcomingLive, listChannelPosts, listDrafts, listLiveSchedules, listPayments, listSupportTickets,
+  setSupportSession, updateLiveSchedule, updateSupportTicket, upsertChannelPost, upsertPayment, db,
 } from '../lib/db.js';
 
 const POST_ID = `smoke_post_${Date.now()}`;
@@ -33,6 +33,7 @@ async function sweep() {
   await db().query(`DELETE FROM pesce_drafts WHERE id LIKE 'smoke_%'`);
   await db().query(`DELETE FROM pesce_support_sessions WHERE user_id LIKE 'smoke_%'`);
   await db().query(`DELETE FROM pesce_support_tickets WHERE id LIKE 'PS-SMOKE-%'`);
+  await db().query(`DELETE FROM pesce_live_schedules WHERE id LIKE 'smoke_%'`);
 }
 
 await sweep();
@@ -132,6 +133,28 @@ await run('tickets : création, liste par statut, mise à jour', async () => {
   await db().query('DELETE FROM pesce_support_tickets WHERE id = $1', [TICKET_ID]);
 });
 
+await run('directs : création, liste, mise à jour, annulation, prochains directs', async () => {
+  const liveId = `smoke_live_${Date.now()}`;
+  const future = new Date(Date.now() + 2 * 3600 * 1000);
+  await createLiveSchedule({ id: liveId, title: 'Direct smoke', description: 'Description smoke', scheduledAt: future, link: 'https://example.com/live', status: 'scheduled' });
+  const all = await listLiveSchedules({ limit: 50 });
+  const created = all.find((live) => live.id === liveId);
+  assert.ok(created, 'direct introuvable après création');
+  assert.equal(created.title, 'Direct smoke');
+  assert.equal(created.status, 'scheduled');
+  assert.ok(created.scheduledAt instanceof Date);
+  await updateLiveSchedule(liveId, { title: 'Direct smoke v2', link: null, status: 'live' });
+  const row = (await db().query('SELECT * FROM pesce_live_schedules WHERE id = $1', [liveId])).rows[0];
+  assert.equal(row.title, 'Direct smoke v2');
+  assert.equal(row.status, 'live');
+  assert.equal(row.link, null, 'lien effacé par la mise à jour');
+  const upcoming = await getUpcomingLive();
+  assert.ok(upcoming.some((live) => live.id === liveId), 'direct absent des prochains directs');
+  await updateLiveSchedule(liveId, { status: 'cancelled' });
+  assert.ok(!(await getUpcomingLive()).some((live) => live.id === liveId), 'direct annulé encore listé');
+  await db().query('DELETE FROM pesce_live_schedules WHERE id = $1', [liveId]);
+});
+
 await run('vue d’ensemble du studio', async () => {
   const overview = await getStudioOverview();
   assert.equal(typeof overview.totals.total, 'number');
@@ -146,6 +169,7 @@ await run('vue d’ensemble du studio', async () => {
   assert.ok(Array.isArray(overview.recentPayments));
   assert.ok(Array.isArray(overview.recentTickets));
   assert.ok(Array.isArray(overview.drafts));
+  assert.ok(Array.isArray(overview.liveSchedules), 'liveSchedules manquant de la vue d’ensemble');
 });
 
 console.log(failures === 0 ? 'SMOKE OK — toutes les fonctions db.js passent.' : `SMOKE ÉCHEC — ${failures} étape(s) en échec.`);

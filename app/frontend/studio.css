@@ -4,8 +4,9 @@
 .studio-composer h3 { margin-bottom: 5px; }
 .studio-muted { color: var(--muted); font-size: 12px; }
 .publish-form { display: grid; gap: 9px; text-align: left; margin-top: 18px; }
-.publish-form textarea, .publish-form input[type="text"] { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 13px; background: #0b1220; color: #f8fafc; padding: 12px; line-height: 1.5; box-sizing: border-box; font-family: inherit; }
+.publish-form textarea, .publish-form input[type="text"], .publish-form select { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 13px; background: #0b1220; color: #f8fafc; padding: 12px; line-height: 1.5; box-sizing: border-box; font-family: inherit; }
 .publish-form input[type="text"] { resize: none; font-weight: 700; }
+.publish-form select { resize: none; }
 .article-hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
 .composer-actions { display: flex; gap: 8px; }
 .composer-actions button { flex: 1; }

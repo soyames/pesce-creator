@@ -62,7 +62,7 @@ function openSection(id) {
   home.hidden = id !== 'home';
   sections.forEach((section) => { section.hidden = section.id !== id; });
   navButtons.forEach((button) => button.classList.toggle('active', button.dataset.section === id || (id === 'home' && button.dataset.home !== undefined)));
-  if (id === 'home') loadHome();
+  if (id === 'home') { loadHome(); loadLive(); }
   if (id === 'publications' || id === 'videos' || id === 'audios' || id === 'photos') loadContent(id);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -81,6 +81,8 @@ document.addEventListener('click', (event) => {
   if (botButton) { openExternal(PESCE.BOT_URL); return; }
   const postLink = event.target.closest('[data-post-link]');
   if (postLink) { openExternal(postLink.dataset.postLink); return; }
+  const liveLink = event.target.closest('[data-live-link]');
+  if (liveLink) { openExternal(liveLink.dataset.liveLink); return; }
   const starOption = event.target.closest('[data-stars]');
   if (starOption) { selectStars(Number(starOption.dataset.stars)); }
 });
@@ -193,23 +195,19 @@ function renderPost(post) {
   return `<article class="post-card"><div class="post-meta"><span>${post.contentType === 'photo' ? '📸' : post.contentType === 'audio' ? '🎙️' : post.contentType === 'video' ? '🎥' : '📰'}</span><time>${date}</time></div>${media}${text ? `<p class="post-text">${text.replace(/\n/g, '<br>')}</p>` : ''}${articleButton}${action}</article>`;
 }
 
-// — Accueil : UNE seule requête /api/content, partitionnée côté client en rails (articles, vidéos, audios)
+// — Accueil : une requête /api/content (flux mixte : articles, vidéos, audios, photos)
+// et la programmation publique des directs (/api/live).
 let homeLoaded = false;
 
 async function loadHome() {
   if (!inTelegram || homeLoaded) return;
   try {
-    const data = await fetchJson('./api/content?limit=30', { cache: 'no-store' });
+    const data = await fetchJson('./api/content?limit=6', { cache: 'no-store' });
     const posts = Array.isArray(data.posts) ? data.posts : [];
-    const rails = { articles: [], videos: [], audios: [] };
-    posts.forEach((post) => {
-      if (post.contentType === 'text') rails.articles.push(post);
-      else if (post.contentType === 'video') rails.videos.push(post);
-      else if (post.contentType === 'audio') rails.audios.push(post);
-    });
-    renderRail('homeArticles', 'homeArticleFeed', rails.articles);
-    renderRail('homeVideos', 'homeVideoFeed', rails.videos);
-    renderRail('homeAudios', 'homeAudioFeed', rails.audios);
+    const feed = document.getElementById('homeFeedList');
+    const rail = document.getElementById('homeFeed');
+    if (feed) feed.innerHTML = posts.slice(0, 5).map(renderPost).join('');
+    if (rail) rail.hidden = posts.length === 0;
     const empty = document.getElementById('homeEmpty');
     if (empty) empty.hidden = posts.length !== 0;
     homeLoaded = true;
@@ -218,14 +216,29 @@ async function loadHome() {
   }
 }
 
-function renderRail(railId, feedId, posts) {
-  const rail = document.getElementById(railId);
-  const feed = document.getElementById(feedId);
-  if (!rail || !feed) return;
-  const top = posts.slice(0, 3);
-  if (top.length === 0) { rail.hidden = true; return; }
-  rail.hidden = false;
-  feed.innerHTML = top.map(renderPost).join('');
+// — Directs : le bloc « Prochain direct » n'apparaît que lorsqu'un direct est programmé ou en cours.
+async function loadLive() {
+  if (!inTelegram) return;
+  try {
+    const data = await fetchJson('./api/live', { cache: 'no-store' });
+    const rail = document.getElementById('homeLive');
+    const card = document.getElementById('homeLiveCard');
+    if (!rail || !card) return;
+    const lives = Array.isArray(data.lives) ? data.lives : [];
+    if (lives.length === 0) { rail.hidden = true; return; }
+    card.innerHTML = renderLiveCard(lives[0]);
+    rail.hidden = false;
+  } catch (error) {
+    console.error('loadLive failed', error); // jamais de bloc vide : le rail reste masqué en cas d'erreur
+  }
+}
+
+function renderLiveCard(live) {
+  const date = live.scheduledAt ? new Date(live.scheduledAt).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '';
+  const isLive = live.status === 'live';
+  const badge = isLive ? '<span class="live-badge live-now">En direct</span>' : '<span class="live-badge">Programmé</span>';
+  const action = live.link ? `<button class="primary-button" type="button" data-live-link="${escapeAttribute(live.link)}">${isLive ? 'Regarder le direct' : 'Rejoindre le direct'}</button>` : '';
+  return `<article class="live-card"><div class="live-meta"><span>🔴</span>${badge}<time>${escapeHtml(date)}</time></div><h3>${escapeHtml(live.title)}</h3>${live.description ? `<p>${escapeHtml(live.description)}</p>` : ''}${action}</article>`;
 }
 
 // — Rôle créatrice (GET /api/me) et chargement du studio à la demande.

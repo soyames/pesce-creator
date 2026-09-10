@@ -22,6 +22,7 @@ Pesce Studio est l’espace Telegram de Pesce Hounyo pour informer, publier du c
 - Photos
 - Communauté (canal Telegram)
 - Soutenir Pesce ⭐ (Étoiles Telegram)
+- Prochain direct (affiché uniquement lorsqu’un direct est programmé ou en cours)
 - Support (formulaire + bot `@PesceStudioBot`)
 - À propos
 
@@ -33,6 +34,7 @@ Le studio est **invisible pour le public** : aucune affordance, aucun bouton, au
 - Brouillons (enregistrer, reprendre)
 - Publication directe sur le canal avec bouton ⭐ Soutenir
 - Backfill du bouton de soutien sur les posts existants
+- Programmation des directs (créer, modifier, annuler, gérer les statuts)
 - Indicateurs (contenus, vidéos, photos, audios, Étoiles)
 - Demandes de support (répondre, résoudre)
 - Derniers paiements

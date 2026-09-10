@@ -11,3 +11,9 @@ export function newDraftId(now = Date.now(), rand = Math.random()) {
   const suffix = Math.min(Math.floor(rand * 36 ** 6), 36 ** 6 - 1).toString(36).padStart(6, '0');
   return `draft_${now}_${suffix}`;
 }
+
+// Programmation de direct : live_<timestamp>_<6 caractères>
+export function newLiveId(now = Date.now(), rand = Math.random()) {
+  const suffix = Math.min(Math.floor(rand * 36 ** 6), 36 ** 6 - 1).toString(36).padStart(6, '0');
+  return `live_${now}_${suffix}`;
+}

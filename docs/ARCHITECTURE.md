@@ -34,6 +34,7 @@
 | Origine | Destination | Rôle |
 |---|---|---|
 | Mini App (audience) | `GET /api/content` | flux public des publications (`published == true`) |
+| Mini App (audience) | `GET /api/live` | prochains directs publics (lecture seule) |
 | Mini App | `GET /api/media?file_id=&token=` | proxy média signé (HMAC, TTL 12 h) |
 | Mini App | `POST /api/create-invoice` | facture Stars (`XTR`), initData validée |
 | Mini App | `POST /api/support` | ticket de support (réponse via le bot) |
@@ -59,9 +60,10 @@ Tables (migrations dans `app/frontend/migrations/`, colonnes snake_case mappées
 - `pesce_support_sessions` — clé primaire `user_id`
 - `pesce_support_tickets` — id `PS-YYYYMMDD-XXXXX` ; index `(status, created_at)`
 - `pesce_drafts` — id `draft_<ts>_<6>` ; index sur `updated_at`
+- `pesce_live_schedules` — id `live_<ts>_<6>` ; titre, description, `scheduled_at` (TIMESTAMPTZ), lien externe, statut (`scheduled`/`live`/`cancelled`/`completed`) ; index `(status, scheduled_at)`
 - `schema_migrations` — suivi des migrations appliquées
 
-Les tris et filtres se font en SQL (`ORDER BY … LIMIT`) ; l’accueil du Mini App ne fait qu’**une seule** requête `/api/content` partitionnée côté client (articles, vidéos, audios).
+Les tris et filtres se font en SQL (`ORDER BY … LIMIT`) ; l’accueil du Mini App ne fait qu’**une seule** requête `/api/content` (flux mixte : articles, vidéos, audios, photos) complétée par `GET /api/live` pour le bloc « Prochain direct ».
 
 ## Constantes partagées
 
@@ -73,6 +75,7 @@ Les tris et filtres se font en SQL (`ORDER BY … LIMIT`) ; l’accueil du Mini 
 - **Article Telegraph** : `article_publish` crée une page telegra.ph (API Telegraph, jeton `TELEGRAPH_ACCESS_TOKEN`) puis publie titre + URL sur le canal. Le Mini App affiche un bouton « Lire l’article » sur les posts contenant un lien telegra.ph. Limites Telegraph : contenu pratique ≲ 20 Ko, titres h3/h4, upload d’images instable — les articles du studio restent du texte simple.
 - **Médias** : publication directe depuis Telegram (V1) ; le webhook synchronise `channel_post` → la base sans dupliquer le média.
 - **Bouton de soutien** : attaché automatiquement aux nouveaux posts (`channel_post`) ; `backfill_support` le réapplique aux 50 posts récents.
+- **Directs** : la créatrice programme un direct dans le Studio (`live_create`/`live_update`/`live_cancel`, autorisés uniquement côté serveur). Seule la programmation est stockée dans Neon (`pesce_live_schedules`, TIMESTAMPTZ en UTC) ; le direct reste hébergé et diffusé par sa plateforme externe (lien fourni). L’accueil public affiche « Prochain direct » uniquement lorsqu’un direct est programmé ou en cours (`GET /api/live`) et convertit l’heure dans le fuseau du visiteur.
 
 ## Contraintes
 

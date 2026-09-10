@@ -41,6 +41,17 @@
 9. Le second compte (public) ne voit toujours aucune affordance studio ; `GET /api/studio` avec son initData → 403.
 10. `curl /api/me` (créatrice) → `isCreator: true`.
 
+## Directs
+
+1. Studio : planifier un direct (titre, description, date/heure, lien, statut « Programmé ») → il apparaît dans la liste du studio.
+2. Accueil public : le bloc « Prochain direct » apparaît avec le titre, la date convertie dans le fuseau du visiteur et le bouton « Rejoindre le direct » (si lien).
+3. Sans direct programmé/en cours : le bloc est totalement absent de l’accueil.
+4. Statut « En direct » → le bloc affiche le badge rouge et « Regarder le direct ».
+5. Modifier un direct (changer titre/heure) → l’accueil reflète la modification.
+6. Annuler un direct → il disparaît de l’accueil, reste visible (annulé) dans le studio.
+7. « Terminé » → disparaît de l’accueil, reste visible (terminé) dans le studio.
+8. `GET /api/live` : sans en-tête → 200 `{ lives }` ; `live_create`/`live_update`/`live_cancel` sur `/api/studio` sans initData → 401 ; avec un compte non créatrice → 403.
+
 ## D. Liens profonds
 
 | Lien | Attendu |
