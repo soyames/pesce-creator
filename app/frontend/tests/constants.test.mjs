@@ -28,6 +28,10 @@ test('URLs cohérentes entre elles', () => {
   assert.ok(YOUTUBE_URL.includes(YOUTUBE_HANDLE));
 });
 
+test('MINI_APP_URL pointe vers l’alias stable (jamais une URL de déploiement éphémère)', () => {
+  assert.equal(PESCE.MINI_APP_URL, 'https://pesce-creator-nine.vercel.app/');
+});
+
 test('SUPPORT_TOPICS : valeurs uniques, libellés non vides', () => {
   const values = SUPPORT_TOPICS.map((topic) => topic.value);
   assert.equal(new Set(values).size, values.length);
@@ -66,6 +70,19 @@ test('aucun identifiant Pesce écrit en dur hors de constants.js', () => {
     for (const literal of FORBIDDEN_LITERALS) {
       if (content.includes(literal)) offenders.push(`${file} → ${literal}`);
     }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+// Régression DEPLOYMENT_NOT_FOUND : aucune URL de déploiement éphémère Vercel
+// (pesce-creator-<alias>-<hash>.vercel.app) ne doit apparaître dans le code.
+test('aucune URL de déploiement éphémère Vercel dans le code', () => {
+  const frontendDir = fileURLToPath(new URL('..', import.meta.url));
+  const deploymentUrlPattern = /pesce-creator-[a-z0-9]+-[a-z0-9]{8,}\.vercel\.app/;
+  const offenders = [];
+  for (const file of collectJsFiles(frontendDir)) {
+    const content = stripComments(readFileSync(file, 'utf8'));
+    if (deploymentUrlPattern.test(content)) offenders.push(file);
   }
   assert.deepEqual(offenders, []);
 });

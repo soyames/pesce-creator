@@ -33,7 +33,7 @@
     CHANNEL_URL: 'https://t.me/PesceHounyoOfficiel',
     SUPPORT_URL: 'https://t.me/PesceStudioBot?startapp=support',
     STUDIO_URL: 'https://t.me/PesceStudioBot?startapp=studio',
-    MINI_APP_URL: 'https://pesce-creator.vercel.app/',
+    MINI_APP_URL: 'https://pesce-creator-nine.vercel.app/',
     YOUTUBE_HANDLE: '@gnonnouxopescehounyo2576',
     YOUTUBE_URL: 'https://www.youtube.com/@gnonnouxopescehounyo2576',
     STAR_TIERS,

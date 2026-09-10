@@ -2,7 +2,7 @@
 
 **Prérequis**
 
-- Déploiement en ligne : `https://pesce-creator.vercel.app/`.
+- Déploiement en ligne : `https://pesce-creator-nine.vercel.app/`.
 - Bot `@PesceStudioBot` administrateur du canal `@PesceHounyoOfficiel` ; webhook `message`, `channel_post`, `pre_checkout_query`.
 - **Mini App principale déclarée dans BotFather** (nécessaire pour les liens `?startapp=` — scénario D ; sinon utiliser la forme `https://t.me/PesceStudioBot/app?startapp=…`).
 - Deux comptes Telegram : le compte créatrice (Pesce) et un second compte « public ».
