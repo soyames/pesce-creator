@@ -35,8 +35,15 @@
 
     <section class="support-card featured-card" aria-labelledby="support-title">
       <div class="star-badge">⭐</div>
-      <div><p class="card-kicker">SOUTIEN</p><h2 id="support-title">Soutenir Pesce</h2><p>Envoyez des Étoiles pour soutenir son travail journalistique.</p></div>
-      <button id="supportButton" class="primary-button" type="button">Envoyer des Étoiles</button>
+      <div><p class="card-kicker">SOUTIEN</p><h2 id="support-title">Soutenir Pesce</h2><p>Choisissez le niveau de soutien qui vous convient.</p></div>
+      <div class="star-options" role="group" aria-label="Choisir un montant en Étoiles">
+        <button class="star-option" data-stars="50" type="button" aria-pressed="false"><strong>50 ⭐</strong><small>Petit soutien</small></button>
+        <button class="star-option selected" data-stars="100" type="button" aria-pressed="true"><strong>100 ⭐</strong><small>Soutien</small></button>
+        <button class="star-option" data-stars="250" type="button" aria-pressed="false"><strong>250 ⭐</strong><small>Grand soutien</small></button>
+        <button class="star-option" data-stars="500" type="button" aria-pressed="false"><strong>500 ⭐</strong><small>Soutien majeur</small></button>
+        <button class="star-option" data-stars="1000" type="button" aria-pressed="false"><strong>1 000 ⭐</strong><small>Soutien exceptionnel</small></button>
+      </div>
+      <button id="supportButton" class="primary-button" type="button">Envoyer 100 ⭐</button>
     </section>
 
     <section id="home" class="section">
