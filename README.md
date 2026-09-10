@@ -15,6 +15,8 @@ Telegram fournit l’infrastructure de conversation, de distribution et de moné
 - Telegram : `@PesceHounyoOfficiel` — https://t.me/PesceHounyoOfficiel
 - Bot : `@PesceStudioBot`
 - YouTube : `@gnonnouxopescehounyo2576` — https://www.youtube.com/@gnonnouxopescehounyo2576
+- Mini App : https://pesce-creator-nine.vercel.app/
+- Politique de confidentialité : https://pesce-creator-nine.vercel.app/privacy
 
 Le canal Telegram est le flux éditorial principal utilisé par Pesce Studio. Les canaux WhatsApp existants restent des canaux de distribution indépendants tant qu’un connecteur WhatsApp dédié n’est pas configuré.
 
@@ -27,7 +29,7 @@ Le canal Telegram est le flux éditorial principal utilisé par Pesce Studio. Le
 - 📝 Telegram reste la source de vérité éditoriale pour les contenus publiés.
 - 🗄️ Firestore conserve les métadonnées nécessaires ; les médias ne sont pas copiés dans une nouvelle bibliothèque.
 - 🤖 L’IA assiste Pesce mais ne remplace jamais son jugement journalistique.
-- 🔐 Les secrets Telegram et Firebase ne sont jamais commités dans Git.
+- 🔐 Les secrets Telegram, Firebase et Telegraph ne sont jamais commités dans Git.
 
 ## Architecture actuelle
 
@@ -93,11 +95,29 @@ Accessible uniquement au compte Telegram configuré dans `PESCE_CREATOR_TELEGRAM
 
 Pour les photos, audios et vidéos, la publication directe depuis Telegram reste le chemin privilégié en V1 : le webhook synchronise ensuite le contenu dans Firestore sans dupliquer le média.
 
+## Articles Telegraph
+
+Le Studio peut aussi publier un article long-form via Telegraph lorsque `TELEGRAPH_ACCESS_TOKEN` est configuré. Le Studio crée alors la page Telegraph puis publie dans le canal Telegram un message contenant le titre, le lien de lecture et le bouton `⭐ Soutenir le travail de Pesce`.
+
+Configurer dans Vercel :
+
+- `TELEGRAPH_ACCESS_TOKEN` — jeton privé du compte Telegraph utilisé par Pesce Studio.
+
+Le jeton ne doit jamais être commit dans Git ou exposé au navigateur.
+
 ## WhatsApp
 
 Le projet ne prétend pas actuellement publier automatiquement dans le canal WhatsApp. Le canal WhatsApp existant reste indépendant. Une future intégration pourra être ajoutée derrière un adaptateur dédié, sans faire de WhatsApp une dépendance du flux Telegram.
 
 Nous ne devons pas baser la production sur une passerelle WhatsApp non officielle sans décision explicite sur les risques, la confidentialité et la maintenance.
+
+## Confidentialité
+
+Pesce Studio fournit une politique de confidentialité publique à :
+
+`https://pesce-creator-nine.vercel.app/privacy`
+
+Elle décrit les données pouvant être reçues via Telegram, les données de support et de paiement Stars, les services techniques utilisés et les finalités du traitement.
 
 ## Structure
 
@@ -115,6 +135,7 @@ pesce-creator/
 │       │   └── telegram-pesce-studio.webhook.js
 │       ├── assets/
 │       ├── lib/
+<<<<<<< HEAD
 │       │   ├── config.js                   # vue ESM des constantes partagées
 │       │   ├── firestore.js
 │       │   ├── media-token.js              # signature HMAC des URLs média
@@ -124,6 +145,12 @@ pesce-creator/
 │       ├── tests/                          # node:test (npm test)
 │       ├── constants.js                    # identité et URLs (source unique)
 │       ├── app.js                          # coquille publique + rôle + loader studio
+=======
+│       │   └── firestore.js
+│       ├── privacy/
+│       │   └── index.html
+│       ├── app.js
+>>>>>>> eafce9355aaca001f20adefb6e191bcc0d17f5f6
 │       ├── index.html
 │       ├── studio.js                       # module studio (chargé à la demande)
 │       ├── studio.css
@@ -145,6 +172,10 @@ Le projet Vercel utilise `app/frontend` comme **Root Directory**.
 
 Les fonctions sont sous `app/frontend/api/`.
 
+URL de production actuelle :
+
+`https://pesce-creator-nine.vercel.app/`
+
 ### Variables d’environnement
 
 Configurer dans Vercel (voir aussi `.env.example`) :
@@ -154,10 +185,15 @@ Configurer dans Vercel (voir aussi `.env.example`) :
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`
+<<<<<<< HEAD
 - `PESCE_CREATOR_TELEGRAM_USER_IDS` — liste d’identifiants Telegram ; **non configuré ⇒ studio masqué pour tout le monde** (l’app publique fonctionne normalement)
 - `PESCE_CREATOR_TELEGRAM_USER_ID` — ancien nom singulier, conservé en repli (à déprécier)
 - `TELEGRAPH_ACCESS_TOKEN` — optionnel, pour les articles Telegraph (à obtenir via « Configurer Telegraph » dans le studio)
 - `PESCE_MEDIA_SIGNING_SECRET` — optionnel, secret des URLs média signées (repli sur le token du bot)
+=======
+- `PESCE_CREATOR_TELEGRAM_USER_IDS`
+- `TELEGRAPH_ACCESS_TOKEN`
+>>>>>>> eafce9355aaca001f20adefb6e191bcc0d17f5f6
 
 `FIREBASE_PRIVATE_KEY` doit conserver les retours à la ligne sous la forme `\\n` lorsqu’elle est saisie comme variable d’environnement.
 
@@ -176,7 +212,7 @@ Suite `node:test` (aucune dépendance) : validation des initData Telegram, liste
 
 Endpoint :
 
-`https://pesce-creator.vercel.app/api/telegram-pesce-studio.webhook`
+`https://pesce-creator-nine.vercel.app/api/telegram-pesce-studio.webhook`
 
 Updates actuellement nécessaires :
 
@@ -185,6 +221,8 @@ Updates actuellement nécessaires :
 - `pre_checkout_query`
 
 Le bot doit rester administrateur du canal `@PesceHounyoOfficiel` afin que les publications du canal puissent alimenter le flux Pesce Studio et que le bot puisse ajouter le bouton de soutien aux publications.
+
+Après un changement de projet Vercel, le webhook Telegram doit être reconfiguré vers cette nouvelle URL de production.
 
 ## Firestore
 
@@ -226,6 +264,7 @@ Phase 3 — espace public recentré sur l’identité de Pesce, studio masqué d
 - `GET /api/me` (rôle, sans Firestore) ; application fonctionnelle sans identifiant créatrice configuré
 - webhook Telegram (`message`, `channel_post`, `pre_checkout_query`) avec secret
 - authentification server-side `initData`
+<<<<<<< HEAD
 - soutien Telegram Stars (montants validés)
 - support par le Mini App **et** par le bot (`/support`, `/paysupport`)
 - publication texte et **articles Telegraph** depuis le Studio
@@ -241,3 +280,25 @@ Phase 3 — espace public recentré sur l’identité de Pesce, studio masqué d
 3. Ajouter la création/import média depuis le Studio si nécessaire.
 4. Ajouter une intégration WhatsApp choisie et validée séparément.
 5. Ajouter la synchronisation des modifications/suppressions et les statistiques éditoriales avancées.
+=======
+- soutien Telegram Stars
+- `/start`
+- `/paysupport`
+- persistance des publications, paiements, supports et brouillons via Firestore
+- feeds Publications / Photos / Audios dans le Mini App
+- publication texte depuis le Studio
+- bouton de soutien automatique sur les publications
+- publication d’articles Telegraph depuis le Studio lorsque le token est configuré
+- politique de confidentialité publique
+
+### Prochaines étapes
+
+1. Vérifier le nouveau domaine Vercel dans Telegram / BotFather.
+2. Reconfigurer et vérifier le webhook Telegram sur le nouveau domaine.
+3. Ouvrir le Studio depuis le compte créateur et tester brouillon → publication.
+4. Vérifier le bouton `⭐ Soutenir le travail de Pesce` sur le canal.
+5. Tester la création d’un article Telegraph.
+6. Ajouter la création/import média depuis le Studio si nécessaire.
+7. Ajouter une intégration WhatsApp choisie et validée séparément.
+8. Ajouter la synchronisation des modifications/suppressions et les statistiques éditoriales avancées.
+>>>>>>> eafce9355aaca001f20adefb6e191bcc0d17f5f6
