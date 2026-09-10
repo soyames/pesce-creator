@@ -1,7 +1,6 @@
-import crypto from 'node:crypto';
+import { validateTelegramInitData } from '../lib/telegram-auth.js';
 
 const ALLOWED_STARS = [50, 100, 250, 500, 1000];
-const MAX_AUTH_AGE_SECONDS = 24 * 60 * 60;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -45,41 +44,5 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Impossible de préparer le paiement pour le moment.' });
-  }
-}
-
-function validateTelegramInitData(initData, botToken) {
-  if (!initData) return false;
-
-  const params = new URLSearchParams(initData);
-  const receivedHash = params.get('hash');
-  const authDate = Number(params.get('auth_date'));
-  if (!receivedHash || !Number.isFinite(authDate)) return false;
-
-  const age = Math.floor(Date.now() / 1000) - authDate;
-  if (age < -60 || age > MAX_AUTH_AGE_SECONDS) return false;
-
-  params.delete('hash');
-  const dataCheckString = [...params.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-
-  const secretKey = crypto
-    .createHmac('sha256', 'WebAppData')
-    .update(botToken)
-    .digest();
-  const calculatedHash = crypto
-    .createHmac('sha256', secretKey)
-    .update(dataCheckString)
-    .digest('hex');
-
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(calculatedHash, 'hex'),
-      Buffer.from(receivedHash, 'hex')
-    );
-  } catch {
-    return false;
   }
 }
