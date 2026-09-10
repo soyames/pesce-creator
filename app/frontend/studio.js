@@ -40,16 +40,24 @@
     try {
       const data = await fetchJson('./api/studio', { headers: { 'x-telegram-init-data': initData() }, cache: 'no-store' });
       currentLives = data.liveSchedules || [];
-      el.innerHTML = [renderComposer(), renderBackfill(), renderKpis(data), renderLive(data), renderTelegraph(data), renderDrafts(data), renderTickets(data), renderPayments(data)].join('');
+      el.innerHTML = [renderGreeting(), renderComposer(), renderBackfill(), renderKpis(data), renderLive(data), renderTelegraph(data), renderDrafts(data), renderTickets(data), renderPayments(data)].join('');
       bindStudioEvents();
     } catch (error) {
       el.innerHTML = `<article class="empty-card"><span>⚠️</span><h3>Studio indisponible</h3><p>${escapeHtml(error.message)}</p></article>`;
     }
   }
 
+  function renderGreeting() {
+    return `<article class="studio-card studio-greeting">
+<p class="card-kicker">MON ESPACE</p>
+<h3>Bonjour Pesce 👋</h3>
+<p class="studio-muted">Votre espace éditorial : préparez votre prochaine publication, suivez votre audience et échangez avec votre communauté.</p>
+</article>`;
+  }
+
   function renderComposer() {
     return `<article class="studio-card studio-composer">
-<p class="card-kicker">CRÉER</p>
+<p class="card-kicker">PUBLIER</p>
 <h3>Nouvelle publication</h3>
 <p class="studio-muted">Rédigez ici. La publication sera envoyée directement sur <strong>${escapeHtml(PESCE.CHANNEL_HANDLE)}</strong> et synchronisée dans Pesce Studio.</p>
 <form id="publishForm" class="publish-form">
@@ -76,12 +84,12 @@
     const t = data.totals || {};
     const audience = data.audience || {};
     return `<div class="studio-kpis">
-<article class="kpi-card"><small>Contenus</small><strong>${t.total || 0}</strong><span>${t.text || 0} textes</span></article>
+<article class="kpi-card"><small>Publications</small><strong>${t.total || 0}</strong><span>${t.text || 0} textes</span></article>
 <article class="kpi-card"><small>Vidéos</small><strong>${t.video || 0}</strong></article>
 <article class="kpi-card"><small>Photos</small><strong>${t.photo || 0}</strong></article>
 <article class="kpi-card"><small>Audios</small><strong>${t.audio || 0}</strong></article>
 <article class="kpi-card"><small>Étoiles</small><strong>${Number(data.stars || 0).toLocaleString('fr-FR')} ⭐</strong><span>${data.supporters || 0} soutien(s)</span></article>
-<article class="kpi-card"><small>Ouvertures</small><strong>${Number(audience.opens || 0).toLocaleString('fr-FR')}</strong><span>${audience.uniqueUsers || 0} visiteurs · ${audience.last7Days || 0} sur 7 jours</span></article>
+<article class="kpi-card"><small>Mon audience</small><strong>${Number(audience.opens || 0).toLocaleString('fr-FR')}</strong><span>${audience.uniqueUsers || 0} visiteurs · ${audience.last7Days || 0} sur 7 jours</span></article>
 </div>`;
   }
 
@@ -102,7 +110,7 @@
 
   function renderLive(data) {
     return `<article class="studio-card">
-<p class="card-kicker">DIRECTS</p>
+<p class="card-kicker">MES DIRECTS</p>
 <h3>Programmation des directs</h3>
 <p class="studio-muted">Planifiez un direct : il apparaît sur l’accueil public (« Prochain direct »). Le direct reste diffusé sur sa plateforme (lien fourni).</p>
 <form id="liveForm" class="publish-form">
@@ -197,13 +205,13 @@ ${currentLives.map((live) => `<div class="draft-row" data-live="${escapeAttribut
   function renderTelegraph(data) {
     if (data.telegraphConfigured) {
       return `<article class="studio-card">
-<p class="card-kicker">ARTICLES</p>
+<p class="card-kicker">MES ARTICLES</p>
 <h3>Articles Telegraph</h3>
 <p class="studio-muted">Ajoutez un titre dans le composeur pour publier un article Telegraph (telegra.ph), lu en Instant View. Vous pouvez aussi écrire directement sur telegra.ph et coller le lien dans une publication.</p>
 </article>`;
     }
     return `<article class="studio-card">
-<p class="card-kicker">ARTICLES</p>
+<p class="card-kicker">MES ARTICLES</p>
 <h3>Articles Telegraph</h3>
 <p class="studio-muted">Telegraph n’est pas encore configuré. Créez le compte, puis sauvegardez le jeton reçu dans la variable d’environnement <strong>TELEGRAPH_ACCESS_TOKEN</strong> (Vercel) et redéployez.</p>
 <button id="telegraphSetupButton" class="secondary-button" type="button">Configurer Telegraph</button>
@@ -213,16 +221,16 @@ ${currentLives.map((live) => `<div class="draft-row" data-live="${escapeAttribut
 
   function renderDrafts(data) {
     return `<article class="studio-card">
-<p class="card-kicker">BROUILLONS</p>
-<h3>Vos brouillons</h3>
+<p class="card-kicker">MES BROUILLONS</p>
+<h3>Brouillons</h3>
 ${(data.drafts || []).map((draft) => `<div class="draft-row"><div><strong>${escapeHtml((draft.text || '').slice(0, 90))}</strong><small>${formatDate(draft.updatedAt || draft.createdAt)}</small></div><div class="ticket-actions"><button class="secondary-button draft-load" type="button" data-draft="${escapeAttribute(draft.text || '')}">Reprendre</button><button class="secondary-button draft-delete" type="button" data-draft-id="${escapeAttribute(draft.id)}">Supprimer</button></div></div>`).join('') || '<p class="studio-muted">Aucun brouillon.</p>'}
 </article>`;
   }
 
   function renderTickets(data) {
     return `<article class="studio-card">
-<p class="card-kicker">ASSISTANCE</p>
-<h3>Demandes ouvertes <span class="count-badge">${data.openTickets || 0}</span></h3>
+<p class="card-kicker">MESSAGES & DEMANDES</p>
+<h3>Messages & demandes <span class="count-badge">${data.openTickets || 0}</span></h3>
 ${(data.recentTickets || []).map((ticket) => `<div class="ticket-card" data-ticket="${escapeAttribute(ticket.id)}">
 <strong>${escapeHtml(ticket.id)}</strong>
 <small>${escapeHtml(ticket.username ? '@' + ticket.username : ticket.firstName || 'Utilisateur')} · ${formatDate(ticket.createdAt)}${ticket.topic ? ` · ${escapeHtml(topicLabel(ticket.topic))}` : ''}</small>
@@ -236,7 +244,7 @@ ${(data.recentTickets || []).map((ticket) => `<div class="ticket-card" data-tick
   function renderPayments(data) {
     return `<article class="studio-card">
 <p class="card-kicker">SOUTIENS</p>
-<h3>Derniers paiements</h3>
+<h3>Derniers soutiens</h3>
 ${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>⭐ ${payment.amount || 0}${payment.refundedAt ? ' · remboursé' : ''}</span><div class="payment-cell"><small>${escapeHtml(payment.username ? '@' + payment.username : 'Utilisateur')} · ${formatDate(payment.paidAt)}</small>${payment.refundedAt ? '' : `<button class="secondary-button payment-refund" type="button" data-payment="${escapeAttribute(payment.id)}">Rembourser</button>`}</div></div>`).join('') || '<p class="studio-muted">Aucun paiement.</p>'}
 </article>`;
   }

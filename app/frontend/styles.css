@@ -18,6 +18,12 @@
   --radius-card: 20px;
   --radius-control: 13px;
   --radius-pill: 999px;
+  /* — Identité éditoriale Pesce Studio :
+     typographie de titrage serif (newsroom) + sans-serif d'interface, surfaces de lecture chaudes. */
+  --font-display: Georgia, "Iowan Old Style", "Times New Roman", Times, serif;
+  --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --paper: #f7f3ea;
+  --ink: #1c1917;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--bg); }
@@ -29,6 +35,10 @@ button { -webkit-tap-highlight-color: transparent; }
    surfaces sombres (--panel / --panel-2), accent or (--gold), kickers dorés,
    rayons --radius-card / --radius-control, espacement --space-*. */
 button:focus-visible, a:focus-visible, .tile:focus-visible, .editorial-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* Titrage éditorial : serif pour les gros titres publics et la une du studio. */
+.app h1, .gateway-card h1, .section-heading h2, .rail-heading h2, .post-headline,
+.reader-card h2, .live-card h3, .empty-card h3, .community-card h3, .about-card h3,
+.youtube-card h3, .support-bot-card h3, .support-help-card h3, .studio-greeting h3 { font-family: var(--font-display); }
 @media (prefers-reduced-motion: reduce) { .tile { transition: none; } }
 .gateway { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 18px; }
 .gateway-card { width: min(440px, 100%); padding: 34px 26px 28px; text-align: center; border: 1px solid var(--border); border-radius: 26px; background: var(--panel); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
@@ -53,7 +63,8 @@ button:focus-visible, a:focus-visible, .tile:focus-visible, .editorial-card:focu
 .hero { text-align: center; }
 .compact-hero { padding: 22px 8px 20px; }
 .portrait-wrap { display: flex; justify-content: center; margin-bottom: 14px; }
-.portrait { width: 92px; height: 92px; border-radius: 50%; object-fit: cover; border: 3px solid #334155; }
+.portrait { width: 112px; height: 112px; border-radius: 50%; object-fit: cover; border: 3px solid var(--gold); }
+.hero-manifesto { font-family: var(--font-display); font-style: italic; font-size: 17px; color: #cbd5e1; max-width: 520px; margin: 12px auto 0; line-height: 1.5; }
 .eyebrow { margin: 0 0 6px; font-size: 11px; letter-spacing: .16em; font-weight: 800; color: var(--muted); }
 .app h1 { margin: 0; font-size: clamp(28px,7vw,42px); line-height: 1.08; }
 .intro { max-width: 570px; margin: 14px auto 0; line-height: 1.55; color: var(--muted); }
@@ -119,7 +130,7 @@ button:focus-visible, a:focus-visible, .tile:focus-visible, .editorial-card:focu
 .editorial-card { cursor: pointer; }
 .post-meta-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .post-category { color: var(--gold); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
-.post-headline { margin: 0 0 8px; font-size: 18px; line-height: 1.25; }
+.post-headline { margin: 0 0 8px; font-size: 19px; line-height: 1.25; }
 .post-standfirst { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .post-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
 .post-author { color: var(--muted); font-size: 11px; font-weight: 700; }

@@ -41,9 +41,9 @@ const PAIRS = [
   ['#172033', '#f5b942', 4.5], // libellé du bouton primaire
   ['#f8fafc', '#1d293b', 4.5], // libellé du bouton secondaire
   ['#f87171', '#111c2e', 3.0], // badge « En direct »
-  ['#334155', '#ffffff', 4.5], // corps de la page privacy (document clair)
-  ['#475569', '#ffffff', 4.5], // méta de la page privacy
-  ['#1e293b', '#ffffff', 4.5], // texte de la carte privacy
+  ['#334155', '#f7f3ea', 4.5], // corps de la page privacy (document chaud)
+  ['#475569', '#f7f3ea', 4.5], // méta de la page privacy
+  ['#1e293b', '#f7f3ea', 4.5], // texte de la carte privacy
   ['#f5b942', '#0b1220', 3.0], // lien retour privacy sur fond
 ];
 
@@ -58,7 +58,7 @@ test('contrastes WCAG du système de design', () => {
 
 test('la page privacy définit son propre thème lisible (pas d’héritage clair sur clair)', () => {
   const privacy = readFileSync(fileURLToPath(new URL('../privacy/index.html', import.meta.url)), 'utf8');
-  assert.ok(privacy.includes('.privacy-card { background: #ffffff'), 'surface claire attendue');
+  assert.ok(privacy.includes('.privacy-card { background: #f7f3ea'), 'surface de lecture chaude attendue');
   assert.ok(privacy.includes('color: #334155'), 'texte de corps sombre attendu');
   assert.ok(!/\.privacy-card\s*{[^}]*color:\s*#f8fafc/.test(privacy), 'aucun texte clair hérité sur la carte claire');
 });
