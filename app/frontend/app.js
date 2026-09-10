@@ -79,12 +79,23 @@ document.addEventListener('click', (event) => {
   if (youtubeButton) { openExternal(PESCE.YOUTUBE_URL); return; }
   const botButton = event.target.closest('[data-bot]');
   if (botButton) { openExternal(PESCE.BOT_URL); return; }
+  const readerClose = event.target.closest('[data-reader-close]');
+  if (readerClose) { closeReader(); return; }
+  const readerSupport = event.target.closest('[data-reader-support]');
+  if (readerSupport) { closeReader(); openSection('soutenir'); return; }
+  const readButton = event.target.closest('[data-reader]');
+  if (readButton) { openReader(readButton.dataset.reader); return; }
   const postLink = event.target.closest('[data-post-link]');
   if (postLink) { openExternal(postLink.dataset.postLink); return; }
   const liveLink = event.target.closest('[data-live-link]');
   if (liveLink) { openExternal(liveLink.dataset.liveLink); return; }
   const starOption = event.target.closest('[data-stars]');
-  if (starOption) { selectStars(Number(starOption.dataset.stars)); }
+  if (starOption) { selectStars(Number(starOption.dataset.stars)); return; }
+  // La carte éditoriale entière ouvre le lecteur — sauf interaction avec un média ou un contrôle.
+  if (!event.target.closest('video,audio,img,button,a,input,select,textarea')) {
+    const card = event.target.closest('.editorial-card[data-post-id]');
+    if (card) { openReader(card.dataset.postId); return; }
+  }
 });
 
 // — Soutien en Étoiles
@@ -181,18 +192,125 @@ function renderError(target, error) {
   target.innerHTML = `<article class="empty-card"><span>⚠️</span><h3>Flux momentanément indisponible</h3><p>${escapeHtml(error.message || 'Impossible de charger les contenus.')}</p><button class="secondary-button" data-channel type="button">Ouvrir le canal Telegram</button></article>`;
 }
 
-function renderPost(post) {
-  const date = formatDate(post.publishedAt);
-  const text = escapeHtml(post.text || '');
+// — Cartes éditoriales + lecteur de publication.
+// Le lecteur est l'action principale ; « Voir sur Telegram » devient une action secondaire interne au lecteur.
+const postCache = new Map();
+
+const POST_LABELS = {
+  text: { category: 'ARTICLE', action: 'Lire la publication' },
+  photo: { category: 'PHOTO', action: 'Voir la photo' },
+  video: { category: 'VIDÉO', action: 'Regarder' },
+  audio: { category: 'AUDIO', action: 'Écouter' },
+  document: { category: 'DOCUMENT', action: 'Lire la publication' },
+  other: { category: 'PUBLICATION', action: 'Lire la publication' },
+};
+
+function renderMedia(post) {
   const mediaUrl = post.mediaUrl || (post.mediaFileId ? `./api/media?file_id=${encodeURIComponent(post.mediaFileId)}` : '');
-  let media = '';
-  if (post.contentType === 'photo' && mediaUrl) media = `<img class="post-media post-photo" src="${mediaUrl}" alt="Photo publiée par Pesce Hounyo" loading="lazy">`;
-  else if (post.contentType === 'audio' && mediaUrl) media = `<audio class="post-audio" controls preload="none" src="${mediaUrl}"></audio>`;
-  else if (post.contentType === 'video' && mediaUrl) media = `<video class="post-media" controls preload="metadata" src="${mediaUrl}"${post.mediaThumbnailUrl ? ` poster="${escapeAttribute(post.mediaThumbnailUrl)}"` : ''}></video>`;
-  const articleUrl = (post.text || '').match(/https:\/\/telegra\.ph\/[\w\-./]+/i);
-  const articleButton = articleUrl ? `<button class="primary-button post-link" type="button" data-post-link="${escapeAttribute(articleUrl[0])}">Lire l’article</button>` : '';
-  const action = post.telegramUrl ? `<button class="secondary-button post-link" type="button" data-post-link="${escapeAttribute(post.telegramUrl)}">Voir sur Telegram</button>` : '';
-  return `<article class="post-card"><div class="post-meta"><span>${post.contentType === 'photo' ? '📸' : post.contentType === 'audio' ? '🎙️' : post.contentType === 'video' ? '🎥' : '📰'}</span><time>${date}</time></div>${media}${text ? `<p class="post-text">${text.replace(/\n/g, '<br>')}</p>` : ''}${articleButton}${action}</article>`;
+  if (post.contentType === 'photo' && mediaUrl) return `<img class="post-media post-photo" src="${mediaUrl}" alt="Photo publiée par Pesce Hounyo" loading="lazy">`;
+  if (post.contentType === 'audio' && mediaUrl) return `<audio class="post-audio" controls preload="none" src="${mediaUrl}"></audio>`;
+  if (post.contentType === 'video' && mediaUrl) return `<video class="post-media" controls preload="metadata" src="${mediaUrl}"${post.mediaThumbnailUrl ? ` poster="${escapeAttribute(post.mediaThumbnailUrl)}"` : ''}></video>`;
+  return '';
+}
+
+function headlineAndStandfirst(post) {
+  const lines = (post.text || '').split('\n').map((line) => line.trim()).filter(Boolean);
+  let headline = '';
+  let standfirst = '';
+  if (lines.length > 0) {
+    headline = lines[0].slice(0, 110);
+    const restLines = lines.slice(1).filter((line) => !/^https?:\/\//.test(line));
+    const rest = restLines.join(' ').trim();
+    if (rest) {
+      standfirst = rest.length > 160 ? `${rest.slice(0, 160)}…` : rest;
+    }
+  }
+  if (!headline) {
+    headline = { video: 'Vidéo publiée par Pesce Hounyo', audio: 'Audio publié par Pesce Hounyo', photo: 'Photo publiée par Pesce Hounyo' }[post.contentType] || 'Publication de Pesce Hounyo';
+  }
+  return { headline, standfirst };
+}
+
+function articleUrlOf(post) {
+  return (post.text || '').match(/https:\/\/telegra\.ph\/[\w\-./]+/i);
+}
+
+function renderPost(post) {
+  postCache.set(post.id, post);
+  const label = POST_LABELS[post.contentType] || POST_LABELS.other;
+  const { headline, standfirst } = headlineAndStandfirst(post);
+  const action = articleUrlOf(post) ? 'Lire l’article' : label.action;
+  const media = renderMedia(post);
+  return `<article class="post-card editorial-card" data-post-id="${escapeAttribute(post.id)}">
+<div class="post-meta-top"><span class="post-category">${label.category}</span><time>${escapeHtml(formatDate(post.publishedAt))}</time></div>
+<h3 class="post-headline">${escapeHtml(headline)}</h3>
+${standfirst ? `<p class="post-standfirst">${escapeHtml(standfirst)}</p>` : ''}
+${media}
+<div class="post-footer"><span class="post-author">${escapeHtml(PESCE.CREATOR_NAME)}</span><button class="primary-button post-read" type="button" data-reader="${escapeAttribute(post.id)}">${action}</button></div>
+</article>`;
+}
+
+// — Lecteur de publication (recouvre l'application ; retour via le bouton, le fond ou le BackButton Telegram)
+let readerOpen = false;
+
+function bindBackButton() {
+  if (!tg?.BackButton) return;
+  try { tg.BackButton.show(); tg.BackButton.onClick(closeReader); } catch { /* BackButton indisponible */ }
+}
+
+function unbindBackButton() {
+  if (!tg?.BackButton) return;
+  try { tg.BackButton.offClick(closeReader); tg.BackButton.hide(); } catch { /* BackButton indisponible */ }
+}
+
+async function openReader(postId) {
+  if (!inTelegram) return;
+  let post = postCache.get(postId);
+  if (!post) {
+    try {
+      const data = await fetchJson('./api/content?limit=50', { cache: 'no-store' });
+      post = (Array.isArray(data.posts) ? data.posts : []).find((item) => item.id === postId) || null;
+      if (post) postCache.set(post.id, post);
+    } catch { post = null; }
+  }
+  const reader = document.getElementById('reader');
+  const content = document.getElementById('readerContent');
+  if (!reader || !content) return;
+  content.innerHTML = post
+    ? renderReader(post)
+    : '<article class="empty-card"><span>⚠️</span><h3>Publication introuvable</h3><p>Cette publication n’est plus disponible pour le moment.</p><button class="secondary-button" type="button" data-reader-close>Retour</button></article>';
+  reader.hidden = false;
+  readerOpen = true;
+  bindBackButton();
+  reader.scrollTop = 0;
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+function closeReader() {
+  const reader = document.getElementById('reader');
+  if (reader) reader.hidden = true;
+  readerOpen = false;
+  unbindBackButton();
+}
+
+function renderReader(post) {
+  const label = POST_LABELS[post.contentType] || POST_LABELS.other;
+  const { headline } = headlineAndStandfirst(post);
+  const articleUrl = articleUrlOf(post);
+  const media = renderMedia(post);
+  const body = escapeHtml(post.text || '').replace(/\n/g, '<br>');
+  const paragraphs = body.split('<br><br>').map((paragraph) => `<p>${paragraph}</p>`).join('');
+  const longDate = post.publishedAt ? new Date(post.publishedAt).toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+  return `<article class="reader-card">
+<p class="card-kicker">${label.category}</p>
+<h2>${escapeHtml(headline)}</h2>
+<div class="reader-meta"><span class="post-author">${escapeHtml(PESCE.CREATOR_NAME)}</span><time>${escapeHtml(longDate)}</time></div>
+${media}
+<div class="reader-body">${paragraphs}</div>
+${articleUrl ? `<button class="primary-button post-read" type="button" data-post-link="${escapeAttribute(articleUrl[0])}">Lire l’article complet sur Telegraph</button>` : ''}
+<aside class="reader-support"><span class="star-badge">⭐</span><div><p class="card-kicker">SOUTENIR PESCE</p><p>Ce travail vous plaît ? Soutenez-le en Étoiles Telegram.</p></div><button class="primary-button" type="button" data-reader-support>⭐ Soutenir Pesce</button></aside>
+<div class="reader-actions">${post.telegramUrl ? `<button class="secondary-button" type="button" data-post-link="${escapeAttribute(post.telegramUrl)}">Voir sur Telegram</button>` : ''}<button class="secondary-button" type="button" data-channel>Suivre le canal</button></div>
+</article>`;
 }
 
 // — Accueil : une requête /api/content (flux mixte : articles, vidéos, audios, photos)

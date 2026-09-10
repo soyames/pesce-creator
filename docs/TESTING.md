@@ -93,6 +93,15 @@ Publier depuis l’app Telegram (compte de la chaîne), puis vérifier la base P
 5. Support mini app envoyé avec uniquement `PESCE_CREATOR_TELEGRAM_USER_IDS` (plural) configuré → la créatrice est notifiée (bug corrigé).
 6. Sans `TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET` → le webhook fonctionne et un avertissement unique apparaît dans les logs.
 
+## Lecteur de publication (cartes éditoriales)
+
+1. Chaque carte affiche catégorie, titre, extrait, média, autrice et date ; l'action principale est « Lire la publication » / « Lire l'article » (Telegraph) / « Regarder » / « Écouter ».
+2. Clic sur la carte (hors média/contrôles) ou sur l'action → le lecteur s'ouvre avec le texte complet ; les contrôles vidéo/audio restent utilisables sans ouvrir le lecteur.
+3. Retour : bouton « ← Retour », clic sur le fond, ou BackButton Telegram (mobile).
+4. Dans le lecteur : « ⭐ Soutenir Pesce » ouvre la section Soutenir (ferme le lecteur) ; « Voir sur Telegram » ouvre la source ; « Suivre le canal » ouvre le canal.
+5. Article Telegraph : le lecteur propose « Lire l'article complet sur Telegraph » en action principale.
+6. Publication introuvable (hors des flux chargés) : état d'erreur explicite dans le lecteur.
+
 ## Audience, remboursements, publication
 
 1. Ouvrir le Mini App → un événement `open` est enregistré (KPI « Ouvertures » du studio incrémenté) ; `POST /api/track` sans initData → 401 ; événement hors liste blanche → 400.

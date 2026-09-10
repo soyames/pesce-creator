@@ -256,6 +256,7 @@ Phase 4 — base de données migrée de Firestore vers PostgreSQL/Neon, espace p
 
 - Gateway navigateur / Telegram
 - Mini App francophone : accueil identité + rails (articles, vidéos, audios), Publications, Vidéos (canal + YouTube), Audios, Photos, Communauté, Soutenir ⭐, Aide (formulaire + bot), À propos
+- **lecture éditoriale** : cartes (catégorie, titre, extrait, média, autrice, date) → lecteur dédié (texte complet, Telegraph en action principale, soutien ⭐ intégré, « Voir sur Telegram » en action secondaire)
 - studio créatrice **masqué** (bouton réservé à la créatrice, `?startapp=studio`, `/studio`, aucun chargement du code studio pour le public)
 - `GET /api/me` (rôle, sans base de données) ; application fonctionnelle sans identifiant créatrice configuré
 - webhook Telegram (`message`, `channel_post`, `pre_checkout_query`) avec secret
