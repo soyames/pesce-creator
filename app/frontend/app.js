@@ -212,6 +212,12 @@ async function loadHome() {
     if (empty) empty.hidden = posts.length !== 0;
     homeLoaded = true;
   } catch (error) {
+    // État d'erreur explicite sur l'accueil (jamais un accueil vide et muet).
+    const empty = document.getElementById('homeEmpty');
+    if (empty) {
+      empty.innerHTML = '<span>⚠️</span><h3>Flux momentanément indisponible</h3><p>Les dernières publications réapparaîtront ici dès que possible.</p><button class="secondary-button" data-channel type="button">Ouvrir le canal Telegram</button>';
+      empty.hidden = false;
+    }
     console.error('loadHome failed', error); // non bloquant : les sections dédiées restent accessibles
   }
 }

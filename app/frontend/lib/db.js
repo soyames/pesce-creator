@@ -354,7 +354,8 @@ export async function listLiveSchedules({ statuses, limit = 50 } = {}) {
 export async function getUpcomingLive({ now = new Date() } = {}) {
   const result = await (await ensureDb()).query(
     `SELECT * FROM pesce_live_schedules
-     WHERE status IN ('scheduled', 'live') AND scheduled_at >= ($1::timestamptz - interval '1 hour')
+     WHERE (status = 'live' AND scheduled_at <= ($1::timestamptz + interval '1 day'))
+        OR (status = 'scheduled' AND scheduled_at >= ($1::timestamptz - interval '1 hour'))
      ORDER BY scheduled_at ASC, id ASC
      LIMIT 3`,
     [now]

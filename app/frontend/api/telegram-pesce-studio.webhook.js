@@ -35,7 +35,9 @@ export default async function handler(req, res) {
       if (updateId % 100 === 0) await pruneWebhookUpdates(); // nettoyage périodique, sans état séparé
     }
     const message = update.message;
-    const channelPost = update.channel_post;
+    // Les publications modifiées (edited_channel_post) suivent le même chemin : l'upsert par id
+    // (chatId_messageId) met à jour le post existant dans Neon — les éditions se propagent à l'app.
+    const channelPost = update.channel_post || update.edited_channel_post;
 
     if (update.pre_checkout_query) {
       const query = update.pre_checkout_query;

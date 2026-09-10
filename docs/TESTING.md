@@ -75,6 +75,7 @@ Publier depuis l’app Telegram (compte de la chaîne), puis vérifier la base P
 5. Vidéo > 20 Mo → le lecteur échoue (limite `getFile` 20 Mo) mais « Voir sur Telegram » fonctionne.
 6. Document → « document » → Publications (flux mixte).
 7. Chaque post porte le bouton ⭐ Soutenir (attaché par le webhook).
+8. Modifier un post du canal (texte ou légende) → `edited_channel_post` reçu → la modification apparaît dans le Mini App (l'upsert par id met à jour le post existant).
 
 ## F. Étoiles
 

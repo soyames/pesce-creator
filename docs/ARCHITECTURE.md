@@ -76,7 +76,7 @@ Les tris et filtres se font en SQL (`ORDER BY … LIMIT`) ; l’accueil du Mini 
 
 - **Texte simple** : `/api/studio` `publish` → `sendMessage` vers `@PesceHounyoOfficiel` avec le bouton ⭐ Soutenir. La persistance vient du `channel_post` renvoyé par Telegram au webhook (source de vérité Telegram).
 - **Article Telegraph** : `article_publish` crée une page telegra.ph (API Telegraph, jeton `TELEGRAPH_ACCESS_TOKEN`) puis publie titre + URL sur le canal. Le Mini App affiche un bouton « Lire l’article » sur les posts contenant un lien telegra.ph. Limites Telegraph : contenu pratique ≲ 20 Ko, titres h3/h4, upload d’images instable — les articles du studio restent du texte simple.
-- **Médias** : publication directe depuis Telegram (V1) ; le webhook synchronise `channel_post` → la base sans dupliquer le média.
+- **Médias** : publication directe depuis Telegram (V1) ; le webhook synchronise `channel_post` **et `edited_channel_post`** → la base sans dupliquer le média. Les éditions se propagent par l'upsert (id `chatId_messageId`).
 - **Bouton de soutien** : attaché automatiquement aux nouveaux posts (`channel_post`) ; `backfill_support` le réapplique aux 50 posts récents.
 - **Directs** : la créatrice programme un direct dans le Studio (`live_create`/`live_update`/`live_cancel`, autorisés uniquement côté serveur). Seule la programmation est stockée dans Neon (`pesce_live_schedules`, TIMESTAMPTZ en UTC) ; le direct reste hébergé et diffusé par sa plateforme externe (lien fourni). L’accueil public affiche « Prochain direct » uniquement lorsqu’un direct est programmé ou en cours (`GET /api/live`) et convertit l’heure dans le fuseau du visiteur.
 
