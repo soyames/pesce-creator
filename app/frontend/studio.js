@@ -74,12 +74,14 @@
 
   function renderKpis(data) {
     const t = data.totals || {};
+    const audience = data.audience || {};
     return `<div class="studio-kpis">
 <article class="kpi-card"><small>Contenus</small><strong>${t.total || 0}</strong><span>${t.text || 0} textes</span></article>
 <article class="kpi-card"><small>Vidéos</small><strong>${t.video || 0}</strong></article>
 <article class="kpi-card"><small>Photos</small><strong>${t.photo || 0}</strong></article>
 <article class="kpi-card"><small>Audios</small><strong>${t.audio || 0}</strong></article>
 <article class="kpi-card"><small>Étoiles</small><strong>${Number(data.stars || 0).toLocaleString('fr-FR')} ⭐</strong><span>${data.supporters || 0} soutien(s)</span></article>
+<article class="kpi-card"><small>Ouvertures</small><strong>${Number(audience.opens || 0).toLocaleString('fr-FR')}</strong><span>${audience.uniqueUsers || 0} visiteurs · ${audience.last7Days || 0} sur 7 jours</span></article>
 </div>`;
   }
 
@@ -235,7 +237,7 @@ ${(data.recentTickets || []).map((ticket) => `<div class="ticket-card" data-tick
     return `<article class="studio-card">
 <p class="card-kicker">SOUTIENS</p>
 <h3>Derniers paiements</h3>
-${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>⭐ ${payment.amount || 0}</span><small>${escapeHtml(payment.username ? '@' + payment.username : 'Utilisateur')} · ${formatDate(payment.paidAt)}</small></div>`).join('') || '<p class="studio-muted">Aucun paiement.</p>'}
+${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>⭐ ${payment.amount || 0}${payment.refundedAt ? ' · remboursé' : ''}</span><div class="payment-cell"><small>${escapeHtml(payment.username ? '@' + payment.username : 'Utilisateur')} · ${formatDate(payment.paidAt)}</small>${payment.refundedAt ? '' : `<button class="secondary-button payment-refund" type="button" data-payment="${escapeAttribute(payment.id)}">Rembourser</button>`}</div></div>`).join('') || '<p class="studio-muted">Aucun paiement.</p>'}
 </article>`;
   }
 
@@ -257,7 +259,14 @@ ${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>�
         ? 'Article publié sur Telegraph et envoyé sur le canal avec le bouton ⭐ Soutenir.'
         : 'Publication envoyée sur le canal Telegram. Le bouton ⭐ Soutenir est ajouté automatiquement.';
       setTimeout(load, 700);
-    } catch (error) { status.textContent = error.message || 'Publication impossible.'; }
+    } catch (error) {
+      // Échec ou réponse perdue : on vérifie la synchronisation pour ne jamais laisser « est-ce parti ou pas ? ».
+      const confirmed = await verifyPublish(text);
+      status.textContent = confirmed
+        ? 'Publication partie sur le canal (confirmation reçue via la synchronisation).'
+        : `Publication incertaine — vérifiez le canal Telegram avant de réessayer. (${error.message || 'erreur inconnue'})`;
+      if (confirmed) { form.reset(); setTimeout(load, 700); }
+    }
     finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
   }
 
@@ -290,6 +299,37 @@ ${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>�
       status.textContent = `${data.updated} bouton(s) ajouté(s) sur ${data.checked} publication(s) vérifiée(s).`;
     } catch (error) { status.textContent = error.message || 'Impossible d’ajouter les boutons.'; }
     finally { button.disabled = false; button.textContent = 'Ajouter aux publications récentes'; }
+  }
+
+  // Remboursement en deux temps (confirmation locale) : le premier clic arme le bouton, le second exécute.
+  async function refundPayment(button) {
+    const paymentId = button.dataset.payment;
+    if (!paymentId) return;
+    if (!button.dataset.armed) {
+      button.dataset.armed = '1';
+      button.textContent = 'Confirmer le remboursement';
+      setTimeout(() => {
+        if (button.dataset.armed) { delete button.dataset.armed; button.textContent = 'Rembourser'; }
+      }, 6000);
+      return;
+    }
+    delete button.dataset.armed;
+    button.disabled = true; button.textContent = 'Remboursement…';
+    try {
+      const response = await studioAction({ action: 'refund', paymentId });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Remboursement impossible.');
+      await load();
+    } catch (error) { popup('Remboursement impossible', error.message || 'Réessayez dans un instant.'); }
+    finally { button.disabled = false; button.textContent = 'Rembourser'; }
+  }
+
+  // Vérification après publication incertaine : le post est-il arrivé sur le canal (via la synchronisation) ?
+  async function verifyPublish(text) {
+    try {
+      const overview = await fetchJson('./api/studio', { headers: { 'x-telegram-init-data': initData() }, cache: 'no-store' });
+      return (overview.recentPosts || []).some((post) => (post.text || '') === text);
+    } catch { return false; }
   }
 
   async function telegraphSetup() {
@@ -344,6 +384,7 @@ ${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>�
     document.getElementById('liveForm')?.addEventListener('submit', submitLive);
     document.querySelectorAll('.live-edit').forEach((button) => button.addEventListener('click', () => editLive(button)));
     document.querySelectorAll('.live-cancel').forEach((button) => button.addEventListener('click', () => cancelLive(button)));
+    document.querySelectorAll('.payment-refund').forEach((button) => button.addEventListener('click', () => refundPayment(button)));
     document.querySelectorAll('.draft-load').forEach((button) => button.addEventListener('click', () => {
       const input = document.getElementById('publishText');
       if (input) { input.value = button.dataset.draft || ''; input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }

@@ -29,6 +29,8 @@
 .studio-row:first-child { border-top: 0; }
 .studio-row span { font-size: 13px; }
 .studio-row small { color: var(--muted); font-size: 10px; text-align: right; }
+.payment-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.payment-cell .secondary-button { padding: 6px 10px; font-size: 11px; }
 .draft-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding: 12px 0; }
 .draft-row:first-of-type { border-top: 0; }
 .draft-row strong, .draft-row small { display: block; }

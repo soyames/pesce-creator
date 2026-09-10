@@ -132,6 +132,7 @@ pesce-creator/
 │       │   ├── live.js                     # prochains directs publics (lecture seule)
 │       │   ├── media.js                    # proxy média Telegram (jeton HMAC)
 │       │   ├── me.js                       # rôle de l'utilisateur (sans base de données)
+│       │   ├── track.js                    # mesure d'audience V1 (événement « open »)
 │       │   ├── studio.js                   # studio créatrice (privé)
 │       │   ├── support.js                  # tickets depuis le Mini App
 │       │   └── telegram-pesce-studio.webhook.js
@@ -142,9 +143,8 @@ pesce-creator/
 │       │   ├── media-token.js              # signature HMAC des URLs média
 │       │   ├── telegram-auth.js            # initData + identifiants créatrice
 │       │   ├── telegraph.js                # articles telegra.ph
+│       │   ├── schema.js                   # migrations (DDL idempotent, source unique)
 │       │   └── tickets.js                  # générateurs d'identifiants
-│       ├── migrations/
-│       │   └── 001_init.sql                # schéma initial (tables pesce_*)
 │       ├── privacy/
 │       │   └── index.html                  # politique de confidentialité
 │       ├── scripts/
@@ -190,10 +190,13 @@ Toute modification d’environnement exige un redéploiement pour prendre effet.
 
 ### Migrations et vérification locale
 
+Les migrations vivent dans `lib/schema.js` (DDL idempotent, source unique) et sont appliquées **automatiquement au démarrage à froid des fonctions serveur** (`ensureMigrations`, suivi `schema_migrations`) : aucun opérateur n'est requis pour migrer la base en production.
+
 ```bash
 cd app/frontend
-npm test                       # suite node:test
-node scripts/migrate.mjs       # applique migrations/*.sql (idempotent, suivi schema_migrations)
+npm test                       # suite node:test (inclut le scan de secrets)
+npm run scan                   # scan de secrets seul
+node scripts/migrate.mjs       # applique les migrations localement (idempotent)
 node scripts/smoke.mjs         # exerce toutes les fonctions lib/db.js contre Neon
 ```
 
@@ -223,6 +226,8 @@ Neon (PostgreSQL managé, intégré à Vercel) est la base de données unique de
 - `pesce_support_tickets` — demandes de support
 - `pesce_drafts` — brouillons créés dans le Studio
 - `pesce_live_schedules` — programmation des directs (métadonnées uniquement ; le direct reste sur sa plateforme externe)
+- `pesce_webhook_updates` — identifiants d'updates Telegram déjà traitées (idempotence du webhook)
+- `pesce_audience_events` — mesure d'audience V1 (ouvertures du Mini App)
 - `schema_migrations` — suivi des migrations appliquées
 
 Les lignes `pesce_posts` contiennent notamment le type de contenu, le texte/caption, l’identifiant du message Telegram, l’URL publique du post et le `file_id` Telegram lorsqu’un média est présent.
@@ -260,6 +265,10 @@ Phase 4 — base de données migrée de Firestore vers PostgreSQL/Neon, espace p
 - publication texte et **articles Telegraph** depuis le Studio
 - bouton de soutien automatique + backfill
 - brouillons, indicateurs, réponses/résolutions de tickets, paiements
+- **remboursement des soutiens en Étoiles** depuis le Studio (`refundStarPayment`)
+- **vérification après publication** : en cas d'erreur, le Studio confirme via la synchronisation si le post est bien parti
+- **miniatures vidéo** Telegram affichées comme affiche avant lecture
+- **audience V1** : compteur d'ouvertures, visiteurs uniques, 7 jours (KPI du Studio)
 - programmation des directs (Studio) + « Prochain direct » sur l’accueil public
 - médias servis via URLs signées (HMAC, 12 h)
 - persistance des publications, paiements, supports et brouillons via PostgreSQL/Neon (migrations + vérification locale `scripts/smoke.mjs`)

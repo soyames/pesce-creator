@@ -3,7 +3,7 @@
 // Usage : node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/secret-scan.mjs
 // Également exécuté par npm test (tests/secret-scan.test.mjs) et npm run scan.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -51,12 +51,14 @@ export function scanRepository(root = repositoryRoot()) {
   for (const relative of trackedFiles(root)) {
     const name = relative.split(/[\\/]/).pop() || relative;
     if (IGNORED.has(relative) || IGNORED.has(name)) continue;
+    const full = join(root, relative);
+    if (!existsSync(full)) continue; // fichier supprimé du disque mais encore suivi (suppression non indexée)
     const filenameHit = FORBIDDEN_FILENAMES.find((rule) => rule.pattern.test(relative));
     if (filenameHit) {
       findings.push({ file: relative, line: null, pattern: filenameHit.name });
       continue;
     }
-    const content = readFileSync(join(root, relative), 'utf8');
+    const content = readFileSync(full, 'utf8');
     content.split('\n').forEach((line, index) => {
       for (const rule of PATTERNS) {
         if (rule.pattern.test(line)) findings.push({ file: relative, line: index + 1, pattern: rule.name });

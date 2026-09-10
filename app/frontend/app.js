@@ -188,7 +188,7 @@ function renderPost(post) {
   let media = '';
   if (post.contentType === 'photo' && mediaUrl) media = `<img class="post-media post-photo" src="${mediaUrl}" alt="Photo publiée par Pesce Hounyo" loading="lazy">`;
   else if (post.contentType === 'audio' && mediaUrl) media = `<audio class="post-audio" controls preload="none" src="${mediaUrl}"></audio>`;
-  else if (post.contentType === 'video' && mediaUrl) media = `<video class="post-media" controls preload="metadata" src="${mediaUrl}"></video>`;
+  else if (post.contentType === 'video' && mediaUrl) media = `<video class="post-media" controls preload="metadata" src="${mediaUrl}"${post.mediaThumbnailUrl ? ` poster="${escapeAttribute(post.mediaThumbnailUrl)}"` : ''}></video>`;
   const articleUrl = (post.text || '').match(/https:\/\/telegra\.ph\/[\w\-./]+/i);
   const articleButton = articleUrl ? `<button class="primary-button post-link" type="button" data-post-link="${escapeAttribute(articleUrl[0])}">Lire l’article</button>` : '';
   const action = post.telegramUrl ? `<button class="secondary-button post-link" type="button" data-post-link="${escapeAttribute(post.telegramUrl)}">Voir sur Telegram</button>` : '';
@@ -295,6 +295,12 @@ document.getElementById('studioButton')?.addEventListener('click', () => {
   loadStudioModule().then((studio) => studio.open()).catch(() => { /* le studio reste fermé ; /api/studio reste la vraie frontière */ });
 });
 
+// — Mesure d'audience V1 : ouverture du Mini App (feu-et-oublie, ne bloque jamais l'interface, silencieux)
+function trackOpen() {
+  if (!inTelegram || !tg?.initData) return;
+  fetch('./api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'open', initData: tg.initData }) }).catch(() => { /* silencieux */ });
+}
+
 // — Paramètre de démarrage Telegram (startapp)
 function getStartParam() {
   const unsafe = tg?.initDataUnsafe?.start_param;
@@ -315,6 +321,7 @@ if (inTelegram) {
 
   const startParam = getStartParam();
   openSection(startParam === 'support' ? 'support' : 'home');
+  trackOpen();
   if (startParam === 'studio') {
     resolveRole().then((isCreator) => {
       if (!isCreator) return; // silencieux : l'espace studio n'est pas une affordance publique

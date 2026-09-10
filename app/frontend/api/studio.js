@@ -1,7 +1,7 @@
 // Studio créatrice (privé). Toute action exige une initData valide ET l'identifiant créatrice configuré.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
-import { createDraft, createLiveSchedule, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, updateLiveSchedule, updateSupportTicket } from '../lib/db.js';
+import { createDraft, createLiveSchedule, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { createTelegraphAccount, createTelegraphPage, nodesFromPlainText } from '../lib/telegraph.js';
@@ -138,6 +138,18 @@ export default async function handler(req, res) {
       if (!ticket?.chatId) return res.status(404).json({ message: 'Ticket introuvable.' });
       await telegram(token, 'sendMessage', { chat_id: ticket.chatId, text: `Réponse de Pesce Studio\n\n${text}` });
       await updateSupportTicket(ticketId, { status: 'open', lastReply: text, lastReplyAt: new Date(), lastReplyBy: String(user.id) });
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === 'refund') {
+      const paymentId = String(body.paymentId || '').trim();
+      if (!paymentId) return res.status(400).json({ message: 'Paiement manquant.' });
+      const payment = await getPayment(paymentId);
+      if (!payment) return res.status(404).json({ message: 'Paiement introuvable.' });
+      if (payment.refundedAt) return res.status(400).json({ message: 'Ce paiement a déjà été remboursé.' });
+      if (!payment.userId) return res.status(400).json({ message: 'Ce paiement ne peut pas être remboursé.' });
+      await telegram(token, 'refundStarPayment', { user_id: payment.userId, telegram_payment_charge_id: paymentId });
+      await markPaymentRefunded(paymentId);
       return res.status(200).json({ ok: true });
     }
 

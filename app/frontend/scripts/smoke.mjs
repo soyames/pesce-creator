@@ -3,9 +3,10 @@
 // Usage : node scripts/migrate.mjs && node scripts/smoke.mjs  (aucun secret journalisé)
 import assert from 'node:assert/strict';
 import {
-  createDraft, createLiveSchedule, createSupportTicket, deleteSupportSession, getStudioOverview, getSupportSession,
-  getUpcomingLive, listChannelPosts, listDrafts, listLiveSchedules, listPayments, listSupportTickets,
-  setSupportSession, updateLiveSchedule, updateSupportTicket, upsertChannelPost, upsertPayment, db,
+  createDraft, createLiveSchedule, createSupportTicket, deleteSupportSession, getAudienceStats, getPayment,
+  getStudioOverview, getSupportSession, getUpcomingLive, listChannelPosts, listDrafts, listLiveSchedules,
+  listPayments, listSupportTickets, markPaymentRefunded, markUpdateProcessed, pruneWebhookUpdates,
+  setSupportSession, trackAudienceEvent, updateLiveSchedule, updateSupportTicket, upsertChannelPost, upsertPayment, db,
 } from '../lib/db.js';
 
 const POST_ID = `smoke_post_${Date.now()}`;
@@ -34,6 +35,7 @@ async function sweep() {
   await db().query(`DELETE FROM pesce_support_sessions WHERE user_id LIKE 'smoke_%'`);
   await db().query(`DELETE FROM pesce_support_tickets WHERE id LIKE 'PS-SMOKE-%'`);
   await db().query(`DELETE FROM pesce_live_schedules WHERE id LIKE 'smoke_%'`);
+  await db().query(`DELETE FROM pesce_webhook_updates WHERE update_id >= 800000000000`);
 }
 
 await sweep();
@@ -155,6 +157,34 @@ await run('directs : création, liste, mise à jour, annulation, prochains direc
   await db().query('DELETE FROM pesce_live_schedules WHERE id = $1', [liveId]);
 });
 
+await run('webhook : déduplication des updates et nettoyage', async () => {
+  const first = 800000000000 + (Date.now() % 100000);
+  const second = first + 1;
+  assert.equal(await markUpdateProcessed(first), true, 'première update non acceptée');
+  assert.equal(await markUpdateProcessed(first), false, 'update rejouée non ignorée');
+  await pruneWebhookUpdates(0); // garde uniquement la plus récente
+  assert.equal(await markUpdateProcessed(second), true, 'update plus récente non acceptée après nettoyage');
+  await db().query('DELETE FROM pesce_webhook_updates WHERE update_id = ANY($1::bigint[])', [[first, second]]);
+});
+
+await run('audience : événements, statistiques, drapeau de remboursement', async () => {
+  const userId = 500000000 + (Date.now() % 100000);
+  await trackAudienceEvent({ userId, event: 'open' });
+  await trackAudienceEvent({ userId, event: 'open' });
+  assert.equal(await trackAudienceEvent({ userId, event: 'bogus' }), null, 'événement hors liste blanche accepté');
+  const stats = await getAudienceStats();
+  assert.ok(stats.opens >= 2);
+  assert.ok(stats.uniqueUsers >= 1);
+  await upsertPayment({ telegramPaymentChargeId: CHARGE_ID, telegramProviderChargeId: 'smoke_provider', userId, username: 'smoke', amount: 50, currency: 'XTR', payload: 'smoke', paidAt: new Date() });
+  const before = await getPayment(CHARGE_ID);
+  assert.equal(before.refundedAt, null);
+  await markPaymentRefunded(CHARGE_ID);
+  const after = await getPayment(CHARGE_ID);
+  assert.ok(after.refundedAt instanceof Date, 'refundedAt non enregistré');
+  await db().query('DELETE FROM pesce_payments WHERE id = $1', [CHARGE_ID]);
+  await db().query('DELETE FROM pesce_audience_events WHERE user_id = $1', [userId]);
+});
+
 await run('vue d’ensemble du studio', async () => {
   const overview = await getStudioOverview();
   assert.equal(typeof overview.totals.total, 'number');
@@ -170,6 +200,7 @@ await run('vue d’ensemble du studio', async () => {
   assert.ok(Array.isArray(overview.recentTickets));
   assert.ok(Array.isArray(overview.drafts));
   assert.ok(Array.isArray(overview.liveSchedules), 'liveSchedules manquant de la vue d’ensemble');
+  assert.equal(typeof overview.audience?.opens, 'number', 'audience manquante de la vue d’ensemble');
 });
 
 console.log(failures === 0 ? 'SMOKE OK — toutes les fonctions db.js passent.' : `SMOKE ÉCHEC — ${failures} étape(s) en échec.`);

@@ -1,6 +1,6 @@
 // Webhook Telegram du bot @PesceStudioBot : commandes, sessions de support, paiements en Étoiles
 // et ingestion des publications du canal (channel_post) avec bouton de soutien.
-import { createSupportTicket, deleteSupportSession, getSupportSession, setSupportSession, upsertChannelPost, upsertPayment } from '../lib/db.js';
+import { createSupportTicket, deleteSupportSession, getSupportSession, markUpdateProcessed, pruneWebhookUpdates, setSupportSession, upsertChannelPost, upsertPayment } from '../lib/db.js';
 import { creatorTelegramUserIds, isCreatorTelegramUser } from '../lib/telegram-auth.js';
 import { newTicketId } from '../lib/tickets.js';
 import { CHANNEL_USERNAME, MINI_APP_URL, STUDIO_URL, SUPPORT_URL } from '../lib/config.js';
@@ -18,11 +18,22 @@ export default async function handler(req, res) {
   const token = process.env.TELEGRAM_PESCE_BOT_TOKEN;
   const secret = process.env.TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET;
   if (!token) return res.status(503).json({ message: 'Bot Telegram de Pesce Studio non configuré.' });
-  if (secret && req.headers['x-telegram-bot-api-secret-token'] !== secret) return res.status(401).json({ message: 'Secret du webhook invalide.' });
-  if (!secret) warnWebhookSecretOnce();
+  // Fail-closed : sans secret configuré, le webhook refuse tout POST (et non l'inverse).
+  if (!secret) {
+    warnWebhookSecretOnce();
+    return res.status(503).json({ message: 'Webhook non sécurisé : TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET manquant. Configurez le secret et déclarez-le via setWebhook (secret_token).' });
+  }
+  if (req.headers['x-telegram-bot-api-secret-token'] !== secret) return res.status(401).json({ message: 'Secret du webhook invalide.' });
 
   try {
     const update = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    // Idempotence : Telegram peut rejouer une update — on ne la traite qu'une seule fois.
+    const updateId = Number(update.update_id);
+    if (Number.isFinite(updateId) && updateId > 0) {
+      const isNew = await markUpdateProcessed(updateId);
+      if (!isNew) return res.status(200).json({ ok: true, duplicate: true });
+      if (updateId % 100 === 0) await pruneWebhookUpdates(); // nettoyage périodique, sans état séparé
+    }
     const message = update.message;
     const channelPost = update.channel_post;
 
@@ -49,9 +60,9 @@ export default async function handler(req, res) {
       await notifyCreator(token, `Nouveau soutien ⭐\n${payment.total_amount} Étoiles reçues.`);
     }
 
-    if (message?.text) {
+    if (message?.text && message.from?.id) {
       const command = message.text.trim().split(/\s+/)[0].toLowerCase().split('@')[0];
-      const userId = message.from?.id;
+      const userId = message.from.id;
 
       if (command === '/start') {
         await deleteSupportSession(userId);
@@ -131,6 +142,7 @@ function normalize(message) {
     mediaDuration: mediaInfo?.duration || null,
     mediaWidth: mediaInfo?.width || null,
     mediaHeight: mediaInfo?.height || null,
+    mediaThumbnailFileId: mediaInfo?.thumbnailFileId || null,
     published: true,
     publishedAt: new Date((message.date || Math.floor(Date.now() / 1000)) * 1000),
     receivedAt: new Date(),
@@ -144,7 +156,7 @@ function media(message) {
   }
   if (message.audio) return { contentType: 'audio', fileId: message.audio.file_id, duration: message.audio.duration, mimeType: message.audio.mime_type || 'audio/mpeg', fileName: message.audio.file_name || null };
   if (message.voice) return { contentType: 'audio', fileId: message.voice.file_id, duration: message.voice.duration, mimeType: message.voice.mime_type || 'audio/ogg' };
-  if (message.video) return { contentType: 'video', fileId: message.video.file_id, duration: message.video.duration, width: message.video.width, height: message.video.height, mimeType: message.video.mime_type || 'video/mp4' };
+  if (message.video) return { contentType: 'video', fileId: message.video.file_id, duration: message.video.duration, width: message.video.width, height: message.video.height, mimeType: message.video.mime_type || 'video/mp4', thumbnailFileId: message.video.thumbnail?.file_id || null };
   if (message.document) return { contentType: 'document', fileId: message.document.file_id, mimeType: message.document.mime_type || null, fileName: message.document.file_name || null };
   return null;
 }
@@ -152,6 +164,9 @@ function media(message) {
 function supportMarkup() {
   return { inline_keyboard: [[{ text: '⭐ Soutenir le travail de Pesce', url: SUPPORT_URL }]] };
 }
+
+// Exportés pour les tests (tests/webhook-helpers.test.mjs) : fonctions pures, sans effet de bord.
+export { media, normalize, supportMarkup };
 
 async function notifyCreator(token, text) {
   for (const id of creatorTelegramUserIds()) {

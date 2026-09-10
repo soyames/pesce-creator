@@ -40,6 +40,14 @@ function serializePost(post) {
       console.error('media signing failed', error); // le client retombe sur l'URL non signée
     }
   }
+  if (serialized.mediaThumbnailFileId) {
+    try {
+      const token = signMedia(serialized.mediaThumbnailFileId, { secret: mediaSecret() });
+      serialized.mediaThumbnailUrl = `./api/media?file_id=${encodeURIComponent(serialized.mediaThumbnailFileId)}&token=${encodeURIComponent(token)}`;
+    } catch (error) {
+      console.error('media thumbnail signing failed', error);
+    }
+  }
   return serialized;
 }
 

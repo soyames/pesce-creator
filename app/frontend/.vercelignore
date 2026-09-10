@@ -1,4 +1,3 @@
 # Exécutés localement uniquement (npm test, node scripts/*.mjs) : inutiles en statique.
 tests/
 scripts/
-migrations/

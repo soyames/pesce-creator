@@ -92,6 +92,13 @@ Publier depuis l’app Telegram (compte de la chaîne), puis vérifier la base P
 5. Support mini app envoyé avec uniquement `PESCE_CREATOR_TELEGRAM_USER_IDS` (plural) configuré → la créatrice est notifiée (bug corrigé).
 6. Sans `TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET` → le webhook fonctionne et un avertissement unique apparaît dans les logs.
 
+## Audience, remboursements, publication
+
+1. Ouvrir le Mini App → un événement `open` est enregistré (KPI « Ouvertures » du studio incrémenté) ; `POST /api/track` sans initData → 401 ; événement hors liste blanche → 400.
+2. Studio → Soutiens : « Rembourser » (premier clic arme, second exécute) → `refundStarPayment` appelé, paiement marqué remboursé dans le studio.
+3. Couper le réseau après « Publier sur Telegram » : le Studio affiche soit « partie sur le canal (confirmation reçue) » soit « vérifiez le canal avant de réessayer » — jamais d'état indéterminé.
+4. Vidéo du canal : l'affiche (poster) Telegram s'affiche avant lecture quand Telegram fournit une miniature.
+
 ## H. Matrice curl post-déploiement
 
 | Requête | Attendu |
