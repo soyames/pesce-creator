@@ -1,0 +1,88 @@
+import { getStudioOverview, listSupportTickets, updateSupportTicket } from '../lib/firestore.js';
+import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
+
+export default async function handler(req, res) {
+  const token = process.env.TELEGRAM_PESCE_BOT_TOKEN;
+  if (!token) return res.status(503).json({ message: 'Bot Telegram non configuré.' });
+
+  const initData = typeof req.headers['x-telegram-init-data'] === 'string'
+    ? req.headers['x-telegram-init-data']
+    : (typeof req.body?.initData === 'string' ? req.body.initData : '');
+
+  if (!validateTelegramInitData(initData, token)) {
+    return res.status(401).json({ message: 'Session Telegram invalide ou expirée.' });
+  }
+
+  const user = telegramUserFromInitData(initData);
+  if (!user?.id || !isCreatorTelegramUser(user.id)) {
+    return res.status(403).json({ message: 'Accès réservé au studio de Pesce.' });
+  }
+
+  try {
+    if (req.method === 'GET') {
+      const overview = await getStudioOverview();
+      return res.status(200).json(serialize(overview));
+    }
+
+    if (req.method === 'POST') {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+      const action = String(body.action || '').trim();
+
+      if (action === 'tickets') {
+        const tickets = await listSupportTickets({ limit: 100 });
+        return res.status(200).json({ tickets: tickets.map(serialize) });
+      }
+
+      const ticketId = String(body.ticketId || '').trim();
+      if (!ticketId) return res.status(400).json({ message: 'Ticket manquant.' });
+
+      if (action === 'resolve') {
+        await updateSupportTicket(ticketId, { status: 'resolved', resolvedAt: new Date(), resolvedBy: String(user.id) });
+        return res.status(200).json({ ok: true });
+      }
+
+      if (action === 'reply') {
+        const text = String(body.text || '').trim().slice(0, 4000);
+        if (!text) return res.status(400).json({ message: 'Réponse vide.' });
+        const tickets = await listSupportTickets({ limit: 100 });
+        const ticket = tickets.find((item) => item.id === ticketId);
+        if (!ticket?.chatId) return res.status(404).json({ message: 'Ticket introuvable.' });
+
+        await telegram(token, 'sendMessage', { chat_id: ticket.chatId, text: `Réponse de Pesce Studio\n\n${text}` });
+        await updateSupportTicket(ticketId, {
+          status: 'open',
+          lastReply: text,
+          lastReplyAt: new Date(),
+          lastReplyBy: String(user.id)
+        });
+        return res.status(200).json({ ok: true });
+      }
+
+      return res.status(400).json({ message: 'Action inconnue.' });
+    }
+
+    return res.status(405).json({ message: 'Méthode non autorisée.' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Le studio ne peut pas charger les données pour le moment.' });
+  }
+}
+
+async function telegram(token, method, payload) {
+  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(`Telegram ${method} a échoué: ${data.description || response.status}`);
+  return data;
+}
+
+function serialize(value) {
+  if (Array.isArray(value)) return value.map(serialize);
+  if (!value || typeof value !== 'object') return value;
+  if (typeof value.toDate === 'function') return value.toDate().toISOString();
+  if (value instanceof Date) return value.toISOString();
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serialize(item)]));
+}
