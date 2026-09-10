@@ -12,115 +12,30 @@
   <main id="telegramGate" class="gateway" hidden>
     <div class="gateway-card">
       <div class="gateway-portrait-wrap"><img class="gateway-portrait" src="./assets/profilePesce.png" alt="Photo de Pesce Hounyo"></div>
-      <p class="gateway-eyebrow">PESCE HOUNYO</p>
-      <h1>Pesce Studio</h1>
+      <p class="gateway-eyebrow">PESCE HOUNYO</p><h1>Pesce Studio</h1>
       <p class="gateway-message">Ouvrez Pesce Studio depuis Telegram pour continuer.</p>
       <a class="telegram-button" href="https://t.me/PesceStudioBot?startapp">Ouvrir Pesce Studio dans Telegram</a>
       <p class="gateway-note">Pesce Studio est conçu pour être utilisé directement dans Telegram.</p>
     </div>
   </main>
-
   <main id="telegramApp" class="app" hidden>
-    <header class="topbar">
-      <div class="brand"><img src="./assets/profilePesce.png" alt="Pesce Hounyo"><div><strong>Pesce Studio</strong><span>Journaliste · Société · Opinion</span></div></div>
-      <div class="topbar-actions"><button id="studioButton" class="studio-button" type="button" hidden>Studio</button><button id="profileButton" class="icon-button" type="button" aria-label="Mon profil">☰</button></div>
-    </header>
-
-    <section class="hero compact-hero">
-      <div class="portrait-wrap"><img class="portrait" src="./assets/profilePesce.png" alt="Photo de Pesce Hounyo"></div>
-      <p class="eyebrow">PESCE HOUNYO</p>
-      <h1>Bienvenue dans Pesce Studio</h1>
-      <p class="intro">Retrouvez les publications, vidéos, audios et moments partagés par Pesce. Soutenez aussi directement son travail.</p>
-    </section>
-
-    <section class="support-card featured-card" aria-labelledby="support-title">
-      <div class="star-badge">⭐</div>
-      <div><p class="card-kicker">SOUTIEN</p><h2 id="support-title">Soutenir Pesce</h2><p>Choisissez le niveau de soutien qui vous convient.</p></div>
-      <div class="star-options" role="group" aria-label="Choisir un montant en Étoiles">
-        <button class="star-option" data-stars="50" type="button" aria-pressed="false"><strong>50 ⭐</strong><small>Petit soutien</small></button>
-        <button class="star-option selected" data-stars="100" type="button" aria-pressed="true"><strong>100 ⭐</strong><small>Soutien</small></button>
-        <button class="star-option" data-stars="250" type="button" aria-pressed="false"><strong>250 ⭐</strong><small>Grand soutien</small></button>
-        <button class="star-option" data-stars="500" type="button" aria-pressed="false"><strong>500 ⭐</strong><small>Soutien majeur</small></button>
-        <button class="star-option" data-stars="1000" type="button" aria-pressed="false"><strong>1 000 ⭐</strong><small>Soutien exceptionnel</small></button>
-      </div>
-      <button id="supportButton" class="primary-button" type="button">Envoyer 100 ⭐</button>
-    </section>
-
-    <section id="home" class="section">
-      <div class="section-heading"><div><p class="card-kicker">À LA UNE</p><h2>Découvrir</h2></div></div>
-      <div class="grid feature-grid">
-        <button class="tile nav-tile" data-section="publications" type="button"><span>📰</span><strong>Publications</strong><small>Articles, analyses et prises de parole</small></button>
-        <button class="tile nav-tile" data-section="videos" type="button"><span>🎥</span><strong>Vidéos</strong><small>Retrouver les vidéos de Pesce</small></button>
-        <button class="tile nav-tile" data-section="audios" type="button"><span>🎙️</span><strong>Audios</strong><small>Chroniques et contenus audio</small></button>
-        <button class="tile nav-tile" data-section="photos" type="button"><span>📸</span><strong>Photos</strong><small>Images et moments partagés</small></button>
-        <button class="tile nav-tile" data-section="communaute" type="button"><span>💬</span><strong>Communauté</strong><small>Rejoindre et échanger</small></button>
-        <button class="tile nav-tile" data-section="support" type="button"><span>🛟</span><strong>Support</strong><small>Obtenir de l’aide sur Pesce Studio</small></button>
-        <button class="tile nav-tile" data-section="apropos" type="button"><span>ℹ️</span><strong>À propos</strong><small>Le parcours et la vision de Pesce</small></button>
-      </div>
-    </section>
-
-    <section id="publications" class="content-section" hidden>
-      <div class="section-heading"><div><p class="card-kicker">ACTUALITÉS</p><h2>Publications</h2></div><button class="back-button" data-home type="button">Retour</button></div>
-      <div id="publicationFeed" class="feed-list" aria-live="polite"><article class="empty-card"><span>📰</span><h3>Chargement des publications…</h3><p>Les publications du canal officiel seront affichées ici.</p></article></div>
-    </section>
-
-    <section id="videos" class="content-section" hidden>
-      <div class="section-heading"><div><p class="card-kicker">CHAÎNE YOUTUBE</p><h2>Vidéos</h2></div><button class="back-button" data-home type="button">Retour</button></div>
-      <article class="empty-card"><span>🎥</span><h3>Pesce HOUNYO, L'Interviewer_Gnonnouxo</h3><p>La chaîne officielle de Pesce rassemble ses interviews et contenus vidéo.</p><p><strong>@gnonnouxopescehounyo2576</strong> · 121 vidéos</p><button class="secondary-button" data-youtube type="button">Ouvrir la chaîne YouTube</button></article>
-    </section>
-
-    <section id="audios" class="content-section" hidden>
-      <div class="section-heading"><div><p class="card-kicker">AUDIO</p><h2>Audios</h2></div><button class="back-button" data-home type="button">Retour</button></div>
-      <div id="audioFeed" class="feed-list" aria-live="polite"><article class="empty-card"><span>🎙️</span><h3>Chargement des audios…</h3><p>Les contenus audio du canal officiel seront affichés ici.</p></article></div>
-    </section>
-
-    <section id="photos" class="content-section" hidden>
-      <div class="section-heading"><div><p class="card-kicker">GALERIE</p><h2>Photos</h2></div><button class="back-button" data-home type="button">Retour</button></div>
-      <div id="photoFeed" class="feed-list" aria-live="polite"><article class="empty-card"><span>📸</span><h3>Chargement des photos…</h3><p>Les photos du canal officiel seront affichées ici.</p></article></div>
-    </section>
-
-    <section id="communaute" class="content-section" hidden>
-      <div class="section-heading"><div><p class="card-kicker">COMMUNAUTÉ</p><h2>Communauté</h2></div><button class="back-button" data-home type="button">Retour</button></div>
-      <article class="community-card"><div class="community-icon">💬</div><h3>Communauté Pesce Hounyo</h3><p>Rejoignez le canal officiel pour recevoir les nouvelles publications et participer à l’écosystème Telegram de Pesce.</p><p class="channel-handle"><strong>@PesceHounyoOfficiel</strong></p><button class="primary-button" data-channel type="button">Rejoindre le canal Telegram</button></article>
-    </section>
-
-    <section id="support" class="content-section" hidden>
-      <div class="section-heading"><div><p class="card-kicker">ASSISTANCE</p><h2>Support Pesce Studio</h2></div><button class="back-button" data-home type="button">Retour</button></div>
-      <article class="support-help-card">
-        <div class="support-icon">🛟</div>
-        <h3>Besoin d’aide ?</h3>
-        <p>Décrivez votre problème. Votre demande sera transmise à l’équipe Pesce Studio et une réponse vous sera envoyée directement dans Telegram.</p>
-        <form id="supportForm" class="support-form">
-          <label for="supportMessage">Votre message</label>
-          <textarea id="supportMessage" rows="6" maxlength="4000" placeholder="Ex. Je rencontre un problème avec mon soutien en Étoiles…" required></textarea>
-          <button id="supportSubmit" class="primary-button" type="submit">Envoyer la demande</button>
-        </form>
-        <p id="supportStatus" class="form-status" aria-live="polite"></p>
-        <p class="support-alt">Vous pouvez aussi écrire <strong>/support</strong> au bot Pesce Studio.</p>
-      </article>
-    </section>
-
-    <section id="studio" class="content-section" hidden>
-      <div class="section-heading"><div><p class="card-kicker">ESPACE PRIVÉ</p><h2>Studio Pesce</h2></div><button class="back-button" data-home type="button">Accueil</button></div>
-      <div id="studioFeed" class="studio-feed"><article class="empty-card"><span>⏳</span><h3>Chargement du studio…</h3><p>Récupération des statistiques et demandes.</p></article></div>
-    </section>
-
-    <section id="apropos" class="content-section" hidden>
-      <div class="section-heading"><div><p class="card-kicker">PESCE HOUNYO</p><h2>À propos</h2></div><button class="back-button" data-home type="button">Retour</button></div>
-      <article class="about-card"><img src="./assets/profilePesce.png" alt="Photo de Pesce Hounyo"><div><h3>Pesce Hounyo</h3><p>Journaliste et créatrice de contenus, Pesce partage son regard sur la société, l’actualité et les sujets qui comptent pour sa communauté.</p><p>Pesce Studio est son espace numérique dédié à la publication, à la communauté et au soutien direct.</p></div></article>
-    </section>
-
-    <nav class="bottom-nav" aria-label="Navigation principale">
-      <button class="nav-button active" data-home type="button"><span>⌂</span><small>Accueil</small></button>
-      <button class="nav-button" data-section="publications" type="button"><span>📰</span><small>Publications</small></button>
-      <button class="nav-button" data-section="videos" type="button"><span>▶</span><small>Vidéos</small></button>
-      <button class="nav-button" id="navSupport" type="button"><span>⭐</span><small>Soutenir</small></button>
-    </nav>
-
+    <header class="topbar"><div class="brand"><img src="./assets/profilePesce.png" alt="Pesce Hounyo"><div><strong>Pesce Studio</strong><span>Journaliste · Société · Opinion</span></div></div><div class="topbar-actions"><button id="studioButton" class="studio-button" type="button">Studio</button><button id="profileButton" class="icon-button" type="button" aria-label="Mon profil">☰</button></div></header>
+    <section class="hero compact-hero"><div class="portrait-wrap"><img class="portrait" src="./assets/profilePesce.png" alt="Photo de Pesce Hounyo"></div><p class="eyebrow">PESCE HOUNYO</p><h1>Bienvenue dans Pesce Studio</h1><p class="intro">Retrouvez les publications, vidéos, audios et moments partagés par Pesce. Soutenez aussi directement son travail.</p></section>
+    <section class="support-card featured-card" aria-labelledby="support-title"><div class="star-badge">⭐</div><div><p class="card-kicker">SOUTIEN</p><h2 id="support-title">Soutenir Pesce</h2><p>Choisissez le niveau de soutien qui vous convient.</p></div><div class="star-options" role="group" aria-label="Choisir un montant en Étoiles"><button class="star-option" data-stars="50" type="button" aria-pressed="false"><strong>50 ⭐</strong><small>Petit soutien</small></button><button class="star-option selected" data-stars="100" type="button" aria-pressed="true"><strong>100 ⭐</strong><small>Soutien</small></button><button class="star-option" data-stars="250" type="button" aria-pressed="false"><strong>250 ⭐</strong><small>Grand soutien</small></button><button class="star-option" data-stars="500" type="button" aria-pressed="false"><strong>500 ⭐</strong><small>Soutien majeur</small></button><button class="star-option" data-stars="1000" type="button" aria-pressed="false"><strong>1 000 ⭐</strong><small>Soutien exceptionnel</small></button></div><button id="supportButton" class="primary-button" type="button">Envoyer 100 ⭐</button></section>
+    <section id="home" class="section"><div class="section-heading"><div><p class="card-kicker">À LA UNE</p><h2>Découvrir</h2></div></div><div class="grid feature-grid"><button class="tile nav-tile" data-section="publications" type="button"><span>📰</span><strong>Publications</strong><small>Articles, analyses et prises de parole</small></button><button class="tile nav-tile" data-section="videos" type="button"><span>🎥</span><strong>Vidéos</strong><small>Retrouver les vidéos de Pesce</small></button><button class="tile nav-tile" data-section="audios" type="button"><span>🎙️</span><strong>Audios</strong><small>Chroniques et contenus audio</small></button><button class="tile nav-tile" data-section="photos" type="button"><span>📸</span><strong>Photos</strong><small>Images et moments partagés</small></button><button class="tile nav-tile" data-section="communaute" type="button"><span>💬</span><strong>Communauté</strong><small>Rejoindre et échanger</small></button><button class="tile nav-tile" data-section="support" type="button"><span>🛟</span><strong>Support</strong><small>Obtenir de l’aide sur Pesce Studio</small></button><button class="tile nav-tile" data-section="apropos" type="button"><span>ℹ️</span><strong>À propos</strong><small>Le parcours et la vision de Pesce</small></button></div></section>
+    <section id="publications" class="content-section" hidden><div class="section-heading"><div><p class="card-kicker">ACTUALITÉS</p><h2>Publications</h2></div><button class="back-button" data-home type="button">Retour</button></div><div id="publicationFeed" class="feed-list" aria-live="polite"><article class="empty-card"><span>📰</span><h3>Chargement des publications…</h3><p>Les publications du canal officiel seront affichées ici.</p></article></div></section>
+    <section id="videos" class="content-section" hidden><div class="section-heading"><div><p class="card-kicker">CHAÎNE YOUTUBE</p><h2>Vidéos</h2></div><button class="back-button" data-home type="button">Retour</button></div><article class="empty-card"><span>🎥</span><h3>Pesce HOUNYO, L'Interviewer_Gnonnouxo</h3><p>La chaîne officielle de Pesce rassemble ses interviews et contenus vidéo.</p><p><strong>@gnonnouxopescehounyo2576</strong> · 121 vidéos</p><button class="secondary-button" data-youtube type="button">Ouvrir la chaîne YouTube</button></article></section>
+    <section id="audios" class="content-section" hidden><div class="section-heading"><div><p class="card-kicker">AUDIO</p><h2>Audios</h2></div><button class="back-button" data-home type="button">Retour</button></div><div id="audioFeed" class="feed-list" aria-live="polite"><article class="empty-card"><span>🎙️</span><h3>Chargement des audios…</h3><p>Les contenus audio du canal officiel seront affichés ici.</p></article></div></section>
+    <section id="photos" class="content-section" hidden><div class="section-heading"><div><p class="card-kicker">GALERIE</p><h2>Photos</h2></div><button class="back-button" data-home type="button">Retour</button></div><div id="photoFeed" class="feed-list" aria-live="polite"><article class="empty-card"><span>📸</span><h3>Chargement des photos…</h3><p>Les photos du canal officiel seront affichées ici.</p></article></div></section>
+    <section id="communaute" class="content-section" hidden><div class="section-heading"><div><p class="card-kicker">COMMUNAUTÉ</p><h2>Communauté</h2></div><button class="back-button" data-home type="button">Retour</button></div><article class="community-card"><div class="community-icon">💬</div><h3>Communauté Pesce Hounyo</h3><p>Rejoignez le canal officiel pour recevoir les nouvelles publications et participer à l’écosystème Telegram de Pesce.</p><p class="channel-handle"><strong>@PesceHounyoOfficiel</strong></p><button class="primary-button" data-channel type="button">Rejoindre le canal Telegram</button></article></section>
+    <section id="support" class="content-section" hidden><div class="section-heading"><div><p class="card-kicker">ASSISTANCE</p><h2>Support Pesce Studio</h2></div><button class="back-button" data-home type="button">Retour</button></div><article class="support-help-card"><div class="support-icon">🛟</div><h3>Besoin d’aide ?</h3><p>Décrivez votre problème. Votre demande sera transmise à l’équipe Pesce Studio et une réponse vous sera envoyée directement dans Telegram.</p><form id="supportForm" class="support-form"><label for="supportMessage">Votre message</label><textarea id="supportMessage" rows="6" maxlength="4000" placeholder="Ex. Je rencontre un problème avec mon soutien en Étoiles…" required></textarea><button id="supportSubmit" class="primary-button" type="submit">Envoyer la demande</button></form><p id="supportStatus" class="form-status" aria-live="polite"></p><p class="support-alt">Vous pouvez aussi écrire <strong>/support</strong> au bot Pesce Studio.</p></article></section>
+    <section id="studio" class="content-section" hidden><div class="section-heading"><div><p class="card-kicker">ESPACE PRIVÉ</p><h2>Studio Pesce</h2></div><button class="back-button" data-home type="button">Accueil</button></div><div id="studioFeed" class="studio-feed"><article class="empty-card"><span>⏳</span><h3>Chargement du studio…</h3><p>Récupération des statistiques et demandes.</p></article></div></section>
+    <section id="apropos" class="content-section" hidden><div class="section-heading"><div><p class="card-kicker">PESCE HOUNYO</p><h2>À propos</h2></div><button class="back-button" data-home type="button">Retour</button></div><article class="about-card"><img src="./assets/profilePesce.png" alt="Photo de Pesce Hounyo"><div><h3>Pesce Hounyo</h3><p>Journaliste et créatrice de contenus, Pesce partage son regard sur la société, l’actualité et les sujets qui comptent pour sa communauté.</p><p>Pesce Studio est son espace numérique dédié à la publication, à la communauté et au soutien direct.</p></div></article></section>
+    <nav class="bottom-nav" aria-label="Navigation principale"><button class="nav-button active" data-home type="button"><span>⌂</span><small>Accueil</small></button><button class="nav-button" data-section="publications" type="button"><span>📰</span><small>Publications</small></button><button class="nav-button" data-section="videos" type="button"><span>▶</span><small>Vidéos</small></button><button class="nav-button" id="navSupport" type="button"><span>⭐</span><small>Soutenir</small></button></nav>
     <footer><p>Pesce Studio · Un espace Telegram de Pesce Hounyo</p><p class="footer-muted">Toutes les interfaces sont en français.</p></footer>
   </main>
-
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="./app.js"></script>
+  <script src="./studio.js"></script>
 </body>
 </html>
