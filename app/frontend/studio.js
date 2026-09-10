@@ -2,6 +2,7 @@ const studioStyle=document.createElement('link');studioStyle.rel='stylesheet';st
 if (inTelegram) {
   document.getElementById('studioButton')?.addEventListener('click', openStudio);
   document.getElementById('supportForm')?.addEventListener('submit', sendSupport);
+  const supportAlt=document.querySelector('.support-alt');if(supportAlt)supportAlt.textContent='Vous pouvez aussi utiliser /paysupport avec le bot Pesce Studio.';
 }
 async function openStudio(){const r=await fetch('./api/studio',{headers:{'x-telegram-init-data':tg.initData}});if(r.status===403)return popup('Studio privé','Accès réservé au compte créateur de Pesce.');if(!r.ok)return popup('Studio indisponible','Réessayez dans un instant.');openSection('studio');loadStudio();}
 async function sendSupport(e){e.preventDefault();const f=e.currentTarget,b=document.getElementById('supportSubmit'),s=document.getElementById('supportStatus'),m=f.querySelector('textarea')?.value.trim();if(!m)return;b.disabled=true;b.textContent='Envoi…';try{const r=await fetch('./api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,initData:tg.initData})});const d=await r.json();if(!r.ok)throw Error(d.message||'Échec de l’envoi.');f.reset();s.textContent=`Demande ${d.ticketId} envoyée. Réponse dans Telegram.`;}catch(x){s.textContent=x.message;}finally{b.disabled=false;b.textContent='Envoyer la demande';}}
