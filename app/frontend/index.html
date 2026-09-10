@@ -3,12 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#101828">
+  <meta name="theme-color" content="#0b1220">
   <title>Pesce Studio</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <main class="app">
+  <main id="telegramGate" class="gateway" hidden>
+    <div class="gateway-card">
+      <div class="gateway-portrait-wrap">
+        <img class="gateway-portrait" src="./assets/profilePesce.png" alt="Photo de Pesce Hounyo">
+      </div>
+      <p class="gateway-eyebrow">PESCE HOUNYO</p>
+      <h1>Pesce Studio</h1>
+      <p class="gateway-message">Open Pesce Studio from Telegram to continue.</p>
+      <a class="telegram-button" href="https://t.me/PesceStudioBot">Open Pesce Studio in Telegram</a>
+      <p class="gateway-note">Pesce Studio est conçu pour être utilisé directement dans Telegram.</p>
+    </div>
+  </main>
+
+  <main id="telegramApp" class="app" hidden>
     <header class="hero">
       <div class="portrait-wrap">
         <img class="portrait-placeholder" src="./assets/profilePesce.png" alt="Photo de Pesce Hounyo" style="object-fit: cover;">
@@ -44,6 +57,8 @@
       <p>Pesce Studio · Un espace Telegram de Pesce Hounyo</p>
     </footer>
   </main>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
