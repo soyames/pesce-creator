@@ -1,4 +1,4 @@
-import { createDraft, getStudioOverview, listSupportTickets, updateSupportTicket } from '../lib/firestore.js';
+import { createDraft, getStudioOverview, listChannelPosts, listSupportTickets, updateSupportTicket } from '../lib/firestore.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 
 const CHANNEL = '@PesceHounyoOfficiel';
@@ -29,6 +29,15 @@ export default async function handler(req, res) {
       await createDraft({ id, text, status: 'draft', authorTelegramUserId: String(user.id) });
       return res.status(200).json({ ok: true, draftId: id });
     }
+    if (action === 'backfill_support') {
+      const posts = await listChannelPosts({ limit: 50 });
+      let updated = 0;
+      for (const post of posts) {
+        if (!post.messageId) continue;
+        try { await telegram(token, 'editMessageReplyMarkup', { chat_id: post.channelId || CHANNEL, message_id: Number(post.messageId), reply_markup: supportMarkup() }); updated += 1; } catch (error) { console.error('support backfill failed', post.id, error); }
+      }
+      return res.status(200).json({ ok: true, updated, checked: posts.length });
+    }
     if (action === 'tickets') {
       const tickets = await listSupportTickets({ limit: 100 });
       return res.status(200).json({ tickets: tickets.map(serialize) });
@@ -57,18 +66,5 @@ export default async function handler(req, res) {
 }
 
 function supportMarkup() { return { inline_keyboard: [[{ text: '⭐ Soutenir le travail de Pesce', url: SUPPORT_URL }]] }; }
-
-async function telegram(token, method, payload) {
-  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  const data = await response.json();
-  if (!response.ok || !data.ok) throw new Error(`Telegram ${method} a échoué: ${data.description || response.status}`);
-  return data;
-}
-
-function serialize(value) {
-  if (Array.isArray(value)) return value.map(serialize);
-  if (!value || typeof value !== 'object') return value;
-  if (typeof value.toDate === 'function') return value.toDate().toISOString();
-  if (value instanceof Date) return value.toISOString();
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serialize(item)]));
-}
+async function telegram(token, method, payload) { const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const data = await response.json(); if (!response.ok || !data.ok) throw new Error(`Telegram ${method} a échoué: ${data.description || response.status}`); return data; }
+function serialize(value) { if (Array.isArray(value)) return value.map(serialize); if (!value || typeof value !== 'object') return value; if (typeof value.toDate === 'function') return value.toDate().toISOString(); if (value instanceof Date) return value.toISOString(); return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, serialize(item)])); }
