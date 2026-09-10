@@ -102,14 +102,12 @@ button:focus-visible, a:focus-visible, .tile:focus-visible, .editorial-card:focu
 .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .tile { min-height: 0; padding: 16px; text-align: left; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); color: #f8fafc; cursor: pointer; transition: transform .15s ease, border-color .15s ease; }
 .tile:active { transform: scale(.985); }
-.tile span { display: none; } /* l'entrée devient éditoriale : libellé doré + titre serif */
 .tile strong { display: block; font-family: var(--font-display); font-size: 17px; font-weight: 700; }
 .tile small { display: block; margin-top: 5px; color: var(--muted); line-height: 1.35; }
 .tile::before { content: ''; display: block; width: 36px; height: 2px; background: var(--gold); margin: 0 0 12px; }
 .empty-card, .community-card, .about-card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); padding: 20px; }
 .empty-card { text-align: center; }
-/* Les états vides abandonnent les grands emojis au profit d'un filet doré éditorial. */
-.empty-card > span, .community-icon, .youtube-icon, .support-icon { display: none; }
+/* Filet doré éditorial en tête des cartes d'état et d'information. */
 .empty-card::before, .community-card::before, .youtube-card::before, .support-bot-card::before, .support-help-card::before { content: ''; display: block; width: 36px; height: 2px; background: var(--gold); margin: 0 auto 14px; }
 .empty-card h3, .community-card h3, .about-card h3 { margin: 0; font-size: 19px; }
 .empty-card p, .community-card p, .about-card p { color: var(--muted); line-height: 1.55; }
@@ -118,17 +116,19 @@ button:focus-visible, a:focus-visible, .tile:focus-visible, .editorial-card:focu
 .community-card .primary-button { display: inline-block; }
 .about-card { display: grid; grid-template-columns: 92px 1fr; gap: 18px; }
 .about-card img { width: 92px; height: 92px; border-radius: 20px; object-fit: cover; border: 2px solid #334155; }
-.bottom-nav { position: fixed; z-index: 20; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(684px, calc(100% - 28px)); display: grid; grid-template-columns: repeat(5,1fr); padding: 7px; border: 1px solid var(--border); border-radius: 14px; background: rgba(17,24,39,.96); box-shadow: 0 15px 40px rgba(0,0,0,.35); backdrop-filter: blur(16px); }
-.nav-button { border: 0; background: transparent; color: var(--muted); border-radius: 13px; padding: 8px 4px; cursor: pointer; }
+.bottom-nav { position: fixed; z-index: 20; left: 50%; bottom: 10px; transform: translateX(-50%); width: min(560px, calc(100% - 40px)); display: grid; grid-template-columns: repeat(5,1fr); padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: rgba(17,24,39,.92); box-shadow: 0 8px 24px rgba(0,0,0,.28); backdrop-filter: blur(16px); }
+.nav-button { border: 0; background: transparent; color: var(--muted); border-radius: 10px; padding: 6px 4px; cursor: pointer; }
 .nav-button span, .nav-button small { display: block; }
-.nav-button span { font-size: 18px; line-height: 1; }
-.nav-button small { margin-top: 4px; font-size: 10px; }
+.nav-button span { font-size: 15px; line-height: 1; }
+.nav-button small { margin-top: 2px; font-size: 9px; }
 .nav-button.active { background: #1d293b; color: #f8fafc; }
 .feed-list { display: grid; gap: 12px; }
 .post-card { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); padding: 20px; }
 .post-media { display: block; width: 100%; max-height: 480px; object-fit: contain; border-radius: 14px; background: #0b1220; }
 .post-photo { object-fit: cover; }
 .post-audio { width: 100%; margin: 10px 0; }
+/* Le média disponible domine la carte éditoriale : pleine largeur, bords à vif. */
+.editorial-card .post-media { width: calc(100% + 40px); margin: 0 -20px 4px; max-height: 340px; border-radius: 0; }
 .editorial-card { cursor: pointer; }
 .post-meta-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .post-category { color: var(--gold); font-size: 10px; font-weight: 800; letter-spacing: .13em; }

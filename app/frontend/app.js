@@ -162,10 +162,10 @@ async function sendSupport(event) {
 
 // — Flux de contenus
 const CONTENT_CONFIG = {
-  publications: { type: null, target: 'publicationFeed', emptyIcon: '📰', title: 'Aucune publication pour le moment.', text: 'Les prochaines publications du canal officiel apparaîtront ici.' },
-  videos: { type: 'video', target: 'videoFeed', emptyIcon: '🎥', title: 'Aucune vidéo pour le moment.', text: 'Les vidéos publiées sur le canal officiel apparaîtront ici.' },
-  audios: { type: 'audio', target: 'audioFeed', emptyIcon: '🎙️', title: 'Aucun audio pour le moment.', text: 'Les prochains contenus audio du canal officiel apparaîtront ici.' },
-  photos: { type: 'photo', target: 'photoFeed', emptyIcon: '📸', title: 'Aucune photo pour le moment.', text: 'Les prochaines photos du canal officiel apparaîtront ici.' },
+  publications: { type: null, target: 'publicationFeed', title: 'Les publications de Pesce', text: 'Les prochaines publications du canal officiel apparaîtront ici.' },
+  videos: { type: 'video', target: 'videoFeed', title: 'Les vidéos de Pesce', text: 'Les vidéos publiées sur le canal officiel apparaîtront ici.' },
+  audios: { type: 'audio', target: 'audioFeed', title: 'Les chroniques audio de Pesce', text: 'Les prochains contenus audio du canal officiel apparaîtront ici.' },
+  photos: { type: 'photo', target: 'photoFeed', title: 'Les photos de Pesce', text: 'Les prochaines photos du canal officiel apparaîtront ici.' },
 };
 
 async function loadContent(sectionId) {
@@ -174,7 +174,7 @@ async function loadContent(sectionId) {
   const target = document.getElementById(config.target);
   if (!target || target.dataset.loading === 'true') return;
   target.dataset.loading = 'true';
-  target.innerHTML = '<article class="empty-card"><span>⏳</span><h3>Chargement…</h3><p>Récupération des contenus de Pesce.</p></article>';
+  target.innerHTML = '<article class="empty-card"><h3>Chargement…</h3><p>Récupération des contenus de Pesce.</p></article>';
   try {
     const query = config.type ? `?type=${encodeURIComponent(config.type)}&limit=30` : '?limit=30';
     const data = await fetchJson(`./api/content${query}`, { cache: 'no-store' });
@@ -185,11 +185,11 @@ async function loadContent(sectionId) {
 }
 
 function renderEmpty(target, config) {
-  target.innerHTML = `<article class="empty-card"><span>${config.emptyIcon}</span><h3>${config.title}</h3><p>${config.text}</p><button class="secondary-button" data-channel type="button">Ouvrir le canal Telegram</button></article>`;
+  target.innerHTML = `<article class="empty-card"><h3>${config.title}</h3><p>${config.text}</p><button class="secondary-button" data-channel type="button">Ouvrir le canal Telegram</button></article>`;
 }
 
 function renderError(target, error) {
-  target.innerHTML = `<article class="empty-card"><span>⚠️</span><h3>Flux momentanément indisponible</h3><p>${escapeHtml(error.message || 'Impossible de charger les contenus.')}</p><button class="secondary-button" data-channel type="button">Ouvrir le canal Telegram</button></article>`;
+  target.innerHTML = `<article class="empty-card"><h3>Flux momentanément indisponible</h3><p>${escapeHtml(error.message || 'Impossible de charger les contenus.')}</p><button class="secondary-button" data-channel type="button">Ouvrir le canal Telegram</button></article>`;
 }
 
 // — Cartes éditoriales + lecteur de publication.
@@ -214,19 +214,20 @@ function renderMedia(post) {
 }
 
 function headlineAndStandfirst(post) {
-  const lines = (post.text || '').split('\n').map((line) => line.trim()).filter(Boolean);
+  const lines = (post.text || '').split('\n').map((line) => line.trim()).filter(Boolean).filter((line) => !/^https?:\/\//.test(line));
   let headline = '';
   let standfirst = '';
   if (lines.length > 0) {
-    headline = lines[0].slice(0, 110);
-    const restLines = lines.slice(1).filter((line) => !/^https?:\/\//.test(line));
-    const rest = restLines.join(' ').trim();
+    headline = lines[0].slice(0,110);
+    const rest = lines.slice(1).join(' ').trim();
     if (rest) {
       standfirst = rest.length > 160 ? `${rest.slice(0, 160)}…` : rest;
     }
   }
   if (!headline) {
-    headline = { video: 'Vidéo publiée par Pesce Hounyo', audio: 'Audio publié par Pesce Hounyo', photo: 'Photo publiée par Pesce Hounyo' }[post.contentType] || 'Publication de Pesce Hounyo';
+    // Publication sans texte : entrée d'archive datée plutôt qu'un titre de base de données inventé.
+    const dateLabel = formatDate(post.publishedAt);
+    headline = { video: `Vidéo du ${dateLabel}`, audio: `Audio du ${dateLabel}`, photo: `Photo du ${dateLabel}` }[post.contentType] || `Publication du ${dateLabel}`;
   }
   return { headline, standfirst };
 }
