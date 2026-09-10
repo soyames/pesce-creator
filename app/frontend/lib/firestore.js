@@ -39,6 +39,20 @@ export async function upsertPayment(payment) {
   return ref.id;
 }
 
+export async function createDraft(draft) {
+  const ref = firestore().collection('pesce_drafts').doc(draft.id);
+  await ref.set({ ...draft, createdAt: draft.createdAt || FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return ref.id;
+}
+
+export async function listDrafts({ limit = 20 } = {}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
+  const snapshot = await firestore().collection('pesce_drafts').limit(safeLimit).get();
+  const drafts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  drafts.sort((a, b) => toMillis(b.updatedAt) - toMillis(a.updatedAt));
+  return drafts.slice(0, safeLimit);
+}
+
 export async function getSupportSession(userId) {
   if (!userId) return null;
   const snapshot = await firestore().collection('pesce_support_sessions').doc(String(userId)).get();
@@ -98,10 +112,11 @@ export async function listChannelPosts({ type, limit = 20 } = {}) {
 }
 
 export async function getStudioOverview() {
-  const [posts, payments, openTickets] = await Promise.all([
+  const [posts, payments, openTickets, drafts] = await Promise.all([
     listChannelPosts({ limit: 50 }),
     listPayments({ limit: 200 }),
-    listSupportTickets({ status: 'open', limit: 100 })
+    listSupportTickets({ status: 'open', limit: 100 }),
+    listDrafts({ limit: 20 })
   ]);
 
   const totals = posts.reduce((acc, post) => {
@@ -122,7 +137,8 @@ export async function getStudioOverview() {
     openTickets: openTickets.length,
     recentPosts: posts.slice(0, 10),
     recentPayments: payments.slice(0, 10),
-    recentTickets: openTickets.slice(0, 10)
+    recentTickets: openTickets.slice(0, 10),
+    drafts
   };
 }
 
