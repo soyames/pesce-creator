@@ -6,6 +6,8 @@ const app = document.getElementById('telegramApp');
 const home = document.getElementById('home');
 const sections = [...document.querySelectorAll('.content-section')];
 const navButtons = [...document.querySelectorAll('.nav-button')];
+const starOptions = [50, 100, 250, 500, 1000];
+let selectedStars = 100;
 
 if (inTelegram) {
   gate.hidden = true;
@@ -49,6 +51,21 @@ document.getElementById('profileButton')?.addEventListener('click', () => {
   popup('Votre profil', `Bienvenue ${name} dans Pesce Studio.`);
 });
 
+document.querySelectorAll('[data-stars]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const amount = Number(button.dataset.stars);
+    if (!starOptions.includes(amount)) return;
+    selectedStars = amount;
+    document.querySelectorAll('[data-stars]').forEach((item) => {
+      const active = Number(item.dataset.stars) === selectedStars;
+      item.classList.toggle('selected', active);
+      item.setAttribute('aria-pressed', String(active));
+    });
+    const supportButton = document.getElementById('supportButton');
+    if (supportButton) supportButton.textContent = `Envoyer ${selectedStars} ⭐`;
+  });
+});
+
 async function supportWithStars() {
   if (!inTelegram) return;
 
@@ -60,14 +77,14 @@ async function supportWithStars() {
     const response = await fetch('./api/create-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stars: 100, initData: tg.initData })
+      body: JSON.stringify({ stars: selectedStars, initData: tg.initData })
     });
     const data = await response.json();
     if (!response.ok || !data.invoiceLink) throw new Error(data.message || 'Impossible de créer le paiement.');
 
     if (tg.openInvoice) {
       tg.openInvoice(data.invoiceLink, (status) => {
-        if (status === 'paid') popup('Merci ⭐', 'Votre soutien a bien été reçu. Merci beaucoup !');
+        if (status === 'paid') popup('Merci ⭐', `Votre soutien de ${data.stars} Étoiles a bien été reçu. Merci beaucoup !`);
         else if (status === 'cancelled') popup('Paiement annulé', 'Aucun montant n’a été débité.');
         else if (status === 'failed') popup('Paiement impossible', 'Telegram n’a pas pu finaliser le paiement. Vous pouvez réessayer.');
       });
@@ -77,12 +94,12 @@ async function supportWithStars() {
   } catch (error) {
     popup('Soutien indisponible', error.message || 'Le paiement en Étoiles sera bientôt disponible.');
   } finally {
-    if (button) { button.disabled = false; button.textContent = oldText || 'Envoyer des Étoiles'; }
+    if (button) { button.disabled = false; button.textContent = `Envoyer ${selectedStars} ⭐`; }
   }
 }
 
 document.getElementById('supportButton')?.addEventListener('click', supportWithStars);
-document.getElementById('navSupport')?.addEventListener('click', supportWithStars);
+document.getElementById('navSupport')?.addEventListener('click', () => openSection('home'));
 
 document.querySelectorAll('[data-channel]').forEach((button) => {
   button.addEventListener('click', () => {
@@ -94,4 +111,8 @@ document.querySelector('[data-youtube]')?.addEventListener('click', () => {
   popup('YouTube', 'Le lien officiel YouTube de Pesce sera connecté ici dès que l’adresse de sa chaîne sera configurée.');
 });
 
-if (inTelegram) openSection('home');
+if (inTelegram) {
+  document.querySelector('[data-stars="100"]')?.classList.add('selected');
+  document.querySelector('[data-stars="100"]')?.setAttribute('aria-pressed', 'true');
+  openSection('home');
+}
