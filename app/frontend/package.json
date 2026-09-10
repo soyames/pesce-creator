@@ -1,0 +1,10 @@
+{
+  "name": "pesce-studio-frontend",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.3.0"
+  }
+}
