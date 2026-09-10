@@ -41,11 +41,20 @@ export async function upsertPayment(payment) {
 
 export async function listChannelPosts({ type, limit = 20 } = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
-  let query = firestore().collection('pesce_posts').where('published', '==', true);
-
+  let query = firestore().collection('pesce_posts').where('published', '==', true).limit(50);
   if (type) query = query.where('contentType', '==', type);
-  query = query.orderBy('publishedAt', 'desc').limit(safeLimit);
 
   const snapshot = await query.get();
-  return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  const posts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  posts.sort((a, b) => toMillis(b.publishedAt) - toMillis(a.publishedAt));
+  return posts.slice(0, safeLimit);
+}
+
+function toMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
