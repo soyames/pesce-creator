@@ -199,6 +199,11 @@ export async function createDraft(draft) {
   return draft.id;
 }
 
+export async function deleteDraft(draftId) {
+  await (await ensureDb()).query('DELETE FROM pesce_drafts WHERE id = $1', [String(draftId)]);
+  return String(draftId);
+}
+
 export async function listDrafts({ limit = 20 } = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
   const result = await (await ensureDb()).query(

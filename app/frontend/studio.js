@@ -215,7 +215,7 @@ ${currentLives.map((live) => `<div class="draft-row" data-live="${escapeAttribut
     return `<article class="studio-card">
 <p class="card-kicker">BROUILLONS</p>
 <h3>Vos brouillons</h3>
-${(data.drafts || []).map((draft) => `<div class="draft-row"><div><strong>${escapeHtml((draft.text || '').slice(0, 90))}</strong><small>${formatDate(draft.updatedAt || draft.createdAt)}</small></div><button class="secondary-button draft-load" type="button" data-draft="${escapeAttribute(draft.text || '')}">Reprendre</button></div>`).join('') || '<p class="studio-muted">Aucun brouillon.</p>'}
+${(data.drafts || []).map((draft) => `<div class="draft-row"><div><strong>${escapeHtml((draft.text || '').slice(0, 90))}</strong><small>${formatDate(draft.updatedAt || draft.createdAt)}</small></div><div class="ticket-actions"><button class="secondary-button draft-load" type="button" data-draft="${escapeAttribute(draft.text || '')}">Reprendre</button><button class="secondary-button draft-delete" type="button" data-draft-id="${escapeAttribute(draft.id)}">Supprimer</button></div></div>`).join('') || '<p class="studio-muted">Aucun brouillon.</p>'}
 </article>`;
   }
 
@@ -285,6 +285,19 @@ ${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>â­
       await load();
     } catch (error) { status.textContent = error.message || 'Impossible dâ€™enregistrer le brouillon.'; }
     finally { button.disabled = false; button.textContent = 'Enregistrer le brouillon'; }
+  }
+
+  async function deleteDraftRow(button) {
+    const draftId = button.dataset.draftId;
+    if (!draftId) return;
+    button.disabled = true; button.textContent = 'Suppressionâ€¦';
+    try {
+      const response = await studioAction({ action: 'draft_delete', draftId });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Suppression impossible.');
+      await load();
+    } catch (error) { popup('Suppression impossible', error.message || 'RÃ©essayez dans un instant.'); }
+    finally { button.disabled = false; button.textContent = 'Supprimer'; }
   }
 
   async function backfillSupport() {
@@ -385,6 +398,7 @@ ${(data.recentPayments || []).map((payment) => `<div class="studio-row"><span>â­
     document.querySelectorAll('.live-edit').forEach((button) => button.addEventListener('click', () => editLive(button)));
     document.querySelectorAll('.live-cancel').forEach((button) => button.addEventListener('click', () => cancelLive(button)));
     document.querySelectorAll('.payment-refund').forEach((button) => button.addEventListener('click', () => refundPayment(button)));
+    document.querySelectorAll('.draft-delete').forEach((button) => button.addEventListener('click', () => deleteDraftRow(button)));
     document.querySelectorAll('.draft-load').forEach((button) => button.addEventListener('click', () => {
       const input = document.getElementById('publishText');
       if (input) { input.value = button.dataset.draft || ''; input.scrollIntoView({ behavior: 'smooth', block: 'center' }); }

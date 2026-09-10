@@ -3,7 +3,7 @@
 // Usage : node scripts/migrate.mjs && node scripts/smoke.mjs  (aucun secret journalisé)
 import assert from 'node:assert/strict';
 import {
-  createDraft, createLiveSchedule, createSupportTicket, deleteSupportSession, getAudienceStats, getPayment,
+  createDraft, createLiveSchedule, createSupportTicket, deleteDraft, deleteSupportSession, getAudienceStats, getPayment,
   getStudioOverview, getSupportSession, getUpcomingLive, listChannelPosts, listDrafts, listLiveSchedules,
   listPayments, listSupportTickets, markPaymentRefunded, markUpdateProcessed, pruneWebhookUpdates,
   setSupportSession, trackAudienceEvent, updateLiveSchedule, updateSupportTicket, upsertChannelPost, upsertPayment, db,
@@ -98,7 +98,8 @@ await run('brouillons : création + liste', async () => {
   assert.equal(draft.status, 'draft');
   assert.equal(draft.authorTelegramUserId, '42');
   assert.ok(draft.createdAt instanceof Date);
-  await db().query('DELETE FROM pesce_drafts WHERE id = $1', [DRAFT_ID]);
+  await deleteDraft(DRAFT_ID);
+  assert.ok(!(await listDrafts({ limit: 50 })).some((item) => item.id === DRAFT_ID), 'brouillon non supprimé');
 });
 
 await run('sessions de support : set / get / upsert / delete', async () => {

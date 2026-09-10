@@ -1,7 +1,7 @@
 // Studio créatrice (privé). Toute action exige une initData valide ET l'identifiant créatrice configuré.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
-import { createDraft, createLiveSchedule, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket } from '../lib/db.js';
+import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { createTelegraphAccount, createTelegraphPage, nodesFromPlainText } from '../lib/telegraph.js';
@@ -51,6 +51,13 @@ export default async function handler(req, res) {
       const id = newDraftId();
       await createDraft({ id, text, status: 'draft', authorTelegramUserId: String(user.id) });
       return res.status(200).json({ ok: true, draftId: id });
+    }
+
+    if (action === 'draft_delete') {
+      const draftId = String(body.draftId || '').trim();
+      if (!draftId) return res.status(400).json({ message: 'Brouillon manquant.' });
+      await deleteDraft(draftId);
+      return res.status(200).json({ ok: true });
     }
 
     if (action === 'backfill_support') {
