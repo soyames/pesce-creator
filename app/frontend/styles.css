@@ -17,8 +17,6 @@ body { min-height: 100vh; }
 button, a { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
-
-/* Passerelle navigateur */
 .gateway { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 18px; }
 .gateway-card { width: min(440px, 100%); padding: 34px 26px 28px; text-align: center; border: 1px solid var(--border); border-radius: 26px; background: var(--panel); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
 .gateway-portrait-wrap { display: flex; justify-content: center; margin-bottom: 18px; }
@@ -28,8 +26,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .gateway-message { margin: 16px auto 24px; max-width: 340px; color: #cbd5e1; line-height: 1.5; }
 .telegram-button { display: block; width: 100%; padding: 14px 18px; border-radius: 14px; text-decoration: none; font-weight: 800; background: var(--gold); color: var(--gold-dark); }
 .gateway-note { margin: 18px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }
-
-/* Application Telegram */
 .app { width: min(720px, 100%); margin: 0 auto; padding: 12px 18px 110px; }
 .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0 14px; background: rgba(11,18,32,.94); backdrop-filter: blur(12px); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -46,17 +42,21 @@ button { -webkit-tap-highlight-color: transparent; }
 .eyebrow { margin: 0 0 6px; font-size: 11px; letter-spacing: .16em; font-weight: 800; color: var(--muted); }
 .app h1 { margin: 0; font-size: clamp(28px,7vw,42px); line-height: 1.08; }
 .intro { max-width: 570px; margin: 14px auto 0; line-height: 1.55; color: var(--muted); }
-
 .support-card { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; padding: 20px; border: 1px solid #3b4658; border-radius: 22px; background: var(--panel-2); box-shadow: 0 12px 30px rgba(0,0,0,.14); }
 .star-badge { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; background: rgba(245,185,66,.12); font-size: 27px; }
 .card-kicker { margin: 0 0 4px; color: var(--gold); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
 .app h2 { margin: 0; font-size: 21px; }
 .support-card p { margin: 5px 0 0; color: var(--muted); line-height: 1.4; }
+.star-options { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
+.star-option { min-width: 0; padding: 10px 5px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: #f8fafc; cursor: pointer; }
+.star-option strong, .star-option small { display: block; }
+.star-option strong { font-size: 12px; }
+.star-option small { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.2; }
+.star-option.selected { border-color: var(--gold); background: rgba(245,185,66,.12); }
 .primary-button, .secondary-button { border: 0; border-radius: 13px; padding: 13px 16px; font-weight: 800; cursor: pointer; }
 .primary-button { grid-column: 1 / -1; background: var(--gold); color: var(--gold-dark); }
 .primary-button:disabled { opacity: .65; cursor: wait; }
 .secondary-button { background: #1d293b; color: #f8fafc; border: 1px solid var(--border); }
-
 .section, .content-section { padding-top: 30px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .section-heading h2 { font-size: 23px; }
@@ -78,7 +78,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .community-card .primary-button { display: inline-block; }
 .about-card { display: grid; grid-template-columns: 92px 1fr; gap: 18px; }
 .about-card img { width: 92px; height: 92px; border-radius: 20px; object-fit: cover; border: 2px solid #334155; }
-
 .bottom-nav { position: fixed; z-index: 20; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(684px, calc(100% - 28px)); display: grid; grid-template-columns: repeat(4,1fr); padding: 7px; border: 1px solid var(--border); border-radius: 18px; background: rgba(17,24,39,.96); box-shadow: 0 15px 40px rgba(0,0,0,.35); backdrop-filter: blur(16px); }
 .nav-button { border: 0; background: transparent; color: #64748b; border-radius: 13px; padding: 8px 4px; cursor: pointer; }
 .nav-button span, .nav-button small { display: block; }
@@ -87,7 +86,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .nav-button.active { background: #1d293b; color: #f8fafc; }
 footer { padding-top: 32px; text-align: center; color: #64748b; font-size: 12px; }
 .footer-muted { margin-top: 5px; color: #475569; }
-
+@media (max-width: 560px) { .star-options { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 460px) {
   .app { padding-left: 14px; padding-right: 14px; }
   .grid { grid-template-columns: 1fr; }
