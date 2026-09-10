@@ -16,9 +16,7 @@ export function firestore() {
 
   const app = getApps().length
     ? getApps()[0]
-    : initializeApp({
-        credential: cert({ projectId, clientEmail, privateKey })
-      });
+    : initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
 
   db = getFirestore(app);
   return db;
@@ -29,6 +27,15 @@ export { FieldValue };
 export async function upsertChannelPost(post) {
   const ref = firestore().collection('pesce_posts').doc(post.id);
   await ref.set({ ...post, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return ref.id;
+}
+
+export async function upsertPayment(payment) {
+  const chargeId = String(payment.telegramPaymentChargeId || payment.id || '').trim();
+  if (!chargeId) throw new Error('Paiement sans identifiant Telegram.');
+
+  const ref = firestore().collection('pesce_payments').doc(chargeId);
+  await ref.set({ ...payment, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   return ref.id;
 }
 
