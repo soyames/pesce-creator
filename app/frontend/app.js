@@ -304,7 +304,7 @@ function renderReader(post) {
   return `<article class="reader-card">
 <p class="card-kicker">${label.category}</p>
 <h2>${escapeHtml(headline)}</h2>
-<div class="reader-meta"><span class="post-author">${escapeHtml(PESCE.CREATOR_NAME)}</span><time>${escapeHtml(longDate)}</time></div>
+<div class="reader-meta"><img class="reader-avatar" src="./assets/profilePesce.png" alt="Pesce Hounyo"><span class="post-author">${escapeHtml(PESCE.CREATOR_NAME)}</span><time>${escapeHtml(longDate)}</time></div>
 ${media}
 <div class="reader-body">${paragraphs}</div>
 ${articleUrl ? `<button class="primary-button post-read" type="button" data-post-link="${escapeAttribute(articleUrl[0])}">Lire l’article complet sur Telegraph</button>` : ''}

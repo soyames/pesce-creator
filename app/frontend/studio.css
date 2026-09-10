@@ -11,7 +11,7 @@
 .composer-actions { display: flex; gap: 8px; }
 .composer-actions button { flex: 1; }
 .studio-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
-.kpi-card { border: 1px solid var(--border); border-radius: 16px; background: var(--panel-2); padding: 15px; }
+.kpi-card { border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); padding: 15px; border-top: 2px solid rgba(245,185,66,.4); }
 .kpi-card small, .kpi-card strong, .kpi-card span { display: block; }
 .kpi-card small { color: var(--muted); font-size: 10px; }
 .kpi-card strong { margin: 4px 0; font-size: 23px; }
