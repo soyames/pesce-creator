@@ -1,5 +1,6 @@
 const tg = window.Telegram?.WebApp;
 const inTelegram = Boolean(tg?.initData);
+const TELEGRAM_CHANNEL_URL = 'https://t.me/PesceHounyoOfficiel';
 const YOUTUBE_URL = 'https://www.youtube.com/@gnonnouxopescehounyo2576';
 
 const gate = document.getElementById('telegramGate');
@@ -31,7 +32,9 @@ function popup(title, message) {
 }
 
 function openExternal(url) {
-  if (tg?.openLink) {
+  if (inTelegram && url.startsWith('https://t.me/') && tg?.openTelegramLink) {
+    tg.openTelegramLink(url);
+  } else if (tg?.openLink) {
     tg.openLink(url);
   } else {
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -79,7 +82,6 @@ async function supportWithStars() {
   if (!inTelegram) return;
 
   const button = document.getElementById('supportButton');
-  const oldText = button?.textContent;
   if (button) { button.disabled = true; button.textContent = 'Préparation…'; }
 
   try {
@@ -111,14 +113,14 @@ document.getElementById('supportButton')?.addEventListener('click', supportWithS
 document.getElementById('navSupport')?.addEventListener('click', () => openSection('home'));
 
 document.querySelectorAll('[data-channel]').forEach((button) => {
-  button.addEventListener('click', () => {
-    popup('Canal Telegram', 'Le lien officiel du canal de Pesce sera connecté ici dès que son identifiant public sera configuré.');
-  });
+  button.addEventListener('click', () => openExternal(TELEGRAM_CHANNEL_URL));
 });
 
-document.querySelector('[data-youtube]')?.addEventListener('click', () => {
-  openExternal(YOUTUBE_URL);
+document.querySelectorAll('[data-channel-name]').forEach((element) => {
+  element.textContent = '@PesceHounyoOfficiel';
 });
+
+document.querySelector('[data-youtube]')?.addEventListener('click', () => openExternal(YOUTUBE_URL));
 
 if (inTelegram) {
   document.querySelector('[data-stars="100"]')?.classList.add('selected');
