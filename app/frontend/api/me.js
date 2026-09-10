@@ -1,5 +1,5 @@
 // Rôle de l'utilisateur Telegram courant pour la Mini App.
-// Aucune dépendance Firestore : cette route doit répondre même si Firestore est indisponible.
+// Aucune dépendance de base de données : cette route doit répondre même si la base est indisponible.
 import { creatorTelegramUserIds, isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 
 let creatorNotConfiguredWarned = false;

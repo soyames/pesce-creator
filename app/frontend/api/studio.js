@@ -1,7 +1,7 @@
 // Studio créatrice (privé). Toute action exige une initData valide ET l'identifiant créatrice configuré.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
-import { createDraft, getStudioOverview, listChannelPosts, listSupportTickets, updateSupportTicket } from '../lib/firestore.js';
+import { createDraft, getStudioOverview, listChannelPosts, listSupportTickets, updateSupportTicket } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId } from '../lib/tickets.js';
 import { createTelegraphAccount, createTelegraphPage, nodesFromPlainText } from '../lib/telegraph.js';

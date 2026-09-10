@@ -1,0 +1,154 @@
+// Vérification locale de lib/db.js contre la vraie base Neon : exerce chaque fonction,
+// vérifie les formes d'objet attendues, puis supprime toutes les données de test (marqueur "smoke").
+// Usage : node scripts/migrate.mjs && node scripts/smoke.mjs  (aucun secret journalisé)
+import assert from 'node:assert/strict';
+import {
+  createDraft, createSupportTicket, deleteSupportSession, getStudioOverview, getSupportSession,
+  listChannelPosts, listDrafts, listPayments, listSupportTickets, setSupportSession,
+  updateSupportTicket, upsertChannelPost, upsertPayment, db,
+} from '../lib/db.js';
+
+const POST_ID = `smoke_post_${Date.now()}`;
+const CHARGE_ID = `smoke_charge_${Date.now()}`;
+const DRAFT_ID = `smoke_draft_${Date.now()}`;
+const SESSION_USER = `smoke_user_${Date.now()}`;
+const TICKET_ID = `PS-SMOKE-${String(Date.now()).slice(-5)}`;
+
+let failures = 0;
+
+async function run(name, fn) {
+  try {
+    await fn();
+    console.log(`✔ ${name}`);
+  } catch (error) {
+    failures += 1;
+    console.error(`✖ ${name} : ${error.message}`);
+  }
+}
+
+// Nettoie les éventuelles données de test restantes d'une exécution précédente.
+async function sweep() {
+  await db().query(`DELETE FROM pesce_posts WHERE id LIKE 'smoke_%'`);
+  await db().query(`DELETE FROM pesce_payments WHERE id LIKE 'smoke_%'`);
+  await db().query(`DELETE FROM pesce_drafts WHERE id LIKE 'smoke_%'`);
+  await db().query(`DELETE FROM pesce_support_sessions WHERE user_id LIKE 'smoke_%'`);
+  await db().query(`DELETE FROM pesce_support_tickets WHERE id LIKE 'PS-SMOKE-%'`);
+}
+
+await sweep();
+
+await run('publications : upsert (insert + merge) puis lecture exacte', async () => {
+  const base = {
+    source: 'telegram', channelId: -1000000000001, channelUsername: 'smoke_channel', messageId: 1,
+    contentType: 'text', text: 'smoke v1', telegramUrl: null, mediaFileId: null, mediaMimeType: null,
+    mediaFileName: null, mediaDuration: null, mediaWidth: null, mediaHeight: null,
+    published: true, publishedAt: new Date(), receivedAt: new Date(),
+  };
+  await upsertChannelPost({ id: POST_ID, ...base });
+  await upsertChannelPost({ id: POST_ID, ...base, text: 'smoke v2' }); // merge, comme Firestore set(merge)
+  const row = (await db().query('SELECT * FROM pesce_posts WHERE id = $1', [POST_ID])).rows[0];
+  assert.ok(row, 'post introuvable après upsert');
+  assert.equal(row.text, 'smoke v2');
+  assert.equal(row.published, true);
+  assert.ok(row.published_at instanceof Date);
+  assert.ok(row.updated_at instanceof Date);
+  await db().query('DELETE FROM pesce_posts WHERE id = $1', [POST_ID]);
+});
+
+await run('publications : listes filtrées par type et par limite', async () => {
+  await upsertChannelPost({ id: POST_ID, source: 'telegram', channelId: -1000000000001, channelUsername: 'smoke_channel', messageId: 1, contentType: 'photo', text: '', telegramUrl: null, mediaFileId: 'smoke_file', mediaMimeType: 'image/jpeg', mediaFileName: null, mediaDuration: null, mediaWidth: 10, mediaHeight: 10, published: true, publishedAt: new Date(), receivedAt: new Date() });
+  const all = await listChannelPosts({ limit: 50 });
+  assert.ok(Array.isArray(all));
+  const mine = all.find((post) => post.id === POST_ID);
+  assert.ok(mine, 'post absent de la liste');
+  assert.equal(mine.contentType, 'photo');
+  assert.equal(mine.channelId, -1000000000001);
+  assert.equal(mine.mediaWidth, 10);
+  assert.ok(mine.publishedAt instanceof Date);
+  const photos = await listChannelPosts({ type: 'photo', limit: 10 });
+  assert.ok(photos.every((post) => post.contentType === 'photo'));
+  const texts = await listChannelPosts({ type: 'text', limit: 10 });
+  assert.ok(!texts.some((post) => post.id === POST_ID), 'filtre de type non respecté');
+  await db().query('DELETE FROM pesce_posts WHERE id = $1', [POST_ID]);
+});
+
+await run('paiements : upsert + liste', async () => {
+  await upsertPayment({ telegramPaymentChargeId: CHARGE_ID, telegramProviderChargeId: 'smoke_provider', userId: 42, username: 'smoke', amount: 100, currency: 'XTR', payload: 'smoke_payload', paidAt: new Date() });
+  await upsertPayment({ telegramPaymentChargeId: CHARGE_ID, telegramProviderChargeId: 'smoke_provider_2', userId: 42, username: 'smoke', amount: 100, currency: 'XTR', payload: 'smoke_payload', paidAt: new Date() });
+  const row = (await db().query('SELECT * FROM pesce_payments WHERE id = $1', [CHARGE_ID])).rows[0];
+  assert.ok(row, 'paiement introuvable après upsert');
+  assert.equal(row.provider_charge_id, 'smoke_provider_2');
+  assert.equal(row.amount, 100);
+  const payments = await listPayments({ limit: 200 });
+  assert.ok(Array.isArray(payments));
+  assert.equal(payments.find((payment) => payment.id === CHARGE_ID).userId, 42);
+  await assert.rejects(() => upsertPayment({}), /Paiement sans identifiant/);
+  await db().query('DELETE FROM pesce_payments WHERE id = $1', [CHARGE_ID]);
+});
+
+await run('brouillons : création + liste', async () => {
+  await createDraft({ id: DRAFT_ID, text: 'smoke brouillon', status: 'draft', authorTelegramUserId: '42' });
+  const drafts = await listDrafts({ limit: 20 });
+  const draft = drafts.find((item) => item.id === DRAFT_ID);
+  assert.ok(draft, 'brouillon absent de la liste');
+  assert.equal(draft.text, 'smoke brouillon');
+  assert.equal(draft.status, 'draft');
+  assert.equal(draft.authorTelegramUserId, '42');
+  assert.ok(draft.createdAt instanceof Date);
+  await db().query('DELETE FROM pesce_drafts WHERE id = $1', [DRAFT_ID]);
+});
+
+await run('sessions de support : set / get / upsert / delete', async () => {
+  await setSupportSession(SESSION_USER, { status: 'awaiting_message', chatId: 43 });
+  const session = await getSupportSession(SESSION_USER);
+  assert.ok(session, 'session introuvable');
+  assert.equal(session.id, SESSION_USER);
+  assert.equal(session.status, 'awaiting_message');
+  assert.equal(session.chatId, 43);
+  await setSupportSession(SESSION_USER, { status: 'awaiting_message', chatId: 44 }); // upsert
+  assert.equal((await getSupportSession(SESSION_USER)).chatId, 44);
+  await deleteSupportSession(SESSION_USER);
+  assert.equal(await getSupportSession(SESSION_USER), null);
+  assert.equal(await getSupportSession(''), null);
+});
+
+await run('tickets : création, liste par statut, mise à jour', async () => {
+  await createSupportTicket({ id: TICKET_ID, chatId: 45, userId: SESSION_USER, username: 'smoke', firstName: 'Smoke', message: 'smoke ticket', topic: 'stars', status: 'open', source: 'smoke' });
+  const open = await listSupportTickets({ status: 'open', limit: 100 });
+  const ticket = open.find((item) => item.id === TICKET_ID);
+  assert.ok(ticket, 'ticket absent de la liste ouverte');
+  assert.equal(ticket.topic, 'stars');
+  assert.equal(ticket.chatId, 45);
+  assert.ok(ticket.createdAt instanceof Date);
+  await updateSupportTicket(TICKET_ID, { status: 'resolved', resolvedAt: new Date(), resolvedBy: '42', lastReply: 'smoke réponse', lastReplyAt: new Date(), lastReplyBy: '42' });
+  const row = (await db().query('SELECT * FROM pesce_support_tickets WHERE id = $1', [TICKET_ID])).rows[0];
+  assert.equal(row.status, 'resolved');
+  assert.equal(row.resolved_by, '42');
+  assert.ok(row.resolved_at instanceof Date);
+  assert.ok(!(await listSupportTickets({ status: 'open', limit: 100 })).some((item) => item.id === TICKET_ID));
+  const resolved = await listSupportTickets({ status: 'resolved', limit: 100 });
+  assert.ok(resolved.some((item) => item.id === TICKET_ID));
+  await updateSupportTicket(TICKET_ID, {}); // aucune colonne → pas d'erreur
+  await db().query('DELETE FROM pesce_support_tickets WHERE id = $1', [TICKET_ID]);
+});
+
+await run('vue d’ensemble du studio', async () => {
+  const overview = await getStudioOverview();
+  assert.equal(typeof overview.totals.total, 'number');
+  for (const key of ['text', 'photo', 'audio', 'video', 'document', 'other']) {
+    assert.equal(typeof overview.totals[key], 'number', `totals.${key} manquant`);
+  }
+  assert.equal(typeof overview.stars, 'number');
+  assert.equal(typeof overview.payments, 'number');
+  assert.equal(typeof overview.supporters, 'number');
+  assert.equal(typeof overview.openTickets, 'number');
+  assert.ok(Array.isArray(overview.recentPosts));
+  assert.ok(Array.isArray(overview.recentPayments));
+  assert.ok(Array.isArray(overview.recentTickets));
+  assert.ok(Array.isArray(overview.drafts));
+});
+
+console.log(failures === 0 ? 'SMOKE OK — toutes les fonctions db.js passent.' : `SMOKE ÉCHEC — ${failures} étape(s) en échec.`);
+try { await db().end(); } catch { /* fermeture du pool avant la sortie */ }
+// Sortie naturelle (pas de process.exit) : évite l'assertion libuv Windows pendant la fermeture des handles du driver.
+process.exitCode = failures === 0 ? 0 : 1;

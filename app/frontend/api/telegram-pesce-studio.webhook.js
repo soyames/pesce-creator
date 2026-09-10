@@ -1,6 +1,6 @@
 // Webhook Telegram du bot @PesceStudioBot : commandes, sessions de support, paiements en Étoiles
 // et ingestion des publications du canal (channel_post) avec bouton de soutien.
-import { createSupportTicket, deleteSupportSession, getSupportSession, setSupportSession, upsertChannelPost, upsertPayment } from '../lib/firestore.js';
+import { createSupportTicket, deleteSupportSession, getSupportSession, setSupportSession, upsertChannelPost, upsertPayment } from '../lib/db.js';
 import { creatorTelegramUserIds, isCreatorTelegramUser } from '../lib/telegram-auth.js';
 import { newTicketId } from '../lib/tickets.js';
 import { CHANNEL_USERNAME, MINI_APP_URL, STUDIO_URL, SUPPORT_URL } from '../lib/config.js';

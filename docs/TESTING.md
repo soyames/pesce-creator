@@ -55,7 +55,7 @@ Si D1/D2/D5 n’ouvrent pas l’app : déclarer la Mini App principale dans BotF
 
 ## E. Publications directes sur le canal Telegram
 
-Publier depuis l’app Telegram (compte de la chaîne), puis vérifier Firestore + Mini App :
+Publier depuis l’app Telegram (compte de la chaîne), puis vérifier la base PostgreSQL/Neon (table `pesce_posts`) + Mini App :
 
 1. Texte seul → post « text » → rail articles + Publications.
 2. Photo (± légende) → « photo » → Photos + rail photos.

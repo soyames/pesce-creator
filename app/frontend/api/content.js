@@ -1,6 +1,6 @@
 // Flux public des publications du canal (lecture seule, aucune authentification requise).
 // Chaque post média reçoit une URL signée vers /api/media (jeton HMAC, 12 h).
-import { listChannelPosts } from '../lib/firestore.js';
+import { listChannelPosts } from '../lib/db.js';
 import { signMedia } from '../lib/media-token.js';
 import { CHANNEL_URL, CHANNEL_USERNAME } from '../lib/config.js';
 

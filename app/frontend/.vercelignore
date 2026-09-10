@@ -1,2 +1,4 @@
-# Les tests sont exécutés localement (npm test) et n'ont pas besoin d'être publiés en statique.
+# Exécutés localement uniquement (npm test, node scripts/*.mjs) : inutiles en statique.
 tests/
+scripts/
+migrations/

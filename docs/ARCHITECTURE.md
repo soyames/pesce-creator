@@ -11,7 +11,7 @@
         commandes / support / paiements / channel_post
                  │                │
                  ▼                ▼
-        webhook Vercel ────► Firestore (métadonnées)
+        webhook Vercel ────► PostgreSQL/Neon (métadonnées)
                  │
         Mini App (audience)      Studio (créatrice, masqué)
         Vercel statique          /api/me + /api/studio
@@ -26,7 +26,7 @@
 
 - **Hébergement** : Vercel, Root Directory `app/frontend`, fonctions serverless zero-config sous `app/frontend/api/` (convention `api/`, aucun `vercel.json`). Node ≥ 22.
 - **Frontend** : statique, sans framework ni bundler ni étape de build. Un seul fichier `index.html` + scripts classiques (`constants.js`, `app.js`) + module studio chargé à la demande (`studio.js` + `studio.css`).
-- **Données** : Firebase Firestore, accès exclusivement via Firebase Admin SDK côté serveur. Les règles Firestore refusent tout accès client direct.
+- **Données** : PostgreSQL/Neon (intégration Vercel), accès exclusivement côté serveur via `lib/db.js` (driver `@neondatabase/serverless`, pool). Aucun accès client direct ; le schéma est géré par `migrations/*.sql` (runner `scripts/migrate.mjs`, suivi `schema_migrations`).
 - **Médias** : jamais copiés. Le Mini App les récupère via `api/media` (proxy du fichier Telegram, protégé par jeton HMAC). Limite connue : l’API Bot `getFile` plafonne à 20 Mo — les vidéos plus lourdes nécessitent le bouton « Voir sur Telegram ».
 
 ## Flux de requêtes
@@ -37,7 +37,7 @@
 | Mini App | `GET /api/media?file_id=&token=` | proxy média signé (HMAC, TTL 12 h) |
 | Mini App | `POST /api/create-invoice` | facture Stars (`XTR`), initData validée |
 | Mini App | `POST /api/support` | ticket de support (réponse via le bot) |
-| Mini App | `GET /api/me` | rôle de l’utilisateur (aucune dépendance Firestore) |
+| Mini App | `GET /api/me` | rôle de l’utilisateur (aucune dépendance de base de données) |
 | Studio (créatrice) | `GET/POST /api/studio` | vue d’ensemble + actions (publish, article_publish, draft, backfill, telegraph_setup, tickets, resolve, reply) |
 | Telegram | `POST /api/telegram-pesce-studio.webhook` | commandes, sessions de support, paiements, `channel_post` |
 | Studio | API Bot Telegram | `sendMessage` vers le canal, `editMessageReplyMarkup` |
@@ -50,11 +50,18 @@
 3. **Webhook** : secret `x-telegram-bot-api-secret-token` vs `TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET`. Fonctionnel sans secret (avertissement bruyant dans les logs) pour ne pas casser l’ingestion du canal ; à rendre obligatoire via `setWebhook`.
 4. **Rôles côté client** : `GET /api/me` renvoie `{ user, isCreator, creatorConfigured }` ; le client cache le rôle en `sessionStorage` et ne charge `studio.js`/`studio.css` que si `isCreator === true`.
 
-## Firestore
+## Base de données (PostgreSQL / Neon)
 
-Collections : `pesce_posts` (id `chatId_messageId`), `pesce_payments`, `pesce_support_sessions`, `pesce_support_tickets` (id `PS-YYYYMMDD-XXXXX`), `pesce_drafts` (id `draft_<ts>_<6>`).
+Tables (migrations dans `app/frontend/migrations/`, colonnes snake_case mappées vers les objets camelCase par `lib/db.js`) :
 
-Les index composites sont volontairement évités (`firestore.indexes.json` vide) : les requêtes filtrent sur l’égalité (`published`, `contentType`, `status`) puis trient en mémoire, ce qui plafonne la fenêtre de lecture à 50 documents pour les posts. L’accueil du Mini App ne fait donc qu’**une seule** requête `/api/content` partitionnée côté client (articles, vidéos, audios).
+- `pesce_posts` — id `chatId_messageId` ; index partiels sur `published_at` et `(content_type, published_at)`
+- `pesce_payments` — id `telegram_payment_charge_id` ; index sur `paid_at`
+- `pesce_support_sessions` — clé primaire `user_id`
+- `pesce_support_tickets` — id `PS-YYYYMMDD-XXXXX` ; index `(status, created_at)`
+- `pesce_drafts` — id `draft_<ts>_<6>` ; index sur `updated_at`
+- `schema_migrations` — suivi des migrations appliquées
+
+Les tris et filtres se font en SQL (`ORDER BY … LIMIT`) ; l’accueil du Mini App ne fait qu’**une seule** requête `/api/content` partitionnée côté client (articles, vidéos, audios).
 
 ## Constantes partagées
 
@@ -62,9 +69,9 @@ Les index composites sont volontairement évités (`firestore.indexes.json` vide
 
 ## Publication
 
-- **Texte simple** : `/api/studio` `publish` → `sendMessage` vers `@PesceHounyoOfficiel` avec le bouton ⭐ Soutenir. La persistance Firestore vient du `channel_post` renvoyé par Telegram au webhook (source de vérité Telegram).
+- **Texte simple** : `/api/studio` `publish` → `sendMessage` vers `@PesceHounyoOfficiel` avec le bouton ⭐ Soutenir. La persistance vient du `channel_post` renvoyé par Telegram au webhook (source de vérité Telegram).
 - **Article Telegraph** : `article_publish` crée une page telegra.ph (API Telegraph, jeton `TELEGRAPH_ACCESS_TOKEN`) puis publie titre + URL sur le canal. Le Mini App affiche un bouton « Lire l’article » sur les posts contenant un lien telegra.ph. Limites Telegraph : contenu pratique ≲ 20 Ko, titres h3/h4, upload d’images instable — les articles du studio restent du texte simple.
-- **Médias** : publication directe depuis Telegram (V1) ; le webhook synchronise `channel_post` → Firestore sans dupliquer le média.
+- **Médias** : publication directe depuis Telegram (V1) ; le webhook synchronise `channel_post` → la base sans dupliquer le média.
 - **Bouton de soutien** : attaché automatiquement aux nouveaux posts (`channel_post`) ; `backfill_support` le réapplique aux 50 posts récents.
 
 ## Contraintes

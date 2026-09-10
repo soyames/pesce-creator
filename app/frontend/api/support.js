@@ -1,6 +1,6 @@
 // Création d'un ticket de support depuis la Mini App. La réponse est envoyée par le bot @PesceStudioBot,
 // qui reste le canal de conversation (avec /support et /paysupport).
-import { createSupportTicket } from '../lib/firestore.js';
+import { createSupportTicket } from '../lib/db.js';
 import { creatorTelegramUserIds, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newTicketId } from '../lib/tickets.js';
 import { SUPPORT_TOPICS } from '../lib/config.js';

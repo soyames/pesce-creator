@@ -21,8 +21,5 @@ dist/
 build/
 coverage/
 
-# Fichiers locaux Telegram Serverless
-.tgcloud/
-
 # Journaux
 *.log
