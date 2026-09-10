@@ -1,4 +1,4 @@
-import { upsertChannelPost } from '../lib/firestore.js';
+import { upsertChannelPost, upsertPayment } from '../lib/firestore.js';
 
 const CHANNEL_USERNAME = 'PesceHounyoOfficiel';
 
@@ -33,15 +33,20 @@ export default async function handler(req, res) {
 
     if (message?.successful_payment) {
       const payment = message.successful_payment;
-      console.log(JSON.stringify({
-        event: 'successful_payment',
-        userId: message.from?.id,
+      const record = {
+        id: payment.telegram_payment_charge_id,
+        telegramPaymentChargeId: payment.telegram_payment_charge_id,
+        telegramProviderChargeId: payment.provider_payment_charge_id || null,
+        userId: message.from?.id || null,
+        username: message.from?.username || null,
         amount: payment.total_amount,
         currency: payment.currency,
-        chargeId: payment.telegram_payment_charge_id,
         payload: payment.invoice_payload,
-        receivedAt: new Date().toISOString()
-      }));
+        paidAt: new Date()
+      };
+
+      await upsertPayment(record);
+      console.log(JSON.stringify({ event: 'successful_payment', ...record }));
 
       await telegram(token, 'sendMessage', {
         chat_id: message.chat.id,
@@ -112,52 +117,23 @@ function normalizeChannelPost(message) {
 function extractMedia(message) {
   if (Array.isArray(message.photo) && message.photo.length) {
     const photo = message.photo[message.photo.length - 1];
-    return {
-      contentType: 'photo',
-      fileId: photo.file_id,
-      width: photo.width,
-      height: photo.height,
-      mimeType: 'image/jpeg'
-    };
+    return { contentType: 'photo', fileId: photo.file_id, width: photo.width, height: photo.height, mimeType: 'image/jpeg' };
   }
 
   if (message.audio) {
-    return {
-      contentType: 'audio',
-      fileId: message.audio.file_id,
-      duration: message.audio.duration,
-      mimeType: message.audio.mime_type || 'audio/mpeg',
-      fileName: message.audio.file_name || null
-    };
+    return { contentType: 'audio', fileId: message.audio.file_id, duration: message.audio.duration, mimeType: message.audio.mime_type || 'audio/mpeg', fileName: message.audio.file_name || null };
   }
 
   if (message.voice) {
-    return {
-      contentType: 'audio',
-      fileId: message.voice.file_id,
-      duration: message.voice.duration,
-      mimeType: message.voice.mime_type || 'audio/ogg'
-    };
+    return { contentType: 'audio', fileId: message.voice.file_id, duration: message.voice.duration, mimeType: message.voice.mime_type || 'audio/ogg' };
   }
 
   if (message.video) {
-    return {
-      contentType: 'video',
-      fileId: message.video.file_id,
-      duration: message.video.duration,
-      width: message.video.width,
-      height: message.video.height,
-      mimeType: message.video.mime_type || 'video/mp4'
-    };
+    return { contentType: 'video', fileId: message.video.file_id, duration: message.video.duration, width: message.video.width, height: message.video.height, mimeType: message.video.mime_type || 'video/mp4' };
   }
 
   if (message.document) {
-    return {
-      contentType: 'document',
-      fileId: message.document.file_id,
-      mimeType: message.document.mime_type || null,
-      fileName: message.document.file_name || null
-    };
+    return { contentType: 'document', fileId: message.document.file_id, mimeType: message.document.mime_type || null, fileName: message.document.file_name || null };
   }
 
   return null;
