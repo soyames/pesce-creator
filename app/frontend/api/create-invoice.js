@@ -3,7 +3,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Méthode non autorisée.' });
   }
 
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = process.env.TELEGRAM_PESCE_BOT_TOKEN;
   if (!token) {
     return res.status(503).json({ message: 'Le paiement en Étoiles n’est pas encore configuré côté serveur.' });
   }
