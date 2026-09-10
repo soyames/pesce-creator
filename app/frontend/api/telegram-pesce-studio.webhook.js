@@ -1,3 +1,7 @@
+import { upsertChannelPost } from '../lib/firestore.js';
+
+const CHANNEL_USERNAME = 'PesceHounyoOfficiel';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Méthode non autorisée.' });
 
@@ -64,32 +68,9 @@ export default async function handler(req, res) {
     }
 
     if (channelPost) {
-      const contentType = channelPost.photo
-        ? 'photo'
-        : channelPost.audio
-          ? 'audio'
-          : channelPost.video
-            ? 'video'
-            : channelPost.voice
-              ? 'voice'
-              : channelPost.document
-                ? 'document'
-                : channelPost.text
-                  ? 'text'
-                  : 'other';
-
-      console.log(JSON.stringify({
-        event: 'channel_post_received',
-        channelId: channelPost.chat?.id,
-        channelUsername: channelPost.chat?.username,
-        messageId: channelPost.message_id,
-        contentType,
-        text: channelPost.text || channelPost.caption || '',
-        telegramUrl: channelPost.chat?.username
-          ? `https://t.me/${channelPost.chat.username}/${channelPost.message_id}`
-          : null,
-        receivedAt: new Date().toISOString()
-      }));
+      const post = normalizeChannelPost(channelPost);
+      console.log(JSON.stringify({ event: 'channel_post_received', ...post }));
+      await upsertChannelPost(post);
     }
 
     return res.status(200).json({ ok: true });
@@ -97,6 +78,89 @@ export default async function handler(req, res) {
     console.error(error);
     return res.status(500).json({ message: 'Erreur du webhook Telegram de Pesce Studio.' });
   }
+}
+
+function normalizeChannelPost(message) {
+  const media = extractMedia(message);
+  const contentType = media?.contentType || (message.text ? 'text' : 'other');
+  const channelUsername = message.chat?.username || CHANNEL_USERNAME;
+  const messageId = message.message_id;
+
+  return {
+    id: `${message.chat?.id || 'channel'}_${messageId}`,
+    source: 'telegram',
+    channelId: message.chat?.id ?? null,
+    channelUsername,
+    messageId,
+    contentType,
+    text: message.text || message.caption || '',
+    telegramUrl: message.chat?.username
+      ? `https://t.me/${message.chat.username}/${messageId}`
+      : null,
+    mediaFileId: media?.fileId || null,
+    mediaMimeType: media?.mimeType || null,
+    mediaFileName: media?.fileName || null,
+    mediaDuration: media?.duration || null,
+    mediaWidth: media?.width || null,
+    mediaHeight: media?.height || null,
+    published: true,
+    publishedAt: new Date((message.date || Math.floor(Date.now() / 1000)) * 1000),
+    receivedAt: new Date()
+  };
+}
+
+function extractMedia(message) {
+  if (Array.isArray(message.photo) && message.photo.length) {
+    const photo = message.photo[message.photo.length - 1];
+    return {
+      contentType: 'photo',
+      fileId: photo.file_id,
+      width: photo.width,
+      height: photo.height,
+      mimeType: 'image/jpeg'
+    };
+  }
+
+  if (message.audio) {
+    return {
+      contentType: 'audio',
+      fileId: message.audio.file_id,
+      duration: message.audio.duration,
+      mimeType: message.audio.mime_type || 'audio/mpeg',
+      fileName: message.audio.file_name || null
+    };
+  }
+
+  if (message.voice) {
+    return {
+      contentType: 'audio',
+      fileId: message.voice.file_id,
+      duration: message.voice.duration,
+      mimeType: message.voice.mime_type || 'audio/ogg'
+    };
+  }
+
+  if (message.video) {
+    return {
+      contentType: 'video',
+      fileId: message.video.file_id,
+      duration: message.video.duration,
+      width: message.video.width,
+      height: message.video.height,
+      mimeType: message.video.mime_type || 'video/mp4'
+    };
+  }
+
+  if (message.document) {
+    return {
+      contentType: 'document',
+      fileId: message.document.file_id,
+      mimeType: message.document.mime_type || null,
+      fileName: message.document.file_name || null
+    };
+  }
+
+  return null;
 }
 
 async function telegram(token, method, payload) {
