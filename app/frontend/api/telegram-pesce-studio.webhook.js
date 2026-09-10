@@ -15,6 +15,7 @@ export default async function handler(req, res) {
   try {
     const update = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const message = update.message;
+    const channelPost = update.channel_post;
 
     if (update.pre_checkout_query) {
       const query = update.pre_checkout_query;
@@ -60,6 +61,35 @@ export default async function handler(req, res) {
           text: 'Support paiement Pesce Studio\n\nPour toute question concernant un paiement ou un problème avec vos Étoiles, envoyez un message à ce bot en précisant, si possible, la date, le montant et le problème rencontré. Nous vous répondrons dès que possible.'
         });
       }
+    }
+
+    if (channelPost) {
+      const contentType = channelPost.photo
+        ? 'photo'
+        : channelPost.audio
+          ? 'audio'
+          : channelPost.video
+            ? 'video'
+            : channelPost.voice
+              ? 'voice'
+              : channelPost.document
+                ? 'document'
+                : channelPost.text
+                  ? 'text'
+                  : 'other';
+
+      console.log(JSON.stringify({
+        event: 'channel_post_received',
+        channelId: channelPost.chat?.id,
+        channelUsername: channelPost.chat?.username,
+        messageId: channelPost.message_id,
+        contentType,
+        text: channelPost.text || channelPost.caption || '',
+        telegramUrl: channelPost.chat?.username
+          ? `https://t.me/${channelPost.chat.username}/${channelPost.message_id}`
+          : null,
+        receivedAt: new Date().toISOString()
+      }));
     }
 
     return res.status(200).json({ ok: true });
