@@ -12,28 +12,39 @@ Pesce Studio est l’espace Telegram de Pesce Hounyo pour informer, publier du c
 
 ## Première version
 
-### Espace public
+### Espace public (l’expérience par défaut)
 
-- Présentation de Pesce
-- Publications
-- Vidéos YouTube
+- Identité de Pesce (portrait, bio, accueil à son image)
+- Derniers articles, vidéos et audios dès l’accueil
+- Publications (articles et posts du canal)
+- Vidéos (chaîne YouTube + vidéos publiées sur le canal)
 - Audios
 - Photos
-- Communauté
-- Soutenir Pesce ⭐
+- Communauté (canal Telegram)
+- Soutenir Pesce ⭐ (Étoiles Telegram)
+- Support (formulaire + bot `@PesceStudioBot`)
 - À propos
 
-### Espace créatrice
+### Espace créatrice (studio masqué)
 
-- Tableau de bord
-- Créer une publication
-- Brouillons
-- Publier
-- Vidéos YouTube
-- Audience
-- Étoiles
-- Statistiques
-- Paramètres
+Le studio est **invisible pour le public** : aucune affordance, aucun bouton, aucun chargement du code studio pour un visiteur. Il s’ouvre uniquement pour la créatrice (bouton discret + lien profond `?startapp=studio` + commande privée `/studio` du bot).
+
+- Composer (publication texte ou article Telegraph)
+- Brouillons (enregistrer, reprendre)
+- Publication directe sur le canal avec bouton ⭐ Soutenir
+- Backfill du bouton de soutien sur les posts existants
+- Indicateurs (contenus, vidéos, photos, audios, Étoiles)
+- Demandes de support (répondre, résoudre)
+- Derniers paiements
+- Configuration Telegraph
+
+**Règles produit**
+
+1. L’application publique s’ouvre toujours normalement — y compris pour Pesce elle-même — même sans identifiant créatrice configuré ; le studio est alors simplement masqué.
+2. Le public ne découvre jamais l’existence du studio : pas de popup « privé », pas de lien mort.
+3. L’audience d’abord : toute évolution de l’espace public prime sur l’espace créatrice.
+4. Toute l’expérience reste en français.
+5. L’autorisation est toujours vérifiée côté serveur (`/api/studio`) ; le masquage côté client est une question d’UX, pas de sécurité.
 
 ## Monétisation initiale
 

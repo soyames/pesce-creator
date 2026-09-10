@@ -1,29 +1,168 @@
+// Webhook Telegram du bot @PesceStudioBot : commandes, sessions de support, paiements en Étoiles
+// et ingestion des publications du canal (channel_post) avec bouton de soutien.
 import { createSupportTicket, deleteSupportSession, getSupportSession, setSupportSession, upsertChannelPost, upsertPayment } from '../lib/firestore.js';
-const CHANNEL='PesceHounyoOfficiel';
-const SUPPORT_URL='https://t.me/PesceStudioBot?startapp=support';
-export default async function handler(req,res){
- if(req.method!=='POST')return res.status(405).json({message:'Méthode non autorisée.'});
- const token=process.env.TELEGRAM_PESCE_BOT_TOKEN, secret=process.env.TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET;
- if(!token)return res.status(503).json({message:'Bot Telegram de Pesce Studio non configuré.'});
- if(secret&&req.headers['x-telegram-bot-api-secret-token']!==secret)return res.status(401).json({message:'Secret du webhook invalide.'});
- try{
-  const u=typeof req.body==='string'?JSON.parse(req.body):req.body||{},m=u.message,cp=u.channel_post;
-  if(u.pre_checkout_query){const q=u.pre_checkout_query,ok=q.currency==='XTR'&&Number(q.total_amount)>0;await tg(token,'answerPreCheckoutQuery',{pre_checkout_query_id:q.id,ok,...(!ok&&{error_message:'Cette facture n’est plus disponible.'})});}
-  if(m?.successful_payment){const p=m.successful_payment,r={id:p.telegram_payment_charge_id,telegramPaymentChargeId:p.telegram_payment_charge_id,telegramProviderChargeId:p.provider_payment_charge_id||null,userId:m.from?.id||null,username:m.from?.username||null,amount:p.total_amount,currency:p.currency,payload:p.invoice_payload,paidAt:new Date()};await upsertPayment(r);await tg(token,'sendMessage',{chat_id:m.chat.id,text:`Merci beaucoup ⭐\n\nVotre soutien de ${p.total_amount} Étoiles à Pesce a bien été reçu. Votre geste contribue directement à son travail journalistique.`});await notifyCreator(token,`Nouveau soutien ⭐\n${p.total_amount} Étoiles reçues.`);}
-  if(m?.text){const cmd=m.text.trim().split(/\s+/)[0].toLowerCase().split('@')[0],id=m.from?.id;
-   if(cmd==='/start'){await deleteSupportSession(id);await tg(token,'sendMessage',{chat_id:m.chat.id,text:'Bienvenue dans Pesce Studio ⭐\n\nRetrouvez les publications, vidéos, audios et contenus de Pesce Hounyo, et soutenez directement son travail journalistique.',reply_markup:{inline_keyboard:[[{text:'Ouvrir Pesce Studio',web_app:{url:'https://pesce-creator.vercel.app/'}}]]}});}
-   else if(cmd==='/id'){await tg(token,'sendMessage',{chat_id:m.chat.id,text:`Votre identifiant Telegram est : ${id}`});}
-   else if(cmd==='/paysupport'||cmd==='/support'){await setSupportSession(id,{status:'awaiting_message',chatId:m.chat.id});await tg(token,'sendMessage',{chat_id:m.chat.id,text:'Support Pesce Studio\n\nDécrivez votre problème dans votre prochain message. Pour un paiement, indiquez si possible la date et le montant en Étoiles.\n\nEnvoyez /cancel pour annuler.'});}
-   else if(cmd==='/cancel'){await deleteSupportSession(id);await tg(token,'sendMessage',{chat_id:m.chat.id,text:'Votre demande de support a été annulée.'});}
-   else{const s=await getSupportSession(id);if(s?.status==='awaiting_message'){const ticketId=ticketIdForToday();await createSupportTicket({id:ticketId,chatId:m.chat.id,userId:String(id||''),username:m.from?.username||null,firstName:m.from?.first_name||null,message:m.text.trim().slice(0,4000),status:'open',source:'telegram'});await deleteSupportSession(id);await tg(token,'sendMessage',{chat_id:m.chat.id,text:`Votre demande ${ticketId} a bien été enregistrée. Nous vous répondrons ici dès que possible.`});await notifyCreator(token,`Nouvelle demande de support 🛟\nTicket: ${ticketId}\nUtilisateur: ${m.from?.username?'@'+m.from.username:m.from?.first_name||id}`);}}
-  }
-  if(cp){const post=normalize(cp);await upsertChannelPost(post);try{await tg(token,'editMessageReplyMarkup',{chat_id:cp.chat?.id||`@${CHANNEL}`,message_id:cp.message_id,reply_markup:supportMarkup()});}catch(e){console.error('support button attachment failed',e);}console.log(JSON.stringify({event:'channel_post_received',...post}));}
-  return res.status(200).json({ok:true});
- }catch(e){console.error(e);return res.status(500).json({message:'Erreur du webhook Telegram de Pesce Studio.'});}
+import { creatorTelegramUserIds, isCreatorTelegramUser } from '../lib/telegram-auth.js';
+import { newTicketId } from '../lib/tickets.js';
+import { CHANNEL_USERNAME, MINI_APP_URL, STUDIO_URL, SUPPORT_URL } from '../lib/config.js';
+
+let webhookSecretWarned = false;
+function warnWebhookSecretOnce() {
+  if (webhookSecretWarned) return;
+  webhookSecretWarned = true;
+  console.warn('TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET non configuré : le webhook accepte tout POST. Configurez le secret et déclarez-le via setWebhook (secret_token).');
 }
-function ticketIdForToday(){return `PS-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;}
-function normalize(m){const x=media(m),type=x?.contentType||(m.text?'text':'other'),id=m.message_id;return{id:`${m.chat?.id||'channel'}_${id}`,source:'telegram',channelId:m.chat?.id??null,channelUsername:m.chat?.username||CHANNEL,messageId:id,contentType:type,text:m.text||m.caption||'',telegramUrl:m.chat?.username?`https://t.me/${m.chat.username}/${id}`:null,mediaFileId:x?.fileId||null,mediaMimeType:x?.mimeType||null,mediaFileName:x?.fileName||null,mediaDuration:x?.duration||null,mediaWidth:x?.width||null,mediaHeight:x?.height||null,published:true,publishedAt:new Date((m.date||Math.floor(Date.now()/1000))*1000),receivedAt:new Date()};}
-function media(m){if(m.photo?.length){const x=m.photo[m.photo.length-1];return{contentType:'photo',fileId:x.file_id,width:x.width,height:x.height,mimeType:'image/jpeg'};}if(m.audio)return{contentType:'audio',fileId:m.audio.file_id,duration:m.audio.duration,mimeType:m.audio.mime_type||'audio/mpeg',fileName:m.audio.file_name||null};if(m.voice)return{contentType:'audio',fileId:m.voice.file_id,duration:m.voice.duration,mimeType:m.voice.mime_type||'audio/ogg'};if(m.video)return{contentType:'video',fileId:m.video.file_id,duration:m.video.duration,width:m.video.width,height:m.video.height,mimeType:m.video.mime_type||'video/mp4'};if(m.document)return{contentType:'document',fileId:m.document.file_id,mimeType:m.document.mime_type||null,fileName:m.document.file_name||null};return null;}
-function supportMarkup(){return{inline_keyboard:[[{text:'⭐ Soutenir le travail de Pesce',url:SUPPORT_URL}]]};}
-async function notifyCreator(token,text){const configured=String(process.env.PESCE_CREATOR_TELEGRAM_USER_IDS||process.env.PESCE_CREATOR_TELEGRAM_USER_ID||'').split(',').map(id=>id.trim()).filter(Boolean);for(const id of configured){try{await tg(token,'sendMessage',{chat_id:id,text});}catch(e){console.error('creator notification failed',e);}}}
-async function tg(token,method,payload){const r=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),d=await r.json();if(!r.ok||!d.ok)throw Error(`Telegram ${method}: ${d.description||r.status}`);return d;}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ message: 'Méthode non autorisée.' });
+
+  const token = process.env.TELEGRAM_PESCE_BOT_TOKEN;
+  const secret = process.env.TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET;
+  if (!token) return res.status(503).json({ message: 'Bot Telegram de Pesce Studio non configuré.' });
+  if (secret && req.headers['x-telegram-bot-api-secret-token'] !== secret) return res.status(401).json({ message: 'Secret du webhook invalide.' });
+  if (!secret) warnWebhookSecretOnce();
+
+  try {
+    const update = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    const message = update.message;
+    const channelPost = update.channel_post;
+
+    if (update.pre_checkout_query) {
+      const query = update.pre_checkout_query;
+      const ok = query.currency === 'XTR' && Number(query.total_amount) > 0;
+      await telegram(token, 'answerPreCheckoutQuery', { pre_checkout_query_id: query.id, ok, ...(ok ? {} : { error_message: 'Cette facture n’est plus disponible.' }) });
+    }
+
+    if (message?.successful_payment) {
+      const payment = message.successful_payment;
+      await upsertPayment({
+        id: payment.telegram_payment_charge_id,
+        telegramPaymentChargeId: payment.telegram_payment_charge_id,
+        telegramProviderChargeId: payment.provider_payment_charge_id || null,
+        userId: message.from?.id || null,
+        username: message.from?.username || null,
+        amount: payment.total_amount,
+        currency: payment.currency,
+        payload: payment.invoice_payload,
+        paidAt: new Date(),
+      });
+      await telegram(token, 'sendMessage', { chat_id: message.chat.id, text: `Merci beaucoup ⭐\n\nVotre soutien de ${payment.total_amount} Étoiles à Pesce a bien été reçu. Votre geste contribue directement à son travail journalistique.` });
+      await notifyCreator(token, `Nouveau soutien ⭐\n${payment.total_amount} Étoiles reçues.`);
+    }
+
+    if (message?.text) {
+      const command = message.text.trim().split(/\s+/)[0].toLowerCase().split('@')[0];
+      const userId = message.from?.id;
+
+      if (command === '/start') {
+        await deleteSupportSession(userId);
+        await telegram(token, 'sendMessage', {
+          chat_id: message.chat.id,
+          text: 'Bienvenue dans Pesce Studio ⭐\n\nRetrouvez les publications, vidéos, audios et contenus de Pesce Hounyo, et soutenez directement son travail journalistique.',
+          reply_markup: { inline_keyboard: [[{ text: 'Ouvrir Pesce Studio', web_app: { url: MINI_APP_URL } }]] },
+        });
+      } else if (command === '/id') {
+        await telegram(token, 'sendMessage', { chat_id: message.chat.id, text: `Votre identifiant Telegram est : ${userId}` });
+      } else if (command === '/studio') {
+        // Commande discrète : l'espace studio n'est pas une affordance publique. Seule la créatrice reçoit le lien.
+        if (userId && isCreatorTelegramUser(userId)) {
+          await telegram(token, 'sendMessage', { chat_id: message.chat.id, text: `Studio Pesce 🎛\n\nOuvrez votre espace créatrice ici :\n${STUDIO_URL}` });
+        }
+      } else if (command === '/paysupport' || command === '/support') {
+        await setSupportSession(userId, { status: 'awaiting_message', chatId: message.chat.id });
+        await telegram(token, 'sendMessage', { chat_id: message.chat.id, text: 'Support Pesce Studio\n\nDécrivez votre problème dans votre prochain message. Pour un paiement, indiquez si possible la date et le montant en Étoiles.\n\nEnvoyez /cancel pour annuler.' });
+      } else if (command === '/cancel') {
+        await deleteSupportSession(userId);
+        await telegram(token, 'sendMessage', { chat_id: message.chat.id, text: 'Votre demande de support a été annulée.' });
+      } else {
+        const session = await getSupportSession(userId);
+        if (session?.status === 'awaiting_message') {
+          const ticketId = newTicketId();
+          await createSupportTicket({
+            id: ticketId,
+            chatId: message.chat.id,
+            userId: String(userId || ''),
+            username: message.from?.username || null,
+            firstName: message.from?.first_name || null,
+            message: message.text.trim().slice(0, 4000),
+            status: 'open',
+            source: 'telegram',
+          });
+          await deleteSupportSession(userId);
+          await telegram(token, 'sendMessage', { chat_id: message.chat.id, text: `Votre demande ${ticketId} a bien été enregistrée. Nous vous répondrons ici dès que possible.` });
+          await notifyCreator(token, `Nouvelle demande de support 🛟\nTicket: ${ticketId}\nUtilisateur: ${message.from?.username ? '@' + message.from.username : message.from?.first_name || userId}`);
+        }
+      }
+    }
+
+    if (channelPost) {
+      const post = normalize(channelPost);
+      await upsertChannelPost(post);
+      try {
+        await telegram(token, 'editMessageReplyMarkup', { chat_id: channelPost.chat?.id || `@${CHANNEL_USERNAME}`, message_id: channelPost.message_id, reply_markup: supportMarkup() });
+      } catch (error) {
+        console.error('support button attachment failed', error);
+      }
+      console.log(JSON.stringify({ event: 'channel_post_received', ...post }));
+    }
+
+    return res.status(200).json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Erreur du webhook Telegram de Pesce Studio.' });
+  }
+}
+
+function normalize(message) {
+  const mediaInfo = media(message);
+  const type = mediaInfo?.contentType || (message.text ? 'text' : 'other');
+  const id = message.message_id;
+  return {
+    id: `${message.chat?.id || 'channel'}_${id}`,
+    source: 'telegram',
+    channelId: message.chat?.id ?? null,
+    channelUsername: message.chat?.username || CHANNEL_USERNAME,
+    messageId: id,
+    contentType: type,
+    text: message.text || message.caption || '',
+    telegramUrl: message.chat?.username ? `https://t.me/${message.chat.username}/${id}` : null,
+    mediaFileId: mediaInfo?.fileId || null,
+    mediaMimeType: mediaInfo?.mimeType || null,
+    mediaFileName: mediaInfo?.fileName || null,
+    mediaDuration: mediaInfo?.duration || null,
+    mediaWidth: mediaInfo?.width || null,
+    mediaHeight: mediaInfo?.height || null,
+    published: true,
+    publishedAt: new Date((message.date || Math.floor(Date.now() / 1000)) * 1000),
+    receivedAt: new Date(),
+  };
+}
+
+function media(message) {
+  if (message.photo?.length) {
+    const photo = message.photo[message.photo.length - 1];
+    return { contentType: 'photo', fileId: photo.file_id, width: photo.width, height: photo.height, mimeType: 'image/jpeg' };
+  }
+  if (message.audio) return { contentType: 'audio', fileId: message.audio.file_id, duration: message.audio.duration, mimeType: message.audio.mime_type || 'audio/mpeg', fileName: message.audio.file_name || null };
+  if (message.voice) return { contentType: 'audio', fileId: message.voice.file_id, duration: message.voice.duration, mimeType: message.voice.mime_type || 'audio/ogg' };
+  if (message.video) return { contentType: 'video', fileId: message.video.file_id, duration: message.video.duration, width: message.video.width, height: message.video.height, mimeType: message.video.mime_type || 'video/mp4' };
+  if (message.document) return { contentType: 'document', fileId: message.document.file_id, mimeType: message.document.mime_type || null, fileName: message.document.file_name || null };
+  return null;
+}
+
+function supportMarkup() {
+  return { inline_keyboard: [[{ text: '⭐ Soutenir le travail de Pesce', url: SUPPORT_URL }]] };
+}
+
+async function notifyCreator(token, text) {
+  for (const id of creatorTelegramUserIds()) {
+    try { await telegram(token, 'sendMessage', { chat_id: id, text }); }
+    catch (error) { console.error('creator notification failed', error); }
+  }
+}
+
+async function telegram(token, method, payload) {
+  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(`Telegram ${method}: ${data.description || response.status}`);
+  return data;
+}

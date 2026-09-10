@@ -1,6 +1,8 @@
+// Facture Telegram Stars pour le soutien à Pesce. Montants autorisés définis par les constantes partagées.
 import { validateTelegramInitData } from '../lib/telegram-auth.js';
+import { STAR_TIERS } from '../lib/config.js';
 
-const ALLOWED_STARS = [50, 100, 250, 500, 1000];
+const ALLOWED_STARS = STAR_TIERS.map((tier) => tier.amount);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -20,7 +22,10 @@ export default async function handler(req, res) {
     }
 
     const requestedStars = Number(body.stars);
-    const stars = ALLOWED_STARS.includes(requestedStars) ? requestedStars : 100;
+    if (!ALLOWED_STARS.includes(requestedStars)) {
+      return res.status(400).json({ message: 'Montant de soutien invalide.', allowed: ALLOWED_STARS });
+    }
+    const stars = requestedStars;
 
     const response = await fetch(`https://api.telegram.org/bot${token}/createInvoiceLink`, {
       method: 'POST',

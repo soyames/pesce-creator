@@ -1,0 +1,2 @@
+# Les tests sont exécutés localement (npm test) et n'ont pas besoin d'être publiés en statique.
+tests/

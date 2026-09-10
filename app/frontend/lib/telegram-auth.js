@@ -22,9 +22,15 @@ export function telegramUserFromInitData(initData) {
   try { const user = new URLSearchParams(initData).get('user'); return user ? JSON.parse(user) : null; } catch { return null; }
 }
 
+// Identifiants Telegram de la créatrice (et de comptes temporaires/futurs).
+// Source : PESCE_CREATOR_TELEGRAM_USER_IDS (liste séparée par des virgules, documentée) avec
+// repli sur PESCE_CREATOR_TELEGRAM_USER_ID (singulier, historique). Aucun identifiant configuré → [].
+export function creatorTelegramUserIds(env = process.env) {
+  const raw = String(env.PESCE_CREATOR_TELEGRAM_USER_IDS || env.PESCE_CREATOR_TELEGRAM_USER_ID || '').trim();
+  if (!raw) return [];
+  return [...new Set(raw.split(',').map((id) => id.trim()).filter(Boolean))];
+}
+
 export function isCreatorTelegramUser(userId) {
-  const configured = String(process.env.PESCE_CREATOR_TELEGRAM_USER_IDS || process.env.PESCE_CREATOR_TELEGRAM_USER_ID || '').trim();
-  if (!configured) return false;
-  const allowed = configured.split(',').map((id) => id.trim()).filter(Boolean);
-  return allowed.includes(String(userId || ''));
+  return creatorTelegramUserIds().includes(String(userId || ''));
 }

@@ -59,27 +59,37 @@ Pesce / Studio privé
   └── WhatsApp existant — distribution indépendante pour l’instant
 
 Pesce Studio Mini App public
-  ├── Publications → Firestore → contenus Telegram
-  ├── Photos → Firestore → proxy Telegram
-  ├── Audios → Firestore → proxy Telegram
-  ├── Vidéos → YouTube
+  ├── Accueil → identité Pesce + rails (articles, vidéos, audios)
+  ├── Publications / Photos / Audios → Firestore → proxy Telegram signé
+  ├── Vidéos → vidéos du canal + chaîne YouTube
   ├── Communauté → Telegram channel
+  ├── Aide → formulaire Mini App + bot @PesceStudioBot
   └── Soutenir → Telegram Stars
+
+Studio créatrice — masqué (rôle via /api/me, autorité /api/studio)
+  ├── publication texte / article Telegraph → canal avec bouton ⭐
+  ├── brouillons, indicateurs, tickets (répondre/résoudre), paiements
+  └── backfill du bouton de soutien
 ```
+
+## Deux expériences
+
+Pesce Studio est **un seul Mini App** qui porte deux expériences :
+
+1. **L’espace public** (par défaut) : l’identité de Pesce, ses derniers articles, vidéos et audios, ses publications, la communauté, l’assistance et un soutien clair en Étoiles ⭐. Il s’ouvre toujours normalement — y compris pour Pesce elle-même — **même sans identifiant créatrice configuré**.
+2. **Le studio créatrice** (masqué) : aucune affordance visible pour le public ; `studio.js` et `studio.css` ne sont même pas chargés pour un visiteur. Le rôle est résolu via `GET /api/me` (`{ isCreator, creatorConfigured }`) ; le bouton Studio n’apparaît que pour la créatrice, qui peut aussi ouvrir son espace via le lien profond `?startapp=studio` ou la commande privée `/studio` du bot. Sans `PESCE_CREATOR_TELEGRAM_USER_IDS` configuré, personne n’est créatrice et le studio reste masqué (fail-closed) — l’autorisation réelle reste côté serveur (`/api/studio` renvoie 403).
 
 ## Studio créatrice
 
-Le Studio privé est accessible uniquement au compte Telegram configuré dans `PESCE_CREATOR_TELEGRAM_USER_IDS`.
-
-Il permet maintenant de :
+Accessible uniquement au compte Telegram configuré dans `PESCE_CREATOR_TELEGRAM_USER_IDS`. Il permet de :
 
 - rédiger une publication texte ;
-- enregistrer un brouillon ;
-- reprendre un brouillon ;
+- **publier un article Telegraph** (titre + texte → page telegra.ph lue en Instant View, postée avec le bouton ⭐ Soutenir) ;
+- enregistrer un brouillon et le reprendre ;
 - publier directement sur `@PesceHounyoOfficiel` ;
-- ajouter automatiquement le bouton `⭐ Soutenir le travail de Pesce` aux nouvelles publications ;
-- ajouter ce bouton aux publications récentes déjà existantes ;
-- consulter les statistiques de base, les soutiens Stars et les demandes de support.
+- ajouter automatiquement le bouton `⭐ Soutenir le travail de Pesce` aux nouvelles publications, ou le réappliquer aux publications récentes ;
+- répondre et résoudre les demandes de support ;
+- consulter les indicateurs (contenus, vidéos, photos, audios, Étoiles), les soutiens et les demandes.
 
 Pour les photos, audios et vidéos, la publication directe depuis Telegram reste le chemin privilégié en V1 : le webhook synchronise ensuite le contenu dans Firestore sans dupliquer le média.
 
@@ -96,17 +106,26 @@ pesce-creator/
 ├── app/
 │   └── frontend/
 │       ├── api/
-│       │   ├── content.js
-│       │   ├── create-invoice.js
-│       │   ├── media.js
-│       │   ├── studio.js
+│       │   ├── content.js                  # flux public (posts signés pour les médias)
+│       │   ├── create-invoice.js           # facture Stars
+│       │   ├── media.js                    # proxy média Telegram (jeton HMAC)
+│       │   ├── me.js                       # rôle de l'utilisateur (sans Firestore)
+│       │   ├── studio.js                   # studio créatrice (privé)
+│       │   ├── support.js                  # tickets depuis le Mini App
 │       │   └── telegram-pesce-studio.webhook.js
 │       ├── assets/
 │       ├── lib/
-│       │   └── firestore.js
-│       ├── app.js
+│       │   ├── config.js                   # vue ESM des constantes partagées
+│       │   ├── firestore.js
+│       │   ├── media-token.js              # signature HMAC des URLs média
+│       │   ├── telegram-auth.js            # initData + identifiants créatrice
+│       │   ├── telegraph.js                # articles telegra.ph
+│       │   └── tickets.js                  # générateurs d'identifiants
+│       ├── tests/                          # node:test (npm test)
+│       ├── constants.js                    # identité et URLs (source unique)
+│       ├── app.js                          # coquille publique + rôle + loader studio
 │       ├── index.html
-│       ├── studio.js
+│       ├── studio.js                       # module studio (chargé à la demande)
 │       ├── studio.css
 │       ├── package.json
 │       └── styles.css
@@ -115,6 +134,7 @@ pesce-creator/
 ├── firestore.indexes.json
 ├── firebase.json
 ├── .firebaserc
+├── .env.example
 ├── .gitignore
 └── README.md
 ```
@@ -127,16 +147,30 @@ Les fonctions sont sous `app/frontend/api/`.
 
 ### Variables d’environnement
 
-Configurer dans Vercel :
+Configurer dans Vercel (voir aussi `.env.example`) :
 
 - `TELEGRAM_PESCE_BOT_TOKEN`
-- `TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET`
+- `TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET` — recommandé ; sans lui le webhook fonctionne mais accepte tout POST (avertissement dans les logs)
 - `FIREBASE_PROJECT_ID`
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`
-- `PESCE_CREATOR_TELEGRAM_USER_IDS`
+- `PESCE_CREATOR_TELEGRAM_USER_IDS` — liste d’identifiants Telegram ; **non configuré ⇒ studio masqué pour tout le monde** (l’app publique fonctionne normalement)
+- `PESCE_CREATOR_TELEGRAM_USER_ID` — ancien nom singulier, conservé en repli (à déprécier)
+- `TELEGRAPH_ACCESS_TOKEN` — optionnel, pour les articles Telegraph (à obtenir via « Configurer Telegraph » dans le studio)
+- `PESCE_MEDIA_SIGNING_SECRET` — optionnel, secret des URLs média signées (repli sur le token du bot)
 
 `FIREBASE_PRIVATE_KEY` doit conserver les retours à la ligne sous la forme `\\n` lorsqu’elle est saisie comme variable d’environnement.
+
+Toute modification d’environnement exige un redéploiement pour prendre effet.
+
+### Tests
+
+```bash
+cd app/frontend
+npm test
+```
+
+Suite `node:test` (aucune dépendance) : validation des initData Telegram, liste des identifiants créatrice, constantes partagées (avec garde anti-duplication), jetons média, générateurs d’identifiants, nœuds Telegraph. Les scénarios manuels (public, créatrice, posts du canal, liens profonds, Étoiles) sont détaillés dans [docs/TESTING.md](docs/TESTING.md).
 
 ## Webhook Telegram
 
@@ -182,30 +216,28 @@ La création de facture vérifie côté serveur l’`initData` Telegram avant de
 
 ## État du projet
 
-Phase 2 — Mini App Telegram, Stars, webhook, canal éditorial, synchronisation Firestore et premier Studio créatrice en intégration.
+Phase 3 — espace public recentré sur l’identité de Pesce, studio masqué derrière la frontière créatrice, articles Telegraph, tests automatisés.
 
 ### Déjà en place
 
 - Gateway navigateur / Telegram
-- Mini App francophone
-- connexion YouTube
-- canal Telegram officiel
-- webhook Telegram avec secret
-- réception `channel_post`
+- Mini App francophone : accueil identité + rails (articles, vidéos, audios), Publications, Vidéos (canal + YouTube), Audios, Photos, Communauté, Soutenir ⭐, Aide (formulaire + bot), À propos
+- studio créatrice **masqué** (bouton réservé à la créatrice, `?startapp=studio`, `/studio`, aucun chargement du code studio pour le public)
+- `GET /api/me` (rôle, sans Firestore) ; application fonctionnelle sans identifiant créatrice configuré
+- webhook Telegram (`message`, `channel_post`, `pre_checkout_query`) avec secret
 - authentification server-side `initData`
-- soutien Telegram Stars
-- `/start`
-- `/paysupport`
-- persistance des publications, paiements, supports et brouillons via Firestore
-- feeds Publications / Photos / Audios dans le Mini App
-- publication texte depuis le Studio
-- bouton de soutien automatique sur les publications
+- soutien Telegram Stars (montants validés)
+- support par le Mini App **et** par le bot (`/support`, `/paysupport`)
+- publication texte et **articles Telegraph** depuis le Studio
+- bouton de soutien automatique + backfill
+- brouillons, indicateurs, réponses/résolutions de tickets, paiements
+- médias servis via URLs signées (HMAC, 12 h)
+- tests automatisés `node:test` + scénarios manuels ([docs/TESTING.md](docs/TESTING.md))
 
 ### Prochaines étapes
 
-1. Tester le premier post après activation de Firestore.
-2. Ouvrir le Studio depuis le compte créateur et tester brouillon → publication.
-3. Vérifier le bouton `⭐ Soutenir le travail de Pesce` sur le canal.
-4. Ajouter la création/import média depuis le Studio si nécessaire.
-5. Ajouter une intégration WhatsApp choisie et validée séparément.
-6. Ajouter la synchronisation des modifications/suppressions et les statistiques éditoriales avancées.
+1. Dérouler [docs/TESTING.md](docs/TESTING.md) sur le déploiement (public, créatrice avant/après configuration, posts du canal, liens profonds, Étoiles).
+2. Configurer le webhook avec `secret_token` et rendre le secret obligatoire.
+3. Ajouter la création/import média depuis le Studio si nécessaire.
+4. Ajouter une intégration WhatsApp choisie et validée séparément.
+5. Ajouter la synchronisation des modifications/suppressions et les statistiques éditoriales avancées.
