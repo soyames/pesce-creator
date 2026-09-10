@@ -1,5 +1,6 @@
 const tg = window.Telegram?.WebApp;
 const inTelegram = Boolean(tg?.initData);
+const YOUTUBE_URL = 'https://www.youtube.com/@gnonnouxopescehounyo2576';
 
 const gate = document.getElementById('telegramGate');
 const app = document.getElementById('telegramApp');
@@ -26,6 +27,14 @@ function popup(title, message) {
     tg.showPopup({ title, message, buttons: [{ type: 'ok', text: 'Compris' }] });
   } else {
     window.alert(message);
+  }
+}
+
+function openExternal(url) {
+  if (tg?.openLink) {
+    tg.openLink(url);
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 }
 
@@ -108,7 +117,7 @@ document.querySelectorAll('[data-channel]').forEach((button) => {
 });
 
 document.querySelector('[data-youtube]')?.addEventListener('click', () => {
-  popup('YouTube', 'Le lien officiel YouTube de Pesce sera connecté ici dès que l’adresse de sa chaîne sera configurée.');
+  openExternal(YOUTUBE_URL);
 });
 
 if (inTelegram) {
