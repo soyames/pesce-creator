@@ -1,3 +1,4 @@
+const studioStyle=document.createElement('link');studioStyle.rel='stylesheet';studioStyle.href='./studio.css';document.head.appendChild(studioStyle);
 if (inTelegram) {
   document.getElementById('studioButton')?.addEventListener('click', openStudio);
   document.getElementById('supportForm')?.addEventListener('submit', sendSupport);
