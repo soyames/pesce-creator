@@ -224,12 +224,19 @@ window.__PESCE_WEB_PREVIEW__ = true;
   window.fetch = function (input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) || '';
     if (url.indexOf('/api/') === -1) return realFetch(input, init);
-    if (url.indexOf('/api/studio-auth/session') !== -1) {
-      return Promise.resolve(LOGIN_ONLY || DENIED ? json(401, { authenticated: false }) : json(200, { authenticated: true, email: 'pescestudio8@gmail.com' }));
+    if (url.indexOf('/api/studio-auth') !== -1) {
+      if (url.indexOf('action=session') !== -1) {
+        return Promise.resolve(LOGIN_ONLY || DENIED ? json(401, { authenticated: false }) : json(200, { authenticated: true, email: 'pescestudio8@gmail.com' }));
+      }
+      if (url.indexOf('action=config') !== -1) return Promise.resolve(json(200, { clientId: 'preview-client.apps.googleusercontent.com' }));
+      if (init && init.method === 'POST') {
+        var body = {};
+        try { body = JSON.parse(init.body || '{}'); } catch (e) { body = {}; }
+        if (body.action === 'login') return Promise.resolve(DENIED ? json(403, { message: 'Compte non autorisé.' }) : json(200, { ok: true }));
+        if (body.action === 'logout') return Promise.resolve(json(200, { ok: true }));
+      }
+      return Promise.resolve(json(400, { message: 'Action inconnue.' }));
     }
-    if (url.indexOf('/api/studio-auth/config') !== -1) return Promise.resolve(json(200, { clientId: 'preview-client.apps.googleusercontent.com' }));
-    if (url.indexOf('/api/studio-auth/login') !== -1) return Promise.resolve(DENIED ? json(403, { message: 'Compte non autorisé.' }) : json(200, { ok: true }));
-    if (url.indexOf('/api/studio-auth/logout') !== -1) return Promise.resolve(json(200, { ok: true }));
     if (url.indexOf('/api/studio') !== -1) {
       if (init && init.method === 'POST') return Promise.resolve(json(200, { ok: true }));
       return Promise.resolve(json(200, ${overview}));

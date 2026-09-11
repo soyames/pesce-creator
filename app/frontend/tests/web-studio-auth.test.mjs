@@ -103,20 +103,20 @@ test('isWebAdminEmail : comparaison insensible à la casse, refus des autres com
 test('studio-auth : config expose le client OAuth public ou null', async () => {
   await withEnv({ GOOGLE_OAUTH_CLIENT_ID: undefined }, async () => {
     const res = stubRes();
-    await studioAuthHandler({ method: 'GET', url: '/api/studio-auth/config', headers: {} }, res);
+    await studioAuthHandler({ method: 'GET', url: '/api/studio-auth', query: { action: 'config' }, headers: {} }, res);
     assert.equal(res.code, 200);
     assert.equal(res.body.clientId, null);
   });
   await withEnv({ GOOGLE_OAUTH_CLIENT_ID: 'client-public' }, async () => {
     const res = stubRes();
-    await studioAuthHandler({ method: 'GET', url: '/api/studio-auth/config', headers: {} }, res);
+    await studioAuthHandler({ method: 'GET', url: '/api/studio-auth', query: { action: 'config' }, headers: {} }, res);
     assert.equal(res.body.clientId, 'client-public');
   });
 });
 
 test('studio-auth : session absente → 401, sans accès base', async () => {
   const res = stubRes();
-  await studioAuthHandler({ method: 'GET', url: '/api/studio-auth/session', headers: {} }, res);
+  await studioAuthHandler({ method: 'GET', url: '/api/studio-auth', query: { action: 'session' }, headers: {} }, res);
   assert.equal(res.code, 401);
   assert.equal(res.body.authenticated, false);
 });
@@ -124,30 +124,33 @@ test('studio-auth : session absente → 401, sans accès base', async () => {
 test('studio-auth : login refuse sans configuration, sans jeton, avec jeton malformé', async () => {
   await withEnv({ GOOGLE_OAUTH_CLIENT_ID: undefined }, async () => {
     const res = stubRes();
-    await studioAuthHandler({ method: 'POST', url: '/api/studio-auth/login', body: { credential: 'x' } }, res);
+    await studioAuthHandler({ method: 'POST', url: '/api/studio-auth', body: { action: 'login', credential: 'x' } }, res);
     assert.equal(res.code, 503, 'login accepté sans client OAuth');
   });
   await withEnv({ GOOGLE_OAUTH_CLIENT_ID: 'client-public' }, async () => {
     const missing = stubRes();
-    await studioAuthHandler({ method: 'POST', url: '/api/studio-auth/login', body: {} }, missing);
+    await studioAuthHandler({ method: 'POST', url: '/api/studio-auth', body: { action: 'login' } }, missing);
     assert.equal(missing.code, 400);
     const malformed = stubRes();
-    await studioAuthHandler({ method: 'POST', url: '/api/studio-auth/login', body: { credential: 'pas-un-jwt' } }, malformed);
+    await studioAuthHandler({ method: 'POST', url: '/api/studio-auth', body: { action: 'login', credential: 'pas-un-jwt' } }, malformed);
     assert.equal(malformed.code, 401, 'jeton malformé accepté');
   });
 });
 
 test('studio-auth : déconnexion efface toujours le cookie', async () => {
   const res = stubRes();
-  await studioAuthHandler({ method: 'POST', url: '/api/studio-auth/logout', headers: { cookie: `${WEB_SESSION_COOKIE}=xyz` } }, res);
+  await studioAuthHandler({ method: 'POST', url: '/api/studio-auth', body: { action: 'logout' }, headers: { cookie: `${WEB_SESSION_COOKIE}=xyz` } }, res);
   assert.equal(res.code, 200);
   assert.ok(res.headers['Set-Cookie'].includes('Max-Age=0'));
 });
 
-test('studio-auth : méthodes refusées → 405', async () => {
+test('studio-auth : méthodes refusées → 405, action inconnue → 400', async () => {
   const res = stubRes();
-  await studioAuthHandler({ method: 'PUT', url: '/api/studio-auth/session', headers: {} }, res);
+  await studioAuthHandler({ method: 'PUT', url: '/api/studio-auth', query: { action: 'session' }, headers: {} }, res);
   assert.equal(res.code, 405);
+  const unknown = stubRes();
+  await studioAuthHandler({ method: 'GET', url: '/api/studio-auth', query: { action: 'bogus' }, headers: {} }, unknown);
+  assert.equal(unknown.code, 400);
 });
 
 // — /api/studio : le flux Telegram existant reste intact et fail-closed sans session web

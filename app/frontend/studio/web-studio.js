@@ -71,7 +71,7 @@
   async function initGoogleButton(attempt = 0) {
     if (PREVIEW) return;
     const hint = document.getElementById('loginHint');
-    const config = await fetch('/api/studio-auth/config').then((response) => response.json()).catch(() => ({ clientId: null }));
+    const config = await fetch('/api/studio-auth?action=config').then((response) => response.json()).catch(() => ({ clientId: null }));
     if (!config.clientId) {
       if (hint) hint.textContent = 'La connexion Google n’est pas encore configurée : définissez GOOGLE_OAUTH_CLIENT_ID (Vercel), puis redéployez.';
       return;
@@ -91,7 +91,7 @@
 
   async function handleGoogleCredential(credential) {
     try {
-      const response = await fetch('/api/studio-auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential }) });
+      const response = await fetch('/api/studio-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', credential }) });
       const data = await response.json().catch(() => ({}));
       if (response.status === 403) { showLogin('Ce compte Google n’est pas autorisé à accéder au Studio. Seul l’administrateur du Studio peut entrer.'); return; }
       if (!response.ok) { showLogin(data.message || 'Connexion impossible — réessayez.'); return; }
@@ -115,7 +115,7 @@
         posts = Array.isArray(content.posts) ? content.posts : [];
       } catch { posts = []; }
       try {
-        const session = await api('/api/studio-auth/session', { cache: 'no-store' });
+        const session = await api('/api/studio-auth?action=session', { cache: 'no-store' });
         sessionEmail = session.email || '';
       } catch { sessionEmail = ''; }
       const emailEl = document.getElementById('webSessionEmail');
@@ -792,7 +792,7 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
   }
 
   async function logout() {
-    try { await fetch('/api/studio-auth/logout', { method: 'POST' }); } catch { /* cookie effacé quoi qu'il arrive */ }
+    try { await fetch('/api/studio-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }); } catch { /* cookie effacé quoi qu'il arrive */ }
     location.reload();
   }
 
@@ -868,7 +868,7 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
   // En mode preview, la session simulée est décidée par le stub — le flux reste identique.
   (async function boot() {
     try {
-      const response = await fetch('/api/studio-auth/session', { cache: 'no-store' });
+      const response = await fetch('/api/studio-auth?action=session', { cache: 'no-store' });
       if (response.ok) { await enterShell(); return; }
     } catch { /* serveur indisponible : écran de connexion */ }
     if (PREVIEW) return; // pas de session simulée : l'écran de connexion reste (bouton démo du stub)
