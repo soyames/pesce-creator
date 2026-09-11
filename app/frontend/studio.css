@@ -1,46 +1,18 @@
-/* Styles réservés au studio créatrice. Chargé uniquement avec studio.js, après confirmation du rôle créatrice. */
-.studio-card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); padding: 20px; margin-bottom: 14px; }
-.studio-card h3 { margin: 0 0 12px; font-size: 18px; }
-.studio-composer h3 { margin-bottom: 5px; }
-.studio-muted { color: var(--muted); font-size: 12px; }
-.publish-form { display: grid; gap: 9px; text-align: left; margin-top: 18px; }
-.publish-form textarea, .publish-form input[type="text"], .publish-form select { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 13px; background: #0b1220; color: #f8fafc; padding: 12px; line-height: 1.5; box-sizing: border-box; font-family: inherit; }
-.publish-form input[type="text"] { resize: none; font-weight: 700; }
-.publish-form select { resize: none; }
-.article-hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
-.composer-actions { display: flex; gap: 8px; }
-.composer-actions button { flex: 1; }
-.studio-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
-.kpi-card { border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2); padding: 15px; border-top: 2px solid rgba(245,185,66,.4); }
-.kpi-card small, .kpi-card strong, .kpi-card span { display: block; }
-.kpi-card small { color: var(--muted); font-size: 10px; }
-.kpi-card strong { margin: 4px 0; font-size: 23px; }
-.kpi-card span { color: var(--muted); font-size: 11px; }
-.count-badge { display: inline-block; padding: 3px 7px; border-radius: 999px; background: rgba(245,185,66,.12); color: var(--gold); font-size: 11px; }
-.ticket-card { border-top: 1px solid var(--border); padding: 14px 0; }
-.ticket-card:first-of-type { border-top: 0; }
-.ticket-card strong, .ticket-card small { display: block; }
-.ticket-card small { margin-top: 3px; color: var(--muted); font-size: 10px; }
-.ticket-card p { line-height: 1.5; color: #e2e8f0; font-size: 13px; }
-.ticket-actions { display: flex; gap: 8px; margin-top: 10px; }
-.ticket-actions .secondary-button { flex: 1; }
-.ticket-reply-input { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 13px; background: #0b1220; color: #f8fafc; padding: 12px; line-height: 1.5; box-sizing: border-box; font-family: inherit; margin-top: 10px; font-size: 13px; }
-.studio-row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); }
-.studio-row:first-child { border-top: 0; }
-.studio-row span { font-size: 13px; }
-.studio-row small { color: var(--muted); font-size: 10px; text-align: right; }
-.payment-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-.payment-cell .secondary-button { padding: 6px 10px; font-size: 11px; }
-.draft-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding: 12px 0; }
-.draft-row:first-of-type { border-top: 0; }
-.draft-row strong, .draft-row small { display: block; }
-.draft-row strong { font-size: 12px; }
-.draft-row small { color: var(--muted); font-size: 10px; margin-top: 3px; }
+/* Styles réservés au studio créatrice. Chargé uniquement avec studio.js, après confirmation du rôle créatrice.
+   Le système visuel (couleurs, typographies, espacements) vient de la config Tailwind d'index.html. */
+.studio-card h3 { margin: 0; }
+.publish-form textarea { min-height: 140px; }
+.composer-actions button:disabled, [disabled] { opacity: 0.6; cursor: wait; }
+/* En-tête du studio sur petits écrans : le badge « Bureau Privé » et le libellé « Journal »
+   cèdent la place pour que le rang ne déborde jamais du viewport. */
+@media (max-width: 400px) {
+  .studio-header-badge { display: none; }
+}
+@media (max-width: 380px) {
+  .studio-journal-label { display: none; }
+}
 @media (max-width: 460px) {
-  .studio-kpis { grid-template-columns: 1fr; }
-  .studio-row { display: block; }
-  .studio-row small { display: block; text-align: left; margin-top: 3px; }
-  .composer-actions { display: grid; }
+  .composer-actions { display: grid; grid-template-columns: 1fr; }
+  .studio-row { align-items: flex-start; }
   .draft-row { align-items: flex-start; }
-  .draft-row .secondary-button { flex: 0 0 auto; }
 }

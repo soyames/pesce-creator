@@ -1,6 +1,6 @@
-// Garde-fou d'accessibilité : vérifie les paires de couleurs clés du système de design
-// (styles.css + page privacy) contre le ratio de contraste WCAG. Empêche la régression
-// « texte clair sur surface claire » observée sur la page de confidentialité.
+// Garde-fou d'accessibilité : vérifie les paires de couleurs clés du système de design Stitch
+// (tokens Tailwind d'index.html + page privacy) contre le ratio de contraste WCAG. Empêche la
+// régression « texte clair sur surface claire » observée sur la page de confidentialité.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -30,18 +30,32 @@ function contrast(foreground, background) {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-// Paires (texte, fond, ratio minimum) : texte courant 4.5:1, grand texte/UI 3:1.
+// Paires (texte, fond, ratio minimum) : texte courant 4.5:1.
+// Tokens du design Stitch (config Tailwind d'index.html) : encre #1b1c1a, variante #58413c,
+// terracotta #972a0a / #b84221, surfaces chaudes #fbf9f5 → #e4e2de, inverse #30312e.
 const PAIRS = [
-  ['#f8fafc', '#0b1220', 4.5], // texte principal sur fond
-  ['#e2e8f0', '#111827', 4.5], // corps de lecture sur carte
-  ['#94a3b8', '#111827', 4.5], // texte secondaire sur carte
-  ['#94a3b8', '#111c2e', 4.5], // texte secondaire sur carte accentuée
-  ['#94a3b8', '#0b1220', 4.5], // texte secondaire sur fond (nav, pied de page)
-  ['#f5b942', '#0b1220', 3.0], // accent or sur fond
-  ['#172033', '#f5b942', 4.5], // libellé du bouton primaire
-  ['#f8fafc', '#1d293b', 4.5], // libellé du bouton secondaire
-  ['#f87171', '#111c2e', 3.0], // badge « En direct »
-  ['#334155', '#f7f3ea', 4.5], // corps de la page privacy (document chaud)
+  ['#1b1c1a', '#fbf9f5', 4.5], // encre sur surface
+  ['#1b1c1a', '#ffffff', 4.5], // encre sur surface-container-lowest (cartes)
+  ['#58413c', '#fbf9f5', 4.5], // texte secondaire sur surface
+  ['#58413c', '#f5f3ef', 4.5], // texte secondaire sur surface-container-low
+  ['#58413c', '#efeeea', 4.5], // texte secondaire sur surface-container
+  ['#58413c', '#eae8e4', 4.5], // texte secondaire sur surface-container-high
+  ['#58413c', '#e4e2de', 4.5], // texte secondaire sur surface-container-highest
+  ['#972a0a', '#fbf9f5', 4.5], // kicker terracotta sur surface
+  ['#972a0a', '#efeeea', 4.5], // kicker terracotta sur surface-container
+  ['#b84221', '#ffffff', 4.5], // accent sombre sur carte blanche (lecteur)
+  ['#ffffff', '#972a0a', 4.5], // on-primary (boutons, pacte)
+  ['#ffffff', '#b84221', 4.5], // on-primary sur primary-container
+  ['#ffe4de', '#972a0a', 4.5], // corps du pacte (on-primary-container / primary)
+  ['#fbf9f5', '#1a1c20', 4.5], // boutons noirs (on-secondary-fixed)
+  ['#f2f0ed', '#30312e', 4.5], // inverse-on-surface
+  ['#ba1a1a', '#e4e2de', 4.5], // kicker d'erreur sur bannière direct
+  ['#5d5e63', '#fbf9f5', 4.5], // secondary sur surface
+  ['#5d5e63', '#f5f3ef', 4.5], // secondary sur surface-container-low
+  ['#882000', '#ffdbd1', 4.5], // on-primary-fixed-variant (icônes du pacte)
+  ['#93000a', '#ffdad6', 4.5], // on-error-container
+  // Page privacy (document chaud, thème propre).
+  ['#334155', '#f7f3ea', 4.5], // corps de la page privacy
   ['#475569', '#f7f3ea', 4.5], // méta de la page privacy
   ['#1e293b', '#f7f3ea', 4.5], // texte de la carte privacy
   ['#f5b942', '#0b1220', 3.0], // lien retour privacy sur fond

@@ -23,3 +23,6 @@ coverage/
 
 # Journaux
 *.log
+
+# Aperçus et captures de développement (jamais versionnés)
+preview-shots/

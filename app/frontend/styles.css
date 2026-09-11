@@ -1,184 +1,49 @@
-:root {
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #f8fafc;
-  background: #0b1220;
-  font-synthesis: none;
-  --bg: #0b1220;
-  --panel: #111827;
-  --panel-2: #111c2e;
-  --border: #26364d;
-  --muted: #94a3b8;
-  --gold: #f5b942;
-  --gold-dark: #172033;
-  --danger: #f87171;
-  --space-1: 8px;
-  --space-2: 12px;
-  --space-3: 16px;
-  --space-4: 22px;
-  --radius-card: 16px;
-  --radius-control: 10px;
-  --radius-pill: 999px;
-  /* — Identité éditoriale Pesce Studio :
-     typographie de titrage serif (newsroom) + sans-serif d'interface, surfaces de lecture chaudes. */
-  --font-display: Georgia, "Iowan Old Style", "Times New Roman", Times, serif;
-  --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --paper: #f7f3ea;
-  --ink: #1c1917;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; background: var(--bg); }
-body { min-height: 100vh; }
-button, a { font: inherit; }
-button { -webkit-tap-highlight-color: transparent; }
+/* Base éditoriale Pesce Studio — design Stitch (source de vérité visuelle).
+   Le gros du système (couleurs, typographies, espacements) vit dans la config Tailwind
+   d'index.html ; ce fichier porte la base documentaire et les garde-fous de comportement. */
+
+html, body { width: 100vw; margin: 0; padding: 0; background-color: #fbf9f5; }
+body { overscroll-behavior: none; }
+* { -webkit-tap-highlight-color: transparent; }
+/* L'attribut hidden doit toujours gagner, même face aux utilitaires display:flex/grid. */
 [hidden] { display: none !important; }
-/* — Système de design (une langue visuelle, deux modes : public + studio) :
-   surfaces sombres (--panel / --panel-2), accent or (--gold), kickers dorés,
-   rayons --radius-card / --radius-control, espacement --space-*. */
-button:focus-visible, a:focus-visible, .tile:focus-visible, .editorial-card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-/* Titrage éditorial : serif pour les gros titres publics et la une du studio. */
-.app h1, .gateway-card h1, .section-heading h2, .rail-heading h2, .post-headline,
-.reader-card h2, .live-card h3, .empty-card h3, .community-card h3, .about-card h3,
-.youtube-card h3, .support-bot-card h3, .support-help-card h3, .studio-greeting h3 { font-family: var(--font-display); }
-@media (prefers-reduced-motion: reduce) { .tile { transition: none; } }
-.gateway { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 18px; }
-.gateway-card { width: min(440px, 100%); padding: 34px 26px 28px; text-align: center; border: 1px solid var(--border); border-radius: 20px; background: var(--panel); box-shadow: 0 20px 60px rgba(0,0,0,.28); }
-.gateway-portrait-wrap { display: flex; justify-content: center; margin-bottom: 18px; }
-.gateway-portrait { width: 104px; height: 104px; border-radius: 50%; object-fit: cover; border: 3px solid #334155; display: block; }
-.gateway-eyebrow { margin: 0 0 6px; font-size: 12px; letter-spacing: .16em; font-weight: 800; color: var(--muted); }
-.gateway-card h1 { margin: 0; font-size: clamp(32px,8vw,44px); line-height: 1.05; }
-.gateway-message { margin: 16px auto 24px; max-width: 340px; color: #cbd5e1; line-height: 1.5; }
-.telegram-button { display: block; width: 100%; padding: 14px 18px; border-radius: 14px; text-decoration: none; font-weight: 800; background: var(--gold); color: var(--gold-dark); }
-.gateway-note { margin: 18px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
-.app { width: min(720px, 100%); margin: 0 auto; padding: 12px 18px 110px; }
-.topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0 14px; background: rgba(11,18,32,.94); backdrop-filter: blur(12px); }
-.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.brand img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid #334155; }
-.brand strong, .brand span { display: block; }
-.brand strong { font-size: 15px; }
-.brand span { margin-top: 2px; color: var(--muted); font-size: 11px; }
-.icon-button, .back-button { border: 1px solid var(--border); background: var(--panel); color: #f8fafc; cursor: pointer; border-radius: 12px; }
-.icon-button { width: 42px; height: 42px; }
-.topbar-actions { display: flex; align-items: center; gap: 8px; }
-.studio-button { border: 1px solid var(--border); background: var(--panel); color: #f8fafc; border-radius: 12px; padding: 9px 11px; font-size: 12px; font-weight: 800; cursor: pointer; }
-.hero { text-align: center; }
-.compact-hero { padding: 22px 8px 20px; }
-.portrait-wrap { display: flex; justify-content: center; margin-bottom: 14px; }
-.portrait { width: 112px; height: 112px; border-radius: 50%; object-fit: cover; border: 3px solid var(--gold); }
-.hero-manifesto { font-family: var(--font-display); font-style: italic; font-size: 17px; color: #cbd5e1; max-width: 520px; margin: 12px auto 0; line-height: 1.5; }
-.eyebrow { margin: 0 0 6px; font-size: 11px; letter-spacing: .16em; font-weight: 800; color: var(--muted); }
-.app h1 { margin: 0; font-size: clamp(28px,7vw,42px); line-height: 1.08; }
-.intro { max-width: 570px; margin: 14px auto 0; line-height: 1.55; color: var(--muted); }
-.hero-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
-.support-card { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; padding: 20px; border: 1px solid #3b4658; border-radius: var(--radius-card); background: var(--panel-2); box-shadow: 0 12px 30px rgba(0,0,0,.14); }
-.star-badge { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; background: rgba(245,185,66,.12); font-size: 27px; }
-.card-kicker { margin: 0 0 4px; color: var(--gold); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
-.app h2 { margin: 0; font-size: 21px; }
-.support-card p { margin: 5px 0 0; color: var(--muted); line-height: 1.4; }
-.star-options { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
-.star-option { min-width: 0; padding: 10px 5px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: #f8fafc; cursor: pointer; }
-.star-option strong, .star-option small { display: block; }
-.star-option strong { font-size: 12px; }
-.star-option small { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.2; }
-.star-option.selected { border-color: var(--gold); background: rgba(245,185,66,.12); }
-.primary-button, .secondary-button { border: 0; border-radius: 13px; padding: 13px 16px; font-weight: 800; cursor: pointer; }
-.primary-button { grid-column: 1 / -1; background: var(--gold); color: var(--gold-dark); }
-.primary-button:disabled { opacity: .65; cursor: wait; }
-.secondary-button { background: #1d293b; color: #f8fafc; border: 1px solid var(--border); }
-.section, .content-section { padding-top: 30px; }
-.rail { margin-bottom: 28px; }
-.rail-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.rail-heading h2 { font-size: 19px; }
-.link-button { border: 0; background: none; padding: 6px; color: var(--gold); font-size: 12px; font-weight: 800; cursor: pointer; }
-.live-card { border: 1px solid #3b4658; border-radius: var(--radius-card); background: var(--panel-2); padding: 20px; }
-.live-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: var(--muted); font-size: 12px; }
-.live-badge { padding: 3px 8px; border-radius: var(--radius-pill); background: rgba(245,185,66,.12); color: var(--gold); font-size: 10px; font-weight: 800; }
-.live-badge.live-now { background: rgba(239,68,68,.15); color: var(--danger); }
-.live-card h3 { margin: 0 0 6px; font-size: 19px; }
-.live-card p { margin: 0 0 10px; color: var(--muted); line-height: 1.5; }
-.live-card .primary-button { display: inline-block; margin-top: 4px; }
-.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.section-heading h2 { font-size: 22px; }
-.back-button { padding: 8px 11px; font-size: 12px; }
-.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-.tile { min-height: 0; padding: 16px; text-align: left; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); color: #f8fafc; cursor: pointer; transition: transform .15s ease, border-color .15s ease; }
-.tile:active { transform: scale(.985); }
-.tile strong { display: block; font-family: var(--font-display); font-size: 17px; font-weight: 700; }
-.tile small { display: block; margin-top: 5px; color: var(--muted); line-height: 1.35; }
-.tile::before { content: ''; display: block; width: 36px; height: 2px; background: var(--gold); margin: 0 0 12px; }
-.empty-card, .community-card, .about-card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); padding: 20px; }
-.empty-card { text-align: center; }
-/* Filet doré éditorial en tête des cartes d'état et d'information. */
-.empty-card::before, .community-card::before, .youtube-card::before, .support-bot-card::before, .support-help-card::before { content: ''; display: block; width: 36px; height: 2px; background: var(--gold); margin: 0 auto 14px; }
-.empty-card h3, .community-card h3, .about-card h3 { margin: 0; font-size: 19px; }
-.empty-card p, .community-card p, .about-card p { color: var(--muted); line-height: 1.55; }
-.empty-card .secondary-button, .community-card .primary-button { margin-top: 8px; }
-.community-card { text-align: center; }
-.community-card .primary-button { display: inline-block; }
-.about-card { display: grid; grid-template-columns: 92px 1fr; gap: 18px; }
-.about-card img { width: 92px; height: 92px; border-radius: 20px; object-fit: cover; border: 2px solid #334155; }
-.bottom-nav { position: fixed; z-index: 20; left: 50%; bottom: 10px; transform: translateX(-50%); width: min(560px, calc(100% - 40px)); display: grid; grid-template-columns: repeat(5,1fr); padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: rgba(17,24,39,.92); box-shadow: 0 8px 24px rgba(0,0,0,.28); backdrop-filter: blur(16px); }
-.nav-button { border: 0; background: transparent; color: var(--muted); border-radius: 10px; padding: 6px 4px; cursor: pointer; }
-.nav-button span, .nav-button small { display: block; }
-.nav-button span { font-size: 15px; line-height: 1; }
-.nav-button small { margin-top: 2px; font-size: 9px; }
-.nav-button.active { background: #1d293b; color: #f8fafc; }
-.feed-list { display: grid; gap: 12px; }
-.post-card { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); padding: 20px; }
-.post-media { display: block; width: 100%; max-height: 480px; object-fit: contain; border-radius: 14px; background: #0b1220; }
-.post-photo { object-fit: cover; }
-.post-audio { width: 100%; margin: 10px 0; }
-/* Le média disponible domine la carte éditoriale : pleine largeur, bords à vif. */
-.editorial-card .post-media { width: calc(100% + 40px); margin: 0 -20px 4px; max-height: 340px; border-radius: 0; }
-.editorial-card { cursor: pointer; }
-.post-meta-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.post-category { color: var(--gold); font-size: 10px; font-weight: 800; letter-spacing: .13em; }
-.post-headline { margin: 0 0 8px; font-size: 19px; line-height: 1.25; }
-.post-standfirst { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.post-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
-.post-author { color: var(--muted); font-size: 11px; font-weight: 700; }
-.post-read { padding: 9px 12px; font-size: 12px; }
-.reader-overlay { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; }
-.reader-backdrop { position: absolute; inset: 0; background: rgba(5,8,14,.72); }
-.reader-panel { position: relative; width: min(720px, 100%); margin: 0 auto; height: 100%; overflow-y: auto; padding: 14px 18px 110px; box-sizing: border-box; }
-.reader-close { margin-bottom: 12px; }
-.reader-card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); padding: 20px; }
-.reader-card h2 { margin: 0 0 8px; font-size: 26px; line-height: 1.15; }
-.reader-meta { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; margin-bottom: 14px; }
-.reader-avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; border: 1px solid var(--gold); }
-.reader-body { color: #e2e8f0; font-family: var(--font-display); font-size: 16.5px; line-height: 1.7; margin: 16px 0; }
-.reader-body p { margin: 0 0 12px; }
-.reader-card .post-media, .reader-card .post-audio { margin: 14px 0; }
-.reader-support { display: flex; align-items: center; gap: 12px; border: 1px solid #3b4658; border-radius: 16px; background: var(--panel-2); padding: 14px; margin: 16px 0; }
-.reader-support p { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.reader-support .primary-button { flex: 0 0 auto; margin-left: auto; padding: 10px 14px; font-size: 13px; }
-.reader-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.channel-handle { color: var(--gold) !important; }
-.youtube-card, .support-bot-card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); padding: 20px; text-align: center; margin-bottom: 14px; }
-.youtube-icon { display: block; font-size: 38px; margin-bottom: 12px; }
-.youtube-card h3, .support-bot-card h3 { margin: 0 0 12px; font-size: 19px; }
-.youtube-card p, .support-bot-card p { color: var(--muted); line-height: 1.55; }
-.youtube-card .secondary-button { margin-top: 8px; }
-.support-bot-card .primary-button { display: inline-block; margin-top: 8px; }
-.home-help { margin: 22px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
-.support-help-card { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--panel); padding: 20px; margin-bottom: 14px; text-align: center; }
-.support-icon { font-size: 38px; margin-bottom: 10px; }
-.support-form { display: grid; gap: 9px; text-align: left; margin-top: 18px; }
-.support-form label { font-size: 12px; font-weight: 800; color: #cbd5e1; }
-.support-form textarea, .support-form select { width: 100%; resize: vertical; border: 1px solid var(--border); border-radius: 13px; background: #0b1220; color: #f8fafc; padding: 12px; line-height: 1.5; box-sizing: border-box; font-family: inherit; }
-.support-form select { resize: none; }
-.form-status { min-height: 20px; color: var(--gold); font-size: 12px; }
-.support-alt { color: var(--muted); font-size: 12px; margin: 16px 0 0; }
-.support-alt .link-button { padding: 0; }
-footer { padding-top: 32px; text-align: center; color: var(--muted); font-size: 12px; }
-.footer-muted { margin-top: 5px; color: var(--muted); }
-@media (max-width: 560px) { .star-options { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 460px) {
-  .app { padding-left: 14px; padding-right: 14px; }
-  .grid { grid-template-columns: 1fr; }
-  .about-card { grid-template-columns: 1fr; text-align: center; }
-  .about-card img { margin: 0 auto; }
-  .gateway-card { padding: 30px 20px 24px; }
-  .nav-button small { font-size: 9px; }
-  .reader-support { flex-wrap: wrap; }
-  .reader-support .primary-button { width: 100%; margin-left: 0; }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+button:focus-visible, a:focus-visible { outline: 2px solid #972a0a; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }
+
+/* — Wordmark Pesce Studio (masthead éditorial, SVG inline). */
+.masthead-title { font-family: 'Newsreader', Georgia, serif; font-size: 26px; font-weight: 700; fill: #121316; letter-spacing: -0.5px; }
+.masthead-sub { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 8.5px; font-weight: 600; fill: #b84221; letter-spacing: 2px; text-transform: uppercase; }
+.masthead-rule { stroke: #b84221; stroke-width: 1.5; }
+
+/* — Filtres éditoriaux : l'onglet actif porte le filet terracotta du design. */
+.filter-btn { position: relative; }
+.filter-btn.filter-active { color: #972a0a; }
+.filter-btn.filter-active::after { content: ''; display: block; width: 100%; height: 2px; background: #972a0a; margin-top: 2px; }
+
+/* — Rubriques de la une : l'état actif inverse la surface (design Stitch). */
+.rubric-btn { border: 0; cursor: pointer; }
+.rubric-btn.rubric-active { background: #30312e; color: #f2f0ed; }
+.rubric-btn:not(.rubric-active) { background: #efeeea; color: #58413c; }
+.rubric-btn:not(.rubric-active):hover { background: #eae8e4; }
+
+/* — Porte Telegram (navigateur hors Telegram) : carte du masthead. */
+.gateway-card { border: 1px solid #e0bfb7; }
+.telegram-button { display: block; width: 100%; padding: 14px 18px; border-radius: 12px; text-decoration: none; font-weight: 700; background: #972a0a; color: #ffffff; }
+.telegram-button:hover { background: #b84221; }
+
+/* — Lecteur : réglages du corps éditorial rendus en JS. */
+.reader-body p { margin: 0 0 1rem; }
+.reader-body p:last-child { margin-bottom: 0; }
+
+/* — Formulaires (assistance, studio) : champs dans la langue visuelle du design. */
+.editorial-input { width: 100%; border: 1px solid #e0bfb7; border-radius: 0.5rem; background: #ffffff; color: #1b1c1a; padding: 12px; line-height: 1.5; box-sizing: border-box; font-family: inherit; font-size: 0.875rem; resize: vertical; }
+.editorial-input:focus { outline: 2px solid #972a0a; outline-offset: 0; border-color: transparent; }
+select.editorial-input { resize: none; }
+.form-status { min-height: 20px; color: #b84221; font-size: 12px; font-weight: 500; }
