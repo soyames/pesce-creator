@@ -3,6 +3,7 @@
 import { createSupportTicket, deleteSupportSession, getSupportSession, markUpdateProcessed, pruneWebhookUpdates, setSupportSession, upsertChannelPost, upsertPayment } from '../lib/db.js';
 import { creatorTelegramUserIds, isCreatorTelegramUser } from '../lib/telegram-auth.js';
 import { newTicketId } from '../lib/tickets.js';
+import { youtubeIdOf } from '../lib/youtube.js';
 import { CHANNEL_USERNAME, MINI_APP_URL, STUDIO_URL, SUPPORT_URL } from '../lib/config.js';
 
 let webhookSecretWarned = false;
@@ -127,7 +128,10 @@ export default async function handler(req, res) {
 
 function normalize(message) {
   const mediaInfo = media(message);
-  const type = mediaInfo?.contentType || (message.text ? 'text' : 'other');
+  const text = message.text || message.caption || '';
+  // Une dépêche contenant un lien YouTube est une référence vidéo (hébergement YouTube) :
+  // le Mini App la présente en carte vidéo avec miniature dérivée de l'identifiant.
+  const type = mediaInfo?.contentType || (text && youtubeIdOf(text) ? 'video' : (message.text ? 'text' : 'other'));
   const id = message.message_id;
   return {
     id: `${message.chat?.id || 'channel'}_${id}`,
@@ -136,7 +140,7 @@ function normalize(message) {
     channelUsername: message.chat?.username || CHANNEL_USERNAME,
     messageId: id,
     contentType: type,
-    text: message.text || message.caption || '',
+    text,
     telegramUrl: message.chat?.username ? `https://t.me/${message.chat.username}/${id}` : null,
     mediaFileId: mediaInfo?.fileId || null,
     mediaMimeType: mediaInfo?.mimeType || null,
@@ -159,7 +163,14 @@ function media(message) {
   if (message.audio) return { contentType: 'audio', fileId: message.audio.file_id, duration: message.audio.duration, mimeType: message.audio.mime_type || 'audio/mpeg', fileName: message.audio.file_name || null };
   if (message.voice) return { contentType: 'audio', fileId: message.voice.file_id, duration: message.voice.duration, mimeType: message.voice.mime_type || 'audio/ogg' };
   if (message.video) return { contentType: 'video', fileId: message.video.file_id, duration: message.video.duration, width: message.video.width, height: message.video.height, mimeType: message.video.mime_type || 'video/mp4', thumbnailFileId: message.video.thumbnail?.file_id || null };
-  if (message.document) return { contentType: 'document', fileId: message.document.file_id, mimeType: message.document.mime_type || null, fileName: message.document.file_name || null };
+  if (message.document) {
+    // Pont audio : un document dont le type MIME est audio/* est traité comme un audio
+    // (le studio publie les enregistrements ainsi ; le fichier reste hébergé par Telegram).
+    if (String(message.document.mime_type || '').startsWith('audio/')) {
+      return { contentType: 'audio', fileId: message.document.file_id, mimeType: message.document.mime_type, fileName: message.document.file_name || null };
+    }
+    return { contentType: 'document', fileId: message.document.file_id, mimeType: message.document.mime_type || null, fileName: message.document.file_name || null };
+  }
   return null;
 }
 

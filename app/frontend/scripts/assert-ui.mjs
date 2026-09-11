@@ -50,6 +50,7 @@ const ROUTES = [
       ['bouton primaire terracotta', `getComputedStyle(document.querySelector('#telegramGate .telegram-button')).backgroundColor`, RGB.primary],
       ['lien canal présent', `document.querySelector('#telegramGate [data-identity-href="channelUrl"]') !== null`, true],
       ['lien « Connexion » discret vers /studio', `document.querySelector('#telegramGate a[href="/studio"]') !== null`, true],
+      ['favicon Pesce Studio présent', `document.querySelector('link[rel="icon"]')?.getAttribute('href') === '/assets/profilePesce.png'`, true],
     ],
   },
   {
@@ -97,6 +98,7 @@ const ROUTES = [
       ['liste vidéo filtrée', `document.getElementById('publicationFeed').textContent.includes('Porto-Novo')`, true],
       ['cadre vidéo avec bouton lecture', `!!document.querySelector('#publicationFeed .video-frame[data-video-src]')`, true],
       ['chaînes YouTube/Telegram affichées', `document.getElementById('publicationFeed').textContent.includes('Visionner sur YouTube') && document.getElementById('publicationFeed').textContent.includes('Diffuser sur Telegram')`, true],
+      ['vidéo YouTube présentée en carte (miniature dérivée)', `!!document.querySelector('#publicationFeed .video-frame[data-youtube-src]') && !!document.querySelector('#publicationFeed img[src*="i.ytimg.com"]')`, true],
     ],
   },
   {
@@ -206,6 +208,7 @@ const ROUTES = [
       ['masthead du bureau privé', `document.getElementById('studioLogin').textContent.includes('Bureau Privé')`, true],
       ['aucune donnée privée affichée', `!document.getElementById('studioLogin').textContent.includes('Brouillon') && !document.getElementById('studioLogin').textContent.includes('Ticket')`, true],
       ['aucun message de configuration visible', `!document.getElementById('studioLogin').textContent.includes('GOOGLE_OAUTH_CLIENT_ID') && !document.getElementById('studioLogin').textContent.includes('Vercel')`, true],
+      ['favicon Pesce Studio présent', `document.querySelector('link[rel="icon"]')?.getAttribute('href') === '/assets/profilePesce.png'`, true],
       ['retour au journal public', `!!document.querySelector('#studioLogin a[href="/"]')`, true],
       ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
     ],
@@ -233,6 +236,100 @@ const ROUTES = [
       ['session affichée', `document.getElementById('webSessionEmail').textContent.includes('pescestudio8@gmail.com')`, true],
       ['déconnexion présente', `!!document.getElementById('webLogout')`, true],
       ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
+    ],
+  },
+  {
+    name: 'studio-web-media', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, widths: [1280],
+    readyExpr: `(function () {
+      if (!window.__mediaFlow) {
+        window.__mediaFlow = 'started';
+        setTimeout(function () {
+          var rediger = document.querySelector('[data-web-tab="rediger"]');
+          if (rediger) rediger.click();
+          setTimeout(function () {
+            var add = document.getElementById('mediaAddButton');
+            if (add) add.click();
+            setTimeout(function () {
+              var pick = document.getElementById('mediaChannelPick');
+              if (pick) pick.click();
+              setTimeout(function () {
+                var item = document.querySelector('.media-pick');
+                if (item) item.click();
+                setTimeout(function () {
+                  var caption = document.querySelector('#articleMediaList input[id^="img-caption-"]');
+                  var credit = document.querySelector('#articleMediaList input[id^="img-credit-"]');
+                  var title = document.getElementById('articleTitle');
+                  var text = document.getElementById('publishText');
+                  if (caption) { caption.value = 'La photo du canal'; caption.dispatchEvent(new Event('input', { bubbles: true })); }
+                  if (credit) { credit.value = 'Pesce Hounyo'; credit.dispatchEvent(new Event('input', { bubbles: true })); }
+                  if (title) { title.value = 'Article illustré de test'; title.dispatchEvent(new Event('input', { bubbles: true })); }
+                  if (text) { text.value = 'Premier paragraphe de l\\'article illustré.'; text.dispatchEvent(new Event('input', { bubbles: true })); }
+                  var publish = document.getElementById('publishSubmit');
+                  if (publish) publish.click();
+                }, 600);
+              }, 400);
+            }, 400);
+          }, 500);
+        }, 600);
+        return false;
+      }
+      return window.__previewLastPublish && window.__previewLastPublish.action === 'article_publish';
+    })()`,
+    asserts: [
+      ['flux média : une image transmise à la publication', `window.__previewLastPublish && Array.isArray(window.__previewLastPublish.images) && window.__previewLastPublish.images.length === 1 && window.__previewLastPublish.images[0].src === '/file/preview-canal.jpg'`, true],
+      ['légende et crédit transmis', `window.__previewLastPublish.images[0].caption === 'La photo du canal' && window.__previewLastPublish.images[0].credit === 'Pesce Hounyo'`, true],
+      ['placement couverture transmis', `window.__previewLastPublish.images[0].placement === 'cover'`, true],
+      ['titre transmis', `window.__previewLastPublish.title === 'Article illustré de test'`, true],
+    ],
+  },
+  {
+    name: 'studio-web-video', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, widths: [1280],
+    readyExpr: `(function () {
+      if (!window.__videoFlow) {
+        window.__videoFlow = 'started';
+        setTimeout(function () {
+          var tab = document.querySelector('[data-web-tab="videos"]');
+          if (tab) tab.click();
+          setTimeout(function () {
+            var title = document.getElementById('videoTitle');
+            var url = document.getElementById('videoUrl');
+            if (title) { title.value = 'Archives de Porto-Novo'; title.dispatchEvent(new Event('input', { bubbles: true })); }
+            if (url) { url.value = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'; url.dispatchEvent(new Event('input', { bubbles: true })); }
+            var publish = document.getElementById('videoPublish');
+            if (publish) publish.click();
+          }, 400);
+        }, 500);
+        return false;
+      }
+      return window.__previewLastPublish && window.__previewLastPublish.action === 'video_publish';
+    })()`,
+    asserts: [
+      ['flux vidéo : publication YouTube transmise', `window.__previewLastPublish.title === 'Archives de Porto-Novo' && /youtube\\.com\\/watch\\?v=[A-Za-z0-9_-]{11}/.test(window.__previewLastPublish.youtubeUrl)`, true],
+      ['composeur avec aperçu miniature (élément présent)', `!!document.getElementById('videoPreview') && !!document.getElementById('videoPreviewImg')`, true],
+    ],
+  },
+  {
+    name: 'studio-web-audio', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, widths: [1280],
+    readyExpr: `(function () {
+      if (!window.__audioFlow) {
+        window.__audioFlow = 'started';
+        setTimeout(function () {
+          var tab = document.querySelector('[data-web-tab="audios"]');
+          if (tab) tab.click();
+          setTimeout(function () {
+            var title = document.getElementById('audioTitle');
+            if (title) { title.value = 'Note de terrain'; title.dispatchEvent(new Event('input', { bubbles: true })); }
+            var publish = document.getElementById('audioPublish');
+            if (publish) publish.click();
+          }, 400);
+        }, 500);
+        return false;
+      }
+      return document.getElementById('audioStatus') && document.getElementById('audioStatus').textContent.includes('requis');
+    })()`,
+    asserts: [
+      ['composeur audio présent (enregistrer / importer)', `!!document.getElementById('recordButton') && !!document.getElementById('audioImportButton')`, true],
+      ['publication sans enregistrement refusée avec explication', `document.getElementById('audioStatus').textContent.includes('requis')`, true],
     ],
   },
   {

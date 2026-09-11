@@ -70,6 +70,12 @@ const FIXTURE_POSTS = [
     telegramUrl: `${CHANNEL_URL}/94`,
     publishedAt: iso(-120 * 3600e3), updatedAt: iso(-120 * 3600e3),
   },
+  {
+    id: 'post-8', source: 'telegram', contentType: 'video', messageId: 93,
+    text: 'Dans les archives oubliées de Porto-Novo : secrets d’un royaume sous tutelle\n\nPesce Hounyo a obtenu un accès exceptionnel aux malles documentaires inexplorées de l’ancienne colonie du Dahomey.\n\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    telegramUrl: `${CHANNEL_URL}/93`,
+    publishedAt: iso(-150 * 3600e3), updatedAt: iso(-150 * 3600e3),
+  },
 ].map((post) => {
   const enriched = { ...post };
   if (post.mediaFileId) enriched.mediaUrl = `./api/media?file_id=${post.mediaFileId}&token=preview`;
@@ -238,7 +244,15 @@ window.__PESCE_WEB_PREVIEW__ = true;
       return Promise.resolve(json(400, { message: 'Action inconnue.' }));
     }
     if (url.indexOf('/api/studio') !== -1) {
-      if (init && init.method === 'POST') return Promise.resolve(json(200, { ok: true }));
+      if (init && init.method === 'POST') {
+        try {
+          var actionBody = JSON.parse(init.body || '{}');
+          if (['article_publish', 'video_publish', 'video_update', 'audio_publish'].includes(actionBody.action)) window.__previewLastPublish = actionBody;
+          if (actionBody.action === 'article_image_upload') return Promise.resolve(json(200, { ok: true, src: '/file/preview-image.jpg', url: 'https://telegra.ph/file/preview-image.jpg' }));
+          if (actionBody.action === 'article_image_from_channel') return Promise.resolve(json(200, { ok: true, src: '/file/preview-canal.jpg', url: 'https://telegra.ph/file/preview-canal.jpg' }));
+        } catch (error) { /* corps illisible : ok simple */ }
+        return Promise.resolve(json(200, { ok: true }));
+      }
       return Promise.resolve(json(200, ${overview}));
     }
     if (url.indexOf('/api/content') !== -1) {

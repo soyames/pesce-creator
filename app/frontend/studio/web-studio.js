@@ -14,6 +14,7 @@
   let formatLabel = 'Grande Enquête';
   let editingLiveId = null;
   let sessionEmail = '';
+  let articleImages = []; // images d'article (hébergées par Telegraph), état du pupitre
 
   const FORMATS = [
     { label: 'Grande Enquête', placeholder: 'Inscrire un titre percutant…' },
@@ -151,8 +152,8 @@
     rediger: renderRediger,
     brouillons: renderBrouillons,
     ecrits: () => renderPostList('text', 'Écrits'),
-    videos: () => renderPostList('video', 'Vidéos'),
-    audios: () => renderPostList('audio', 'Audios'),
+    videos: renderVideos,
+    audios: renderAudios,
     photos: () => renderPostList('photo', 'Photos'),
     telegraph: renderTelegraph,
     directs: renderDirects,
@@ -296,6 +297,20 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Avec un titre : votre texte devient un article Telegraph (telegra.ph), lu en Instant View, publié avec le bouton ⭐ Soutenir. Sans titre : publication texte simple.</p>
 </div>
 <div class="flex flex-col gap-space-xs">
+<label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase">Média de l'article</label>
+<div id="articleMediaList" class="flex flex-col gap-space-sm"></div>
+<button id="mediaAddButton" class="self-start px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button"><span class="material-symbols-outlined text-[18px] align-middle">add_photo_alternate</span> Ajouter un média</button>
+<div id="mediaAddPanel" class="hidden w-full bg-surface-container-low rounded-lg p-space-md flex flex-col gap-space-sm">
+<div class="flex items-center gap-space-sm flex-wrap">
+<button id="mediaChannelPick" class="px-space-md py-2.5 border border-outline-variant rounded-lg bg-surface-container-lowest font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button">Choisir une photo du canal</button>
+<button id="mediaUploadPick" class="px-space-md py-2.5 border border-outline-variant rounded-lg bg-surface-container-lowest font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button">Téléverser une image</button>
+<input id="mediaFileInput" class="hidden" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+</div>
+<div id="mediaPickerGrid" class="hidden grid grid-cols-3 md:grid-cols-4 gap-space-sm"></div>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Les images sont hébergées par Telegraph et apparaissent dans l'article publié (couverture en tête, images insérées après le paragraphe choisi).</p>
+</div>
+</div>
+<div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="publishText">Corps du tapuscrit</label>
 <textarea id="publishText" class="editorial-input" rows="16" maxlength="4096" placeholder="Écrivez votre publication…" required></textarea>
 <div class="flex items-center justify-between pt-space-xs text-on-surface-variant font-meta-detail text-meta-detail">
@@ -343,19 +358,162 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
     const text = document.getElementById('publishText')?.value.trim() || '';
     if (!preview || !badge) return;
     const paragraphs = text.split('\n\n').map((paragraph) => paragraph.trim()).filter(Boolean);
+    const images = collectArticleImages();
+    const cover = images.find((image) => image.placement === 'cover');
+    const inline = images.filter((image) => image.placement !== 'cover');
+    const figureHtml = (image) => `<figure class="my-space-sm"><img class="w-full rounded-lg" src="${escapeAttribute(image.url)}" alt="${escapeAttribute(image.caption || 'Image d\'article')}">${(image.caption || image.credit) ? `<figcaption class="font-meta-detail text-meta-detail text-on-surface-variant mt-1 text-center italic">${escapeHtml([image.caption, image.credit].filter(Boolean).join(' — '))}</figcaption>` : ''}</figure>`;
     if (title) {
       badge.textContent = 'Format Telegraph / Instant View';
+      const bodyParts = [];
+      paragraphs.forEach((paragraph, index) => {
+        const html = `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph.slice(0, 400))}</p>`;
+        if (index === 0) bodyParts.push(`<p class="font-editorial-standfirst text-editorial-standfirst italic text-tertiary">${escapeHtml(paragraph.slice(0, 240))}</p>`);
+        else bodyParts.push(html);
+        for (const image of inline.filter((item) => item.afterParagraph === index + 1)) bodyParts.push(figureHtml(image));
+      });
+      for (const image of inline.filter((item) => item.afterParagraph > paragraphs.length)) bodyParts.push(figureHtml(image));
       preview.innerHTML = `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">${escapeHtml(formatLabel.toUpperCase())}</span>
 <h1 class="font-headline-md text-headline-md text-on-surface">${escapeHtml(title)}</h1>
-${paragraphs[0] ? `<p class="font-editorial-standfirst text-editorial-standfirst italic text-tertiary">${escapeHtml(paragraphs[0].slice(0, 240))}</p>` : ''}
-${paragraphs.slice(1).map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph.slice(0, 400))}</p>`).join('')}
+${cover ? figureHtml(cover) : ''}
+${bodyParts.join('')}
 <p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Publié ensuite sur le canal avec le bouton ⭐ Soutenir.</p>`;
     } else {
       badge.textContent = 'Dépêche Telegram (texte simple)';
       preview.innerHTML = paragraphs.length
-        ? `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">DÉPÊCHE TELEGRAM</span>${paragraphs.map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph.slice(0, 400))}</p>`).join('')}<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Envoyée telle quelle sur le canal.</p>`
+        ? `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">DÉPÊCHE TELEGRAM</span>${paragraphs.map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph.slice(0, 400))}</p>`).join('')}${images.length ? '<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Les images nécessitent un titre (article Telegraph).</p>' : '<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Envoyée telle quelle sur le canal.</p>'}`
         : '<p class="font-body-md text-body-md text-on-surface-variant">Commencez à écrire : l\'épreuve apparaîtra ici.</p>';
     }
+  }
+
+  // — MÉDIA DE L'ARTICLE : hébergement Telegraph (couverture + images insérées).
+  function collectArticleImages() {
+    return articleImages.map((image) => {
+      const caption = document.getElementById(`img-caption-${image.id}`)?.value ?? image.caption;
+      const credit = document.getElementById(`img-credit-${image.id}`)?.value ?? image.credit;
+      const after = document.getElementById(`img-after-${image.id}`)?.value;
+      return {
+        src: image.src,
+        url: image.url,
+        caption: String(caption || '').trim(),
+        credit: String(credit || '').trim(),
+        placement: image.placement,
+        afterParagraph: Math.max(1, Math.min(Number(after) || image.afterParagraph || 1, 99)),
+      };
+    });
+  }
+
+  function renderMediaList() {
+    const list = document.getElementById('articleMediaList');
+    if (!list) return;
+    list.innerHTML = articleImages.map((image) => `<article class="bg-surface-container-low rounded-lg p-space-sm flex flex-col gap-space-xs" data-media-id="${image.id}">
+<div class="flex items-center gap-space-sm">
+<img class="w-16 h-16 rounded object-cover bg-surface-container-high shrink-0" src="${escapeAttribute(image.url)}" alt="Image d'article">
+<div class="flex flex-col gap-1 min-w-0 flex-1">
+<input id="img-caption-${image.id}" class="editorial-input" type="text" maxlength="1000" placeholder="Légende de l'image" value="${escapeAttribute(image.caption)}">
+<input id="img-credit-${image.id}" class="editorial-input" type="text" maxlength="300" placeholder="Crédit / source (ex. Pesce Hounyo)" value="${escapeAttribute(image.credit)}">
+</div>
+<button class="media-remove shrink-0 px-space-sm py-2 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-media-remove="${image.id}">Retirer</button>
+</div>
+<div class="flex items-center gap-space-sm flex-wrap">
+<button class="media-cover px-space-sm py-2 rounded-lg font-kicker-label text-kicker-label uppercase ${image.placement === 'cover' ? 'bg-on-surface text-surface' : 'bg-surface-container-high text-on-surface-variant'}" type="button" data-media-cover="${image.id}">Image de couverture</button>
+<button class="media-inline px-space-sm py-2 rounded-lg font-kicker-label text-kicker-label uppercase ${image.placement !== 'cover' ? 'bg-on-surface text-surface' : 'bg-surface-container-high text-on-surface-variant'}" type="button" data-media-inline="${image.id}">Insérer dans l'article</button>
+${image.placement !== 'cover' ? `<span class="flex items-center gap-1 font-meta-detail text-meta-detail text-on-surface-variant"><label class="font-kicker-label text-kicker-label uppercase" for="img-after-${image.id}">Après le paragraphe</label><input id="img-after-${image.id}" class="editorial-input w-16 text-center" type="number" min="1" max="99" value="${image.afterParagraph}"></span>` : ''}
+</div>
+</article>`).join('');
+  }
+
+  function bindMediaEvents() {
+    const panel = document.getElementById('mediaAddPanel');
+    const fileInput = document.getElementById('mediaFileInput');
+    const grid = document.getElementById('mediaPickerGrid');
+    document.getElementById('mediaAddButton')?.addEventListener('click', () => panel?.classList.toggle('hidden'));
+    document.getElementById('mediaChannelPick')?.addEventListener('click', () => {
+      grid?.classList.toggle('hidden');
+      if (grid && !grid.dataset.filled) {
+        grid.dataset.filled = '1';
+        const photos = posts.filter((post) => post.contentType === 'photo' && post.mediaFileId).slice(0, 12);
+        grid.innerHTML = photos.length
+          ? photos.map((post) => {
+            const caption = (post.text || '').split('\n').map((line) => line.trim()).find(Boolean) || '';
+            return `<button class="media-pick bg-surface-container-lowest rounded-lg overflow-hidden flex flex-col shadow-sm" type="button" data-file-id="${escapeAttribute(post.mediaFileId)}" data-caption="${escapeAttribute(caption.slice(0, 120))}">
+<img class="w-full aspect-square object-cover" src="${escapeAttribute(post.mediaUrl || '')}" alt="" loading="lazy">
+<span class="p-1 font-meta-detail text-[0.625rem] text-on-surface-variant line-clamp-2 text-left">${escapeHtml(caption.slice(0, 90) || 'Photo du canal')}</span>
+</button>`;
+          }).join('')
+          : '<p class="col-span-3 font-body-sm text-body-sm text-on-surface-variant">Aucune photo sur le canal pour le moment — téléversez une image.</p>';
+      }
+    });
+    document.getElementById('mediaUploadPick')?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (file) uploadArticleImage(file);
+      fileInput.value = '';
+    });
+    grid?.addEventListener('click', (event) => {
+      const pick = event.target.closest('.media-pick');
+      if (!pick) return;
+      const fileId = pick.dataset.fileId;
+      if (fileId) addImageFromChannel(fileId, pick.dataset.caption || '');
+    });
+    document.getElementById('articleMediaList')?.addEventListener('click', (event) => {
+      const remove = event.target.closest('[data-media-remove]');
+      const cover = event.target.closest('[data-media-cover]');
+      const inline = event.target.closest('[data-media-inline]');
+      if (remove) {
+        articleImages = articleImages.filter((image) => image.id !== remove.dataset.mediaRemove);
+        renderMediaList(); refreshBat();
+      }
+      if (cover) {
+        articleImages.forEach((image) => { image.placement = image.id === cover.dataset.mediaCover ? 'cover' : 'inline'; });
+        renderMediaList(); refreshBat();
+      }
+      if (inline) {
+        articleImages.forEach((image) => { if (image.id === inline.dataset.mediaInline) image.placement = 'inline'; });
+        renderMediaList(); refreshBat();
+      }
+    });
+    document.getElementById('articleMediaList')?.addEventListener('input', (event) => {
+      const match = (event.target.id || '').match(/^img-after-(.+)$/);
+      if (match) {
+        const image = articleImages.find((item) => item.id === match[1]);
+        if (image) image.afterParagraph = Math.max(1, Math.min(Number(event.target.value) || 1, 99));
+      }
+      refreshBat();
+    });
+    renderMediaList();
+  }
+
+  async function uploadArticleImage(file) {
+    if (file.size > 4 * 1024 * 1024) { alert('Image trop volumineuse (4 Mo maximum).'); return; }
+    const status = document.getElementById('publishStatus');
+    if (status) status.textContent = 'Téléversement vers Telegraph…';
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const response = await studioAction({ action: 'article_image_upload', data: String(reader.result), filename: file.name });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) { showLogin(); return; }
+        if (!response.ok) throw new Error(data.message || 'Téléversement impossible.');
+        articleImages.push({ id: String(Date.now()) + '-' + articleImages.length, src: data.src, url: data.url, caption: '', credit: '', placement: articleImages.length === 0 ? 'cover' : 'inline', afterParagraph: 1 });
+        renderMediaList(); refreshBat();
+        if (status) status.textContent = 'Image téléversée vers Telegraph.';
+      } catch (error) { if (status) status.textContent = error.message || 'Téléversement impossible.'; }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function addImageFromChannel(fileId, caption) {
+    const status = document.getElementById('publishStatus');
+    if (status) status.textContent = 'Transfert de la photo vers Telegraph…';
+    try {
+      const response = await studioAction({ action: 'article_image_from_channel', fileId });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { showLogin(); return; }
+      if (!response.ok) throw new Error(data.message || 'Transfert impossible.');
+      articleImages.push({ id: String(Date.now()) + '-' + articleImages.length, src: data.src, url: data.url, caption: caption || '', credit: '', placement: articleImages.length === 0 ? 'cover' : 'inline', afterParagraph: 1 });
+      renderMediaList(); refreshBat();
+      if (status) status.textContent = 'Photo transférée vers Telegraph.';
+    } catch (error) { if (status) status.textContent = error.message || 'Transfert impossible.'; }
   }
 
   // — BROUILLONS : système existant.
@@ -401,16 +559,24 @@ ${mediaUrl ? `<img class="w-full aspect-square object-cover" src="${escapeAttrib
 <span class="font-kicker-label text-[0.6875rem] text-primary uppercase">Photo</span>
 <p class="font-body-sm text-body-sm text-on-surface line-clamp-2">${escapeHtml(headline)}</p>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
+${post.mediaFileId ? `<button class="photo-insert self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-photo-insert="${escapeAttribute(post.mediaFileId)}" data-photo-caption="${escapeAttribute(headline.slice(0, 120))}">Insérer dans un article</button>` : ''}
 </div>
 </article>`;
     }
     if (type === 'video') {
+      const youtubeId = youtubeIdOf(post.text || '');
+      const frame = mediaUrl
+        ? `<video class="w-full" controls preload="metadata" src="${escapeAttribute(mediaUrl)}"${post.mediaThumbnailUrl ? ` poster="${escapeAttribute(post.mediaThumbnailUrl)}"` : ''}></video>`
+        : youtubeId
+          ? `<a href="https://www.youtube.com/watch?v=${escapeAttribute(youtubeId)}" target="_blank" rel="noopener" aria-label="Ouvrir la vidéo YouTube"><img class="w-full aspect-video object-cover" src="https://i.ytimg.com/vi/${escapeAttribute(youtubeId)}/hqdefault.jpg" alt="${escapeAttribute(headline)}" loading="lazy"></a>`
+          : '<div class="w-full aspect-video bg-inverse-surface"></div>';
       return `<article class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden flex flex-col">
-${mediaUrl ? `<video class="w-full" controls preload="metadata" src="${escapeAttribute(mediaUrl)}"${post.mediaThumbnailUrl ? ` poster="${escapeAttribute(post.mediaThumbnailUrl)}"` : ''}></video>` : '<div class="w-full aspect-video bg-inverse-surface"></div>'}
+${frame}
 <div class="p-space-md flex flex-col gap-1">
 <span class="font-kicker-label text-[0.6875rem] text-primary uppercase">Vidéo${post.mediaDuration ? ` · ${escapeHtml(formatDuration(post.mediaDuration))}` : ''}</span>
 <p class="font-body-sm text-body-sm text-on-surface line-clamp-2">${escapeHtml(headline)}</p>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
+${post.messageId ? `<button class="video-edit self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-video-edit="${escapeAttribute(post.id)}">Modifier</button>` : ''}
 </div>
 </article>`;
     }
@@ -437,6 +603,256 @@ ${mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribu
     const total = Math.round(Number(seconds) || 0);
     if (!total) return '';
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  }
+
+  // — VIDÉOS : YouTube reste l'hébergeur (V1). Le studio publie la référence validée,
+  // la miniature est dérivée de l'identifiant — aucun fichier vidéo n'est téléversé.
+  const youtubeIdOf = (value) => {
+    const source = String(value || '').trim();
+    const match = source.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+    return match ? match[1] : null;
+  };
+  let videoEditingMessageId = null;
+
+  function renderVideos() {
+    const items = posts.filter((post) => post.contentType === 'video');
+    return `
+<div class="flex items-center justify-between">
+<div><span class="font-kicker-label text-kicker-label text-primary uppercase">Canal officiel &amp; YouTube</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Vidéos</h1></div>
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${items.length} vidéo${items.length > 1 ? 's' : ''}</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Ajouter une vidéo</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">YouTube héberge la vidéo : collez son lien, la miniature est dérivée automatiquement et la publication part sur le canal avec le bouton ⭐ Soutenir.</p>
+<form id="videoForm" class="flex flex-col gap-space-md">
+<input id="videoTitle" class="editorial-input" type="text" maxlength="256" placeholder="Titre de la vidéo" required>
+<textarea id="videoDescription" class="editorial-input" rows="3" maxlength="4000" placeholder="Description (optionnelle)"></textarea>
+<input id="videoUrl" class="editorial-input" type="text" maxlength="512" placeholder="Lien YouTube (watch, youtu.be, shorts, embed…)">
+<div class="flex items-center gap-space-sm">
+<div id="videoPreview" class="hidden w-40 aspect-video rounded-lg overflow-hidden bg-inverse-surface"><img id="videoPreviewImg" class="w-full h-full object-cover" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Aperçu de la vidéo"></div>
+<p id="videoUrlStatus" class="font-meta-detail text-meta-detail text-on-surface-variant"></p>
+</div>
+<div class="flex flex-col sm:flex-row gap-space-sm">
+<button id="videoPublish" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Publier sur Telegram</button>
+<button id="videoDraft" class="sm:w-auto py-3 px-space-md border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Enregistrer l'ébauche</button>
+</div>
+<p id="videoStatus" class="form-status" aria-live="polite"></p>
+</form>
+</div>
+${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${items.map((post) => renderPostItem(post, 'video')).join('')}</div>` : '<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm text-center"><p class="font-body-sm text-body-sm text-on-surface-variant">Aucune vidéo pour le moment — ajoutez-en une ci-dessus.</p></div>'}
+`;
+  }
+
+  async function publishVideo() {
+    const title = document.getElementById('videoTitle')?.value.trim() || '';
+    const description = document.getElementById('videoDescription')?.value.trim() || '';
+    const youtubeUrl = document.getElementById('videoUrl')?.value.trim() || '';
+    const status = document.getElementById('videoStatus');
+    const button = document.getElementById('videoPublish');
+    if (!title || !youtubeIdOf(youtubeUrl)) { if (status) status.textContent = 'Le titre et un lien YouTube valide sont requis.'; return; }
+    button.disabled = true; button.textContent = 'Publication…';
+    try {
+      const response = await studioAction({ action: videoEditingMessageId ? 'video_update' : 'video_publish', title, description, youtubeUrl, ...(videoEditingMessageId ? { messageId: videoEditingMessageId } : {}) });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { showLogin(); return; }
+      if (!response.ok) throw new Error(data.message || 'Publication impossible.');
+      if (status) status.textContent = videoEditingMessageId ? 'Vidéo mise à jour sur le canal.' : 'Vidéo publiée sur le canal Telegram — le Mini App la présente en carte avec miniature et bouton ⭐ Soutenir.';
+      videoEditingMessageId = null;
+      document.getElementById('videoForm')?.reset();
+      document.getElementById('videoPreview')?.classList.add('hidden');
+      setTimeout(load, 900);
+    } catch (error) { if (status) status.textContent = error.message || 'Publication impossible.'; }
+    finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
+  }
+
+  function bindVideoComposer() {
+    const urlInput = document.getElementById('videoUrl');
+    const preview = document.getElementById('videoPreview');
+    const previewImg = document.getElementById('videoPreviewImg');
+    const urlStatus = document.getElementById('videoUrlStatus');
+    const form = document.getElementById('videoForm');
+    urlInput?.addEventListener('input', () => {
+      const id = youtubeIdOf(urlInput.value);
+      if (id && preview && previewImg) {
+        previewImg.src = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+        preview.classList.remove('hidden');
+        if (urlStatus) urlStatus.textContent = 'Lien YouTube valide';
+      } else {
+        preview?.classList.add('hidden');
+        if (urlStatus) urlStatus.textContent = urlInput.value ? 'Lien YouTube invalide' : '';
+      }
+    });
+    document.getElementById('videoPublish')?.addEventListener('click', publishVideo);
+    document.getElementById('videoDraft')?.addEventListener('click', async () => {
+      const title = document.getElementById('videoTitle')?.value.trim() || '';
+      const description = document.getElementById('videoDescription')?.value.trim() || '';
+      const youtubeUrl = document.getElementById('videoUrl')?.value.trim() || '';
+      const status = document.getElementById('videoStatus');
+      if (!title && !description && !youtubeUrl) { if (status) status.textContent = 'Rien à enregistrer.'; return; }
+      try {
+        const response = await studioAction({ action: 'draft', text: `[Vidéo]\n${title}\n\n${description}\n\n${youtubeUrl}` });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) { showLogin(); return; }
+        if (!response.ok) throw new Error(data.message || 'Impossible d’enregistrer l’ébauche.');
+        if (status) status.textContent = `Ébauche ${data.draftId} enregistrée (métadonnées de la vidéo).`;
+        form?.reset();
+      } catch (error) { if (status) status.textContent = error.message || 'Impossible d’enregistrer l’ébauche.'; }
+    });
+    document.querySelectorAll('.video-edit').forEach((button) => button.addEventListener('click', () => {
+      const post = posts.find((item) => item.id === button.dataset.videoEdit);
+      const formTitle = document.getElementById('videoTitle');
+      const formDescription = document.getElementById('videoDescription');
+      const formUrl = document.getElementById('videoUrl');
+      const status = document.getElementById('videoStatus');
+      if (!post || !formTitle) return;
+      videoEditingMessageId = post.messageId || null;
+      formTitle.value = (post.text || '').split('\n')[0]?.trim().slice(0, 256) || '';
+      formDescription.value = (post.text || '').split('\n').slice(1).filter((line) => !line.includes('youtu')).join(' ').trim().slice(0, 4000);
+      formUrl.value = (post.text || '').match(/(https?:\/\/(?:www\.)?youtu[^\s]+)/)?.[1] || '';
+      formUrl.dispatchEvent(new Event('input', { bubbles: true }));
+      if (status) status.textContent = 'Modification de la vidéo — publiez pour enregistrer sur le canal.';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }));
+  }
+
+  // — AUDIOS : enregistrement navigateur ou import, fichier hébergé par Telegram (canon),
+  // Neon ne garde que la référence ; le Mini App joue l'audio via /api/media.
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let recordTimerId = null;
+  let recordStartedAt = 0;
+  let audioDataUrl = null;
+  let audioFileName = 'note-vocale.webm';
+
+  function renderAudios() {
+    const items = posts.filter((post) => post.contentType === 'audio');
+    return `
+<div class="flex items-center justify-between">
+<div><span class="font-kicker-label text-kicker-label text-primary uppercase">Notes de terrain</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Audios</h1></div>
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${items.length} audio${items.length > 1 ? 's' : ''}</span>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Enregistrer un audio</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">L'enregistrement est hébergé par Telegram (aucun fichier dans Neon) et publié sur le canal avec le bouton ⭐ Soutenir — le Mini App le présente avec lecteur intégré.</p>
+<div class="flex items-center gap-space-sm">
+<button id="recordButton" class="px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg inline-flex items-center gap-2" type="button"><span class="material-symbols-outlined text-[18px]">mic</span> Enregistrer</button>
+<button id="stopButton" class="hidden px-space-md py-3 bg-error text-on-error font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary-container transition-colors rounded-lg inline-flex items-center gap-2" type="button"><span class="material-symbols-outlined text-[18px]">stop</span> Arrêter</button>
+<span id="recordTimer" class="font-meta-detail text-meta-detail text-on-surface-variant">0:00</span>
+<button id="audioImportButton" class="px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors inline-flex items-center gap-2" type="button"><span class="material-symbols-outlined text-[18px]">upload_file</span> Importer un audio</button>
+<input id="audioFileInput" class="hidden" type="file" accept="audio/*">
+</div>
+<audio id="recordPreview" class="w-full hidden" controls preload="metadata"></audio>
+<div class="flex flex-col gap-space-md">
+<input id="audioTitle" class="editorial-input" type="text" maxlength="256" placeholder="Titre de l'audio">
+<textarea id="audioDescription" class="editorial-input" rows="3" maxlength="4000" placeholder="Description / contexte de la note"></textarea>
+<input id="audioAuthor" class="editorial-input" type="text" maxlength="256" placeholder="Auteur / source (optionnel)">
+</div>
+<div class="flex flex-col sm:flex-row gap-space-sm">
+<button id="audioPublish" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Publier sur Telegram</button>
+<button id="audioDraft" class="sm:w-auto py-3 px-space-md border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Enregistrer l'ébauche</button>
+</div>
+<p id="audioStatus" class="form-status" aria-live="polite"></p>
+</div>
+${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${items.map((post) => renderPostItem(post, 'audio')).join('')}</div>` : '<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm text-center"><p class="font-body-sm text-body-sm text-on-surface-variant">Aucun audio pour le moment — enregistrez ou importez une note ci-dessus.</p></div>'}
+`;
+  }
+
+  function bindAudioComposer() {
+    const recordButton = document.getElementById('recordButton');
+    const stopButton = document.getElementById('stopButton');
+    const timer = document.getElementById('recordTimer');
+    const status = document.getElementById('audioStatus');
+    const preview = document.getElementById('recordPreview');
+    const fileInput = document.getElementById('audioFileInput');
+    recordButton?.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? { mimeType: 'audio/webm;codecs=opus' } : undefined;
+        mediaRecorder = new MediaRecorder(stream, options);
+        recordedChunks = [];
+        mediaRecorder.ondataavailable = (event) => { if (event.data.size) recordedChunks.push(event.data); };
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop());
+          const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+          audioFileName = (mediaRecorder.mimeType || '').includes('ogg') ? 'note-vocale.ogg' : 'note-vocale.webm';
+          if (preview) { preview.src = URL.createObjectURL(blob); preview.classList.remove('hidden'); }
+          const reader = new FileReader();
+          reader.onload = () => { audioDataUrl = String(reader.result); };
+          reader.readAsDataURL(blob);
+        };
+        mediaRecorder.start();
+        recordStartedAt = Date.now();
+        recordButton.classList.add('hidden');
+        stopButton?.classList.remove('hidden');
+        recordTimerId = setInterval(() => {
+          const seconds = Math.floor((Date.now() - recordStartedAt) / 1000);
+          if (timer) timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+        }, 1000);
+        if (status) status.textContent = 'Enregistrement en cours…';
+      } catch (error) {
+        if (status) status.textContent = 'Micro indisponible — utilisez « Importer un audio ».';
+      }
+    });
+    stopButton?.addEventListener('click', () => {
+      mediaRecorder?.stop();
+      clearInterval(recordTimerId);
+      recordButton?.classList.remove('hidden');
+      stopButton?.classList.add('hidden');
+      if (status) status.textContent = 'Enregistrement prêt — écoutez l\'aperçu puis publiez.';
+    });
+    document.getElementById('audioImportButton')?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      if (file.size > 3 * 1024 * 1024) { if (status) status.textContent = 'Fichier trop volumineux (3 Mo maximum).'; return; }
+      audioFileName = file.name || 'audio';
+      const reader = new FileReader();
+      reader.onload = () => {
+        audioDataUrl = String(reader.result);
+        if (preview) { preview.src = URL.createObjectURL(file); preview.classList.remove('hidden'); }
+        if (status) status.textContent = 'Audio importé — écoutez l\'aperçu puis publiez.';
+      };
+      reader.readAsDataURL(file);
+      fileInput.value = '';
+    });
+    document.getElementById('audioPublish')?.addEventListener('click', publishAudio);
+    document.getElementById('audioDraft')?.addEventListener('click', async () => {
+      const title = document.getElementById('audioTitle')?.value.trim() || '';
+      const description = document.getElementById('audioDescription')?.value.trim() || '';
+      if (!title && !description) { if (status) status.textContent = 'Rien à enregistrer.'; return; }
+      try {
+        const response = await studioAction({ action: 'draft', text: `[Audio]\n${title}\n\n${description}` });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) { showLogin(); return; }
+        if (!response.ok) throw new Error(data.message || 'Impossible d’enregistrer l’ébauche.');
+        if (status) status.textContent = `Ébauche ${data.draftId} enregistrée (métadonnées — l'enregistrement devra être re-téléversé avant publication).`;
+      } catch (error) { if (status) status.textContent = error.message || 'Impossible d’enregistrer l’ébauche.'; }
+    });
+  }
+
+  async function publishAudio() {
+    const title = document.getElementById('audioTitle')?.value.trim() || '';
+    const description = document.getElementById('audioDescription')?.value.trim() || '';
+    const author = document.getElementById('audioAuthor')?.value.trim() || '';
+    const status = document.getElementById('audioStatus');
+    const button = document.getElementById('audioPublish');
+    if (!title || !audioDataUrl) { if (status) status.textContent = 'Un enregistrement (ou un fichier importé) et un titre sont requis.'; return; }
+    button.disabled = true; button.textContent = 'Publication…';
+    try {
+      const response = await studioAction({ action: 'audio_publish', title, description, author, data: audioDataUrl, filename: audioFileName });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { showLogin(); return; }
+      if (!response.ok) throw new Error(data.message || 'Publication impossible.');
+      if (status) status.textContent = 'Audio publié sur le canal Telegram — le Mini App le présente avec lecteur intégré et bouton ⭐ Soutenir.';
+      audioDataUrl = null;
+      const preview = document.getElementById('recordPreview');
+      if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+      document.getElementById('audioTitle').value = '';
+      document.getElementById('audioDescription').value = '';
+      document.getElementById('audioAuthor').value = '';
+      setTimeout(load, 900);
+    } catch (error) { if (status) status.textContent = error.message || 'Publication impossible.'; }
+    finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
   }
 
   // — ARTICLES TELEGRAPH : capacité existante, terminologie corrigée.
@@ -582,15 +998,22 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
     const status = document.getElementById('publishStatus');
     const button = document.getElementById('publishSubmit');
     if (!text) return;
+    const images = collectArticleImages();
+    if (images.length > 0 && !title) {
+      if (status) status.textContent = 'Les images nécessitent un titre : ajoutez un titre pour publier un article Telegraph illustré.';
+      return;
+    }
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const response = await studioAction({ action: title ? 'article_publish' : 'publish', text, ...(title ? { title } : {}) });
+      const response = await studioAction({ action: title ? 'article_publish' : 'publish', text, ...(title ? { title, images } : {}) });
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) { showLogin(); return; }
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
       status.textContent = title
-        ? 'Article publié sur Telegraph et envoyé sur le canal avec le bouton ⭐ Soutenir.'
+        ? (images.length ? 'Article illustré publié sur Telegraph (images hébergées par Telegraph) et envoyé sur le canal avec le bouton ⭐ Soutenir.' : 'Article publié sur Telegraph et envoyé sur le canal avec le bouton ⭐ Soutenir.')
         : 'Publication envoyée sur le canal Telegram. Le bouton ⭐ Soutenir est ajouté automatiquement.';
+      articleImages = [];
+      renderMediaList();
       document.getElementById('publishForm')?.reset();
       refreshBat();
       setTimeout(load, 900);
@@ -599,7 +1022,7 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
       status.textContent = confirmed
         ? 'Publication partie sur le canal (confirmation reçue via la synchronisation).'
         : `Publication incertaine — vérifiez le canal Telegram avant de réessayer. (${error.message || 'erreur inconnue'})`;
-      if (confirmed) { document.getElementById('publishForm')?.reset(); setTimeout(load, 900); }
+      if (confirmed) { articleImages = []; renderMediaList(); document.getElementById('publishForm')?.reset(); setTimeout(load, 900); }
     }
     finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
   }
@@ -834,6 +1257,16 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
     }));
     document.getElementById('publishSubmit')?.addEventListener('click', publishFromStudio);
     document.getElementById('draftButton')?.addEventListener('click', saveDraft);
+    bindMediaEvents();
+    bindVideoComposer();
+    bindAudioComposer();
+    // Délégation du corps : « Insérer dans un article » depuis la Photothèque.
+    document.getElementById('webStudioBody')?.addEventListener('click', (event) => {
+      const photoInsert = event.target.closest('.photo-insert');
+      if (!photoInsert) return;
+      if (photoInsert.dataset.photoInsert) addImageFromChannel(photoInsert.dataset.photoInsert, photoInsert.dataset.photoCaption || '');
+      switchTab('rediger');
+    });
     document.getElementById('backfillSupportButton')?.addEventListener('click', backfillSupport);
     document.getElementById('telegraphSetupButton')?.addEventListener('click', telegraphSetup);
     document.getElementById('liveForm')?.addEventListener('submit', submitLive);

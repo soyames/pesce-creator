@@ -7,10 +7,15 @@
 import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
-import { createTelegraphAccount, createTelegraphPage, nodesFromPlainText } from '../lib/telegraph.js';
+import { createTelegraphAccount, createTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
+import { normalizeYouTubeUrl } from '../lib/youtube.js';
 import { CHANNEL_HANDLE, CREATOR_NAME, SUPPORT_URL } from '../lib/config.js';
+
+// Audio enregistré/importer depuis le navigateur : limite du corps JSON serverless (~4,5 Mo),
+// soit ~3,3 Mo de données audio — plusieurs minutes de note vocale en Opus.
+const MAX_STUDIO_AUDIO_BYTES = 3 * 1024 * 1024;
 
 export default async function handler(req, res) {
   // Le jeton du bot reste nécessaire aux actions de publication, quel que soit le flux d'authentification.
@@ -57,11 +62,92 @@ export default async function handler(req, res) {
       const title = String(body.title || '').trim().slice(0, 256);
       const text = String(body.text || '').trim().slice(0, 4096);
       if (!title || !text) return res.status(400).json({ message: 'Le titre et le texte sont requis pour un article.' });
+      // Images d'article : hébergées par Telegraph uniquement (liste blanche de chemins /file/…).
+      const images = validateArticleImages(body.images);
+      if (Array.isArray(body.images) && body.images.length > 0 && images.length === 0) {
+        return res.status(400).json({ message: 'Images d’article invalides : seuls les chemins Telegraph (/file/…) sont acceptés.' });
+      }
       const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
       if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré. Utilisez « Configurer Telegraph » dans le studio, puis enregistrez le jeton dans TELEGRAPH_ACCESS_TOKEN.' });
-      const page = await createTelegraphPage({ accessToken, title, content: nodesFromPlainText(text), authorName: CREATOR_NAME });
+      const page = await createTelegraphPage({ accessToken, title, content: images.length ? nodesFromArticle({ text, images }) : nodesFromPlainText(text), authorName: CREATOR_NAME });
       await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text: `${title}\n\n${page.url}`, disable_web_page_preview: false, reply_markup: supportMarkup() });
       return res.status(200).json({ ok: true, url: page.url });
+    }
+
+    // Image neuve → hébergée par Telegraph (stockage natif des articles, aucun binaire dans Neon).
+    if (action === 'article_image_upload') {
+      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
+      if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré : TELEGRAPH_ACCESS_TOKEN est requis.' });
+      const data = String(body.data || '');
+      const match = data.match(/^data:image\/(jpeg|png|gif|webp);base64,(.+)$/i);
+      if (!match) return res.status(400).json({ message: 'Image encodée invalide.' });
+      const buffer = Buffer.from(match[2], 'base64');
+      if (buffer.length === 0 || buffer.length > MAX_TELEGRAPH_IMAGE_BYTES) {
+        return res.status(400).json({ message: 'Image trop volumineuse (4 Mo maximum).' });
+      }
+      const uploaded = await uploadTelegraphImage({ accessToken, buffer, filename: `pesce-${Date.now()}.${match[1] === 'jpeg' ? 'jpg' : match[1]}` });
+      return res.status(200).json({ ok: true, ...uploaded });
+    }
+
+    // Vidéo : YouTube reste l'hébergeur (V1) — le studio publie la référence, jamais un fichier.
+    if (action === 'video_publish' || action === 'video_update') {
+      const title = String(body.title || '').trim().slice(0, 256);
+      const description = String(body.description || '').trim().slice(0, 4000);
+      const youtubeUrl = normalizeYouTubeUrl(body.youtubeUrl);
+      if (!title || !youtubeUrl) return res.status(400).json({ message: 'Le titre et un lien YouTube valide sont requis.' });
+      const text = [title, description, youtubeUrl].filter(Boolean).join('\n\n');
+      if (action === 'video_update') {
+        const messageId = Number(body.messageId);
+        if (!messageId) return res.status(400).json({ message: 'Publication d’origine manquante.' });
+        await telegram(token, 'editMessageText', { chat_id: CHANNEL_HANDLE, message_id: messageId, text, disable_web_page_preview: false });
+        return res.status(200).json({ ok: true });
+      }
+      const sent = await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text, disable_web_page_preview: false, reply_markup: supportMarkup() });
+      return res.status(200).json({ ok: true, messageId: sent.result?.message_id || null });
+    }
+
+    // Audio : le fichier est hébergé par Telegram (canon), Neon ne garde que la référence.
+    // Le webhook classe les documents audio en « audio » — le Mini App les joue via /api/media.
+    if (action === 'audio_publish') {
+      const title = String(body.title || '').trim().slice(0, 256);
+      const description = String(body.description || '').trim().slice(0, 4000);
+      const author = String(body.author || '').trim().slice(0, 256);
+      if (!title) return res.status(400).json({ message: 'Le titre de l’audio est requis.' });
+      const data = String(body.data || '');
+      const match = data.match(/^data:audio\/([a-z0-9.+-]+);base64,(.+)$/i);
+      if (!match) return res.status(400).json({ message: 'Audio encodé invalide.' });
+      const buffer = Buffer.from(match[2], 'base64');
+      if (buffer.length === 0 || buffer.length > MAX_STUDIO_AUDIO_BYTES) {
+        return res.status(400).json({ message: 'Audio trop volumineux (3 Mo maximum, ~6 minutes).' });
+      }
+      const mimeType = match[1].replace(/;.*$/, '');
+      const extension = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp3') ? 'mp3' : mimeType.includes('m4a') ? 'm4a' : mimeType.includes('mp4') ? 'm4a' : 'webm';
+      const form = new FormData();
+      form.append('chat_id', CHANNEL_HANDLE);
+      form.append('document', new Blob([buffer], { type: `audio/${mimeType}` }), `pesce-audio-${Date.now()}.${extension}`);
+      form.append('caption', [title, description, author ? `— ${author}` : ''].filter(Boolean).join('\n\n'));
+      form.append('reply_markup', JSON.stringify(supportMarkup()));
+      const sent = await telegramMultipart('sendDocument', form);
+      return res.status(200).json({ ok: true, messageId: sent.result?.message_id || null });
+    }
+
+    // Photo existante du canal (métadonnées/file_id dans Neon) → re-téléversée vers Telegraph.
+    if (action === 'article_image_from_channel') {
+      const fileId = String(body.fileId || '').trim().slice(0, 512);
+      if (!fileId) return res.status(400).json({ message: 'Photo du canal manquante.' });
+      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
+      if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré : TELEGRAPH_ACCESS_TOKEN est requis.' });
+      const file = await telegram(token, 'getFile', { file_id: fileId });
+      const filePath = file.result?.file_path;
+      if (!filePath) return res.status(404).json({ message: 'Photo Telegram introuvable.' });
+      const fileResponse = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
+      if (!fileResponse.ok) return res.status(502).json({ message: 'Photo Telegram indisponible.' });
+      const buffer = Buffer.from(await fileResponse.arrayBuffer());
+      if (buffer.length === 0 || buffer.length > MAX_TELEGRAPH_IMAGE_BYTES) {
+        return res.status(400).json({ message: 'Photo trop volumineuse (4 Mo maximum).' });
+      }
+      const uploaded = await uploadTelegraphImage({ accessToken, buffer, filename: `pesce-canal-${Date.now()}.jpg` });
+      return res.status(200).json({ ok: true, ...uploaded });
     }
 
     if (action === 'draft') {
@@ -192,6 +278,14 @@ function supportMarkup() {
 
 async function telegram(token, method, payload) {
   const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await response.json();
+  if (!response.ok || !data.ok) throw new Error(`Telegram ${method} a échoué: ${data.description || response.status}`);
+  return data;
+}
+
+// Envoi multipart (audio enregistré, etc.) — le corps est un FormData, pas du JSON.
+async function telegramMultipart(method, formData) {
+  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: 'POST', body: formData });
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(`Telegram ${method} a échoué: ${data.description || response.status}`);
   return data;

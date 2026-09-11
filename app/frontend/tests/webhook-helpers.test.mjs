@@ -62,6 +62,26 @@ test('normalize : document et message sans média', () => {
   assert.equal(empty.mediaFileId, null);
 });
 
+test('normalize : document audio → contentType audio (pont des enregistrements du Studio)', () => {
+  const audio = normalize({ message_id: 14, date: 1, chat: CHAT, caption: 'Note vocale', document: { file_id: 'audio-doc-1', mime_type: 'audio/webm', file_name: 'note-vocale.webm' } });
+  assert.equal(audio.contentType, 'audio');
+  assert.equal(audio.mediaFileId, 'audio-doc-1');
+  assert.equal(audio.mediaMimeType, 'audio/webm');
+  const voice = normalize({ message_id: 15, date: 1, chat: CHAT, voice: { file_id: 'voice1', duration: 42, mime_type: 'audio/ogg' } });
+  assert.equal(voice.contentType, 'audio');
+  assert.equal(voice.mediaDuration, 42);
+});
+
+test('normalize : dépêche contenant un lien YouTube → contentType video (référence YouTube)', () => {
+  const post = normalize({ message_id: 16, date: 1, chat: CHAT, text: 'Grand format\n\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ' });
+  assert.equal(post.contentType, 'video');
+  assert.equal(post.mediaFileId, null, 'aucun fichier : YouTube héberge la vidéo');
+  const shorts = normalize({ message_id: 17, date: 1, chat: CHAT, text: 'https://youtu.be/dQw4w9WgXcQ' });
+  assert.equal(shorts.contentType, 'video');
+  const plain = normalize({ message_id: 18, date: 1, chat: CHAT, text: 'Une dépêche ordinaire.' });
+  assert.equal(plain.contentType, 'text');
+});
+
 test('normalize : canal sans username → pas d’URL publique', () => {
   const post = normalize({ message_id: 14, date: 1, chat: { id: 123456 }, text: 'x' });
   assert.equal(post.telegramUrl, null);

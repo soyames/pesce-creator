@@ -175,6 +175,8 @@ document.addEventListener('click', (event) => {
   }
   const bookmarkButton = event.target.closest('[data-bookmark]');
   if (bookmarkButton) { toggleBookmark(bookmarkButton); return; }
+  const youtubeFrame = event.target.closest('.video-frame[data-youtube-src]');
+  if (youtubeFrame) { openExternal(youtubeFrame.dataset.youtubeSrc); return; }
   const videoFrame = event.target.closest('.video-frame[data-video-src]');
   if (videoFrame) { playInlineVideo(videoFrame); return; }
   const listenButton = event.target.closest('[data-listen]');
@@ -368,8 +370,25 @@ ${badgeHtml}
 
 function videoFrame(post, { rounded = false } = {}) {
   const src = post.mediaUrl || (post.mediaFileId ? `./api/media?file_id=${encodeURIComponent(post.mediaFileId)}` : '');
-  const poster = post.mediaThumbnailUrl || '';
+  const youtube = youtubeInfo(post.text);
+  const poster = post.mediaThumbnailUrl || (youtube ? youtube.thumbnail : '');
   const roundClass = rounded ? ' rounded-full' : '';
+  // Référence YouTube (pas de fichier local) : le clic ouvre YouTube, la miniature vient de l'identifiant.
+  if (!src && youtube) {
+    return `<div class="video-frame relative w-full aspect-[16/9] overflow-hidden bg-inverse-surface my-space-xs group cursor-pointer" data-youtube-src="${escapeAttribute(youtube.url)}">
+<img class="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" src="${escapeAttribute(youtube.thumbnail)}" alt="${escapeAttribute(kickerOf(post))} par Pesce Hounyo" loading="lazy">
+<div class="absolute inset-0 bg-gradient-to-t from-inverse-surface/90 via-transparent to-transparent"></div>
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-14 h-14 bg-primary text-on-primary flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform${roundClass}">
+<span class="material-symbols-outlined text-[32px]">play_arrow</span>
+</div>
+</div>
+<div class="absolute bottom-2 left-3 right-3 flex items-center justify-between text-surface">
+<span class="font-meta-detail text-[11px] bg-inverse-surface/80 px-2 py-0.5 uppercase tracking-wider">${escapeHtml(kickerOf(post))}</span>
+<span class="font-meta-detail text-[11px] opacity-80">YouTube</span>
+</div>
+</div>`;
+  }
   return `<div class="video-frame relative w-full aspect-[16/9] overflow-hidden bg-inverse-surface my-space-xs group cursor-pointer" data-video-src="${escapeAttribute(src)}" data-video-poster="${escapeAttribute(poster)}">
 ${poster ? `<img class="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" src="${escapeAttribute(poster)}" alt="${escapeAttribute(kickerOf(post))} par Pesce Hounyo" loading="lazy">` : ''}
 <div class="absolute inset-0 bg-gradient-to-t from-inverse-surface/90 via-transparent to-transparent"></div>
@@ -387,6 +406,14 @@ ${post.mediaDuration ? `<span class="font-meta-detail text-[11px] opacity-80">${
 
 function mediaUrlOf(post) {
   return post.mediaUrl || (post.mediaFileId ? `./api/media?file_id=${encodeURIComponent(post.mediaFileId)}` : '');
+}
+
+// Référence YouTube dans une publication : YouTube reste l'hébergeur (V1) — le Mini App
+// dérive l'identifiant et la miniature, sans jamais stocker de fichier vidéo.
+function youtubeInfo(text) {
+  const match = String(text || '').match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  if (!match) return null;
+  return { id: match[1], url: `https://www.youtube.com/watch?v=${match[1]}`, thumbnail: `https://i.ytimg.com/vi/${match[1]}/hqdefault.jpg` };
 }
 
 // — SOUTIEN EN ÉTOILES : pacte d'indépendance (une + soutenir).
@@ -588,10 +615,12 @@ function renderChroniqueCard(post) {
 function renderDispatchVideoCard(post) {
   const { headline, standfirst } = headlineAndStandfirst(post);
   const duration = formatDuration(post.mediaDuration);
+  const youtube = youtubeInfo(post.text);
+  const poster = post.mediaThumbnailUrl || (youtube ? youtube.thumbnail : '');
   return `<article class="flex flex-col bg-surface-container p-space-sm gap-space-xs editorial-card cursor-pointer" data-post-id="${escapeAttribute(post.id)}">
 <div class="relative w-full">
-<div class="video-frame relative w-full aspect-video bg-surface-container-high overflow-hidden group cursor-pointer" data-video-src="${escapeAttribute(mediaUrlOf(post))}" data-video-poster="${escapeAttribute(post.mediaThumbnailUrl || '')}">
-${post.mediaThumbnailUrl ? `<img class="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" src="${escapeAttribute(post.mediaThumbnailUrl)}" alt="${escapeAttribute(kickerOf(post))} par Pesce Hounyo" loading="lazy">` : ''}
+<div class="video-frame relative w-full aspect-video bg-surface-container-high overflow-hidden group cursor-pointer" data-video-src="${escapeAttribute(mediaUrlOf(post))}" data-video-poster="${escapeAttribute(poster)}"${!mediaUrlOf(post) && youtube ? ` data-youtube-src="${escapeAttribute(youtube.url)}"` : ''}>
+${poster ? `<img class="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300" src="${escapeAttribute(poster)}" alt="${escapeAttribute(kickerOf(post))} par Pesce Hounyo" loading="lazy">` : ''}
 <div class="absolute inset-0 bg-inverse-surface/30 flex items-center justify-center">
 <span class="w-12 h-12 bg-primary text-on-primary flex items-center justify-center rounded-full shadow-md group-hover:scale-105 transition-transform"><span class="material-symbols-outlined text-[28px]" style="font-variation-settings: 'FILL' 1;">play_arrow</span></span>
 </div>
@@ -1142,6 +1171,16 @@ ${caption ? `<figcaption class="mt-2 text-center font-meta-detail text-meta-deta
   }
   if (post.contentType === 'video' && url) {
     return `<figure class="mb-space-lg"><div class="rounded-xl overflow-hidden shadow-sm bg-surface-container"><video class="w-full" controls preload="metadata" src="${escapeAttribute(url)}"${post.mediaThumbnailUrl ? ` poster="${escapeAttribute(post.mediaThumbnailUrl)}"` : ''}></video></div></figure>`;
+  }
+  if (post.contentType === 'video') {
+    // Référence YouTube : miniature dérivée de l'identifiant, clic → YouTube (jamais de fichier local).
+    const youtube = youtubeInfo(post.text);
+    if (youtube) {
+      return `<figure class="mb-space-lg"><div class="video-frame relative rounded-xl overflow-hidden shadow-sm bg-inverse-surface aspect-video group cursor-pointer" data-youtube-src="${escapeAttribute(youtube.url)}">
+<img class="w-full h-full object-cover" src="${escapeAttribute(youtube.thumbnail)}" alt="Vidéo YouTube par Pesce Hounyo">
+<div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 bg-primary text-on-primary flex items-center justify-center shadow-lg"><span class="material-symbols-outlined text-[32px]">play_arrow</span></div></div>
+</div></figure>`;
+    }
   }
   if (post.contentType === 'audio' && url) {
     return `<figure class="mb-space-lg"><div class="rounded-xl overflow-hidden shadow-sm bg-surface-container p-space-sm"><audio class="w-full" controls preload="none" src="${escapeAttribute(url)}"></audio></div></figure>`;

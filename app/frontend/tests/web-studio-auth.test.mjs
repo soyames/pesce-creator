@@ -224,6 +224,17 @@ test('studio-auth : méthodes refusées → 405, action inconnue → 400', async
 });
 
 // — /api/studio : le flux Telegram existant reste intact et fail-closed sans session web
+test('studio : les actions d\'image/d\'audio/de vidéo restent fail-closed sans session', async () => {
+  const baseEnv = { TELEGRAM_PESCE_BOT_TOKEN: '123456:ABC-TEST_TOKEN', PESCE_CREATOR_TELEGRAM_USER_IDS: undefined };
+  await withEnv(baseEnv, async () => {
+    for (const action of ['article_image_upload', 'article_image_from_channel', 'video_publish', 'video_update', 'audio_publish']) {
+      const res = stubRes();
+      await studioHandler({ method: 'POST', headers: {}, body: { action } }, res);
+      assert.equal(res.code, 401, `action ${action} acceptée sans session`);
+    }
+  });
+});
+
 test('studio : sans session web, initData invalide → 401 ; initData valide mais créatrice non configurée → 403', async () => {
   const baseEnv = { TELEGRAM_PESCE_BOT_TOKEN: '123456:ABC-TEST_TOKEN', PESCE_CREATOR_TELEGRAM_USER_IDS: undefined };
   await withEnv(baseEnv, async () => {
