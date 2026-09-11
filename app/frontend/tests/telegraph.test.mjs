@@ -2,7 +2,7 @@
 // et images d'article (hébergement Telegraph : chemins /file/…, couverture, insertion, légende/crédit).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, telegraphImageUrl, validateArticleImages } from '../lib/telegraph.js';
+import { articleCoverFromPage, articleExcerptFromPage, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, telegraphImageUrl, validateArticleImages } from '../lib/telegraph.js';
 
 test('nodesFromPlainText : un paragraphe par bloc séparé par une ligne vide', () => {
   const nodes = nodesFromPlainText('Premier paragraphe.\n\nDeuxième paragraphe.\n\nTroisième.');
@@ -76,6 +76,22 @@ test('nodesFromArticle : couverture en tête, images insérées après le paragr
   assert.equal(nodes[paragraphIndex + 1].tag, 'figure', 'image insérée au mauvais endroit');
   assert.equal(nodes[paragraphIndex + 1].children[0].attrs.src, 'https://telegra.ph/file/dans.jpg');
   assert.deepEqual(nodes[paragraphIndex + 1].children[1].children, ['Dans l\'article']);
+});
+
+test('articleCoverFromPage / articleExcerptFromPage : couverture et chapeau d’une page Telegraph', () => {
+  const page = {
+    title: 'Titre',
+    content: [
+      { tag: 'figure', children: [{ tag: 'img', attrs: { src: '/file/cover-abc.jpg' } }, { tag: 'figcaption', children: ['Légende'] }] },
+      { tag: 'p', children: ['Chapeau de l’article.'] },
+      { tag: 'p', children: ['Suite.'] },
+    ],
+  };
+  assert.equal(articleCoverFromPage(page), 'https://telegra.ph/file/cover-abc.jpg');
+  assert.equal(articleExcerptFromPage(page), 'Chapeau de l’article.');
+  assert.equal(articleCoverFromPage({ content: [{ tag: 'p', children: ['Texte seul'] }] }), null);
+  assert.equal(articleCoverFromPage(null), null);
+  assert.equal(articleExcerptFromPage(null), '');
 });
 
 test('nodesFromArticle : image au-delà du dernier paragraphe → ajoutée en fin ; sans image = texte seul', () => {

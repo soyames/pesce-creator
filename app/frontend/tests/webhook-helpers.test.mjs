@@ -1,9 +1,20 @@
-// Tests des fonctions pures du webhook Telegram (normalize/media/supportMarkup).
+// Tests des fonctions pures du webhook Telegram (normalize/media/supportMarkup/enrichment).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { media, normalize, supportMarkup } from '../api/telegram-pesce-studio.webhook.js';
+import { enrichChannelPost, media, normalize, supportMarkup } from '../api/telegram-pesce-studio.webhook.js';
 
 const CHAT = { id: -1004313542784, username: 'PesceHounyoOfficiel' };
+
+function withEnv(env, fn) {
+  const saved = process.env;
+  const next = { ...saved };
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) delete next[key];
+    else next[key] = value;
+  }
+  process.env = next;
+  return Promise.resolve(fn()).finally(() => { process.env = saved; });
+}
 
 test('normalize : post texte', () => {
   const post = normalize({ message_id: 42, date: 1726000000, chat: CHAT, text: 'Bonjour la communauté' });
@@ -70,6 +81,38 @@ test('normalize : document audio → contentType audio (pont des enregistrements
   const voice = normalize({ message_id: 15, date: 1, chat: CHAT, voice: { file_id: 'voice1', duration: 42, mime_type: 'audio/ogg' } });
   assert.equal(voice.contentType, 'audio');
   assert.equal(voice.mediaDuration, 42);
+});
+
+test('normalize : dépêche contenant un lien Telegraph → contentType text (Écrit)', () => {
+  const post = normalize({ message_id: 19, date: 1, chat: CHAT, text: 'Le numérique africain a besoin de confiance\n\nhttps://telegra.ph/Le-numerique-africain-09-11-2' });
+  assert.equal(post.contentType, 'text');
+  assert.equal(post.mediaFileId, null);
+});
+
+test('enrichChannelPost : article Telegraph → URL + couverture hébergée, échec non bloquant', async () => {
+  const base = normalize({ message_id: 20, date: 1, chat: CHAT, text: 'Titre\n\nhttps://telegra.ph/Article-Test-09-11-2' });
+  const fetchPage = async () => ({
+    title: 'Titre',
+    content: [
+      { tag: 'figure', children: [{ tag: 'img', attrs: { src: '/file/cover-abc.jpg' } }, { tag: 'figcaption', children: ['Légende'] }] },
+      { tag: 'p', children: ['Chapeau.'] },
+    ],
+  });
+  await withEnv({ TELEGRAPH_ACCESS_TOKEN: 'jeton-test' }, async () => {
+    const enriched = await enrichChannelPost(base, { fetchPage });
+    assert.equal(enriched.articleUrl, 'https://telegra.ph/Article-Test-09-11-2');
+    assert.equal(enriched.articleImageUrl, 'https://telegra.ph/file/cover-abc.jpg');
+  });
+  // Sans lien Telegraph : dépêche inchangée.
+  const plain = normalize({ message_id: 21, date: 1, chat: CHAT, text: 'Une dépêche ordinaire.' });
+  assert.equal((await enrichChannelPost(plain, { fetchPage })), plain);
+  // Échec de la lecture de la page : dépêche conservée, sans couverture.
+  const failing = async () => { throw new Error('Telegraph indisponible'); };
+  await withEnv({ TELEGRAPH_ACCESS_TOKEN: 'jeton-test' }, async () => {
+    const result = await enrichChannelPost(base, { fetchPage: failing });
+    assert.ok(result);
+    assert.equal(result.articleImageUrl, undefined);
+  });
 });
 
 test('normalize : dépêche contenant un lien YouTube → contentType video (référence YouTube)', () => {

@@ -4,6 +4,7 @@ import { createSupportTicket, deleteSupportSession, getSupportSession, markUpdat
 import { creatorTelegramUserIds, isCreatorTelegramUser } from '../lib/telegram-auth.js';
 import { newTicketId } from '../lib/tickets.js';
 import { youtubeIdOf } from '../lib/youtube.js';
+import { articleCoverFromPage, getTelegraphPage } from '../lib/telegraph.js';
 import { CHANNEL_USERNAME, MINI_APP_URL, STUDIO_URL, SUPPORT_URL } from '../lib/config.js';
 
 let webhookSecretWarned = false;
@@ -28,6 +29,25 @@ export default async function handler(req, res) {
 
   try {
     const update = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+    const message = update.message;
+    // Les publications modifiées (edited_channel_post) suivent le même chemin : l'upsert par id
+    // (chatId_messageId) met à jour le post existant dans Neon — les éditions se propagent à l'app.
+    const channelPost = update.channel_post || update.edited_channel_post;
+
+    // Les publications du canal sont idempotentes (upsert par chatId_messageId) : on les traite
+    // AVANT la déduplication des updates. Si un échec transitoire (base, réseau) interrompt le
+    // traitement, le rejeu de Telegram ré-exécute l'upsert au lieu de perdre la publication.
+    if (channelPost) {
+      const post = await enrichChannelPost(normalize(channelPost));
+      await upsertChannelPost(post);
+      try {
+        await telegram(token, 'editMessageReplyMarkup', { chat_id: channelPost.chat?.id || `@${CHANNEL_USERNAME}`, message_id: channelPost.message_id, reply_markup: supportMarkup() });
+      } catch (error) {
+        console.error('support button attachment failed', error);
+      }
+      console.log(JSON.stringify({ event: 'channel_post_received', ...post }));
+    }
+
     // Idempotence : Telegram peut rejouer une update — on ne la traite qu'une seule fois.
     const updateId = Number(update.update_id);
     if (Number.isFinite(updateId) && updateId > 0) {
@@ -35,10 +55,6 @@ export default async function handler(req, res) {
       if (!isNew) return res.status(200).json({ ok: true, duplicate: true });
       if (updateId % 100 === 0) await pruneWebhookUpdates(); // nettoyage périodique, sans état séparé
     }
-    const message = update.message;
-    // Les publications modifiées (edited_channel_post) suivent le même chemin : l'upsert par id
-    // (chatId_messageId) met à jour le post existant dans Neon — les éditions se propagent à l'app.
-    const channelPost = update.channel_post || update.edited_channel_post;
 
     if (update.pre_checkout_query) {
       const query = update.pre_checkout_query;
@@ -108,17 +124,6 @@ export default async function handler(req, res) {
       }
     }
 
-    if (channelPost) {
-      const post = normalize(channelPost);
-      await upsertChannelPost(post);
-      try {
-        await telegram(token, 'editMessageReplyMarkup', { chat_id: channelPost.chat?.id || `@${CHANNEL_USERNAME}`, message_id: channelPost.message_id, reply_markup: supportMarkup() });
-      } catch (error) {
-        console.error('support button attachment failed', error);
-      }
-      console.log(JSON.stringify({ event: 'channel_post_received', ...post }));
-    }
-
     return res.status(200).json({ ok: true });
   } catch (error) {
     console.error(error);
@@ -178,8 +183,30 @@ function supportMarkup() {
   return { inline_keyboard: [[{ text: '⭐ Soutenir le travail de Pesce', url: SUPPORT_URL }]] };
 }
 
+// — Enrichissement des dépêches « article » : un message contenant un lien Telegraph reçoit
+// l'URL de l'article et la couverture hébergée par Telegraph (jamais de binaire dans Neon).
+// Non bloquant : en cas d'indisponibilité de Telegraph, la dépêche reste synchronisée sans image.
+async function enrichChannelPost(post, { fetchPage } = {}) {
+  if (!post || post.contentType !== 'text' || !post.text || post.articleUrl) return post;
+  const telegraphUrl = (post.text.match(/https:\/\/telegra\.ph\/[\w\-./]+/i) || [])[0];
+  if (!telegraphUrl) return post;
+  const path = telegraphUrl.replace(/^https:\/\/telegra\.ph\//, '');
+  try {
+    const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
+    if (!accessToken) return post;
+    const page = fetchPage ? await fetchPage(path) : await getTelegraphPage({ accessToken, path });
+    const enriched = { ...post, articleUrl: telegraphUrl };
+    const cover = articleCoverFromPage(page);
+    if (cover) enriched.articleImageUrl = cover;
+    return enriched;
+  } catch (error) {
+    console.error('telegraph enrichment failed', error);
+    return post;
+  }
+}
+
 // Exportés pour les tests (tests/webhook-helpers.test.mjs) : fonctions pures, sans effet de bord.
-export { media, normalize, supportMarkup };
+export { enrichChannelPost, media, normalize, supportMarkup };
 
 async function notifyCreator(token, text) {
   for (const id of creatorTelegramUserIds()) {

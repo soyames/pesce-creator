@@ -82,6 +82,8 @@ const mapPost = (row) => row && ({
   mediaWidth: num(row.media_width),
   mediaHeight: num(row.media_height),
   mediaThumbnailFileId: row.media_thumbnail_file_id,
+  articleUrl: row.article_url,
+  articleImageUrl: row.article_image_url,
   published: row.published === true,
   publishedAt: row.published_at,
   receivedAt: row.received_at,
@@ -93,8 +95,8 @@ export async function upsertChannelPost(post) {
     `INSERT INTO pesce_posts (
        id, source, channel_id, channel_username, message_id, content_type, text, telegram_url,
        media_file_id, media_mime_type, media_file_name, media_duration, media_width, media_height,
-       media_thumbnail_file_id, published, published_at, received_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, now())
+       media_thumbnail_file_id, article_url, article_image_url, published, published_at, received_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, now())
      ON CONFLICT (id) DO UPDATE SET
        source = EXCLUDED.source, channel_id = EXCLUDED.channel_id, channel_username = EXCLUDED.channel_username,
        message_id = EXCLUDED.message_id, content_type = EXCLUDED.content_type, text = EXCLUDED.text,
@@ -103,12 +105,17 @@ export async function upsertChannelPost(post) {
        media_duration = EXCLUDED.media_duration, media_width = EXCLUDED.media_width,
        media_height = EXCLUDED.media_height, media_thumbnail_file_id = EXCLUDED.media_thumbnail_file_id,
        published = EXCLUDED.published, published_at = EXCLUDED.published_at,
-       received_at = EXCLUDED.received_at, updated_at = now()`,
+       received_at = EXCLUDED.received_at, updated_at = now(),
+       -- Les métadonnées d'article (URL Telegraph, image de couverture) écrites au moment de la
+       -- publication par le Studio ne doivent JAMAIS être écrasées par un sync webhook sans image.
+       article_url = COALESCE(NULLIF(EXCLUDED.article_url, ''), pesce_posts.article_url),
+       article_image_url = COALESCE(NULLIF(EXCLUDED.article_image_url, ''), pesce_posts.article_image_url)`,
     [
       post.id, post.source, post.channelId ?? null, post.channelUsername ?? null, post.messageId ?? null,
       post.contentType ?? 'text', post.text || '', post.telegramUrl ?? null, post.mediaFileId ?? null,
       post.mediaMimeType ?? null, post.mediaFileName ?? null, post.mediaDuration ?? null,
       post.mediaWidth ?? null, post.mediaHeight ?? null, post.mediaThumbnailFileId ?? null,
+      post.articleUrl ?? null, post.articleImageUrl ?? null,
       post.published === true, post.publishedAt ?? new Date(), post.receivedAt ?? new Date(),
     ]
   );

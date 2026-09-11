@@ -76,6 +76,14 @@ const FIXTURE_POSTS = [
     telegramUrl: `${CHANNEL_URL}/93`,
     publishedAt: iso(-150 * 3600e3), updatedAt: iso(-150 * 3600e3),
   },
+  {
+    id: 'post-9', source: 'studio', contentType: 'text', messageId: 92,
+    text: 'Le numérique africain a besoin de confiance, pas seulement de technologie\n\nSans confiance, aucune infrastructure numérique ne tiendra ses promesses sur le continent.\n\nhttps://telegra.ph/Le-numerique-africain-a-besoin-de-confiance-09-11-2',
+    telegramUrl: `${CHANNEL_URL}/92`,
+    articleUrl: 'https://telegra.ph/Le-numerique-africain-a-besoin-de-confiance-09-11-2',
+    articleImageUrl: 'https://telegra.ph/file/preview-couverture.jpg',
+    publishedAt: iso(-160 * 3600e3), updatedAt: iso(-160 * 3600e3),
+  },
 ].map((post) => {
   const enriched = { ...post };
   if (post.mediaFileId) enriched.mediaUrl = `./api/media?file_id=${post.mediaFileId}&token=preview`;

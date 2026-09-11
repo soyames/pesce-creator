@@ -123,6 +123,15 @@ CREATE INDEX IF NOT EXISTS pesce_audience_events_at_idx ON pesce_audience_events
 `,
   },
   {
+    // Articles (Telegraph) : URL de l'article et image de couverture hébergée par Telegraph.
+    // Métadonnées/références uniquement — jamais de binaire dans Neon.
+    name: '006_article_metadata.sql',
+    sql: `
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS article_url TEXT;
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS article_image_url TEXT;
+`,
+  },
+  {
     // Sessions web (Google OAuth) du Studio créatrice : jeton aléatoire haché (SHA-256) côté
     // serveur, cookie HttpOnly chez le client. Aucun secret stocké en clair.
     name: '005_web_sessions.sql',

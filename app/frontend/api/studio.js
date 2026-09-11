@@ -4,10 +4,10 @@
 //     réservée aux adresses PESCE_WEB_ADMIN_EMAILS.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
-import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket } from '../lib/db.js';
+import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
-import { createTelegraphAccount, createTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
+import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
 import { normalizeYouTubeUrl } from '../lib/youtube.js';
@@ -70,8 +70,68 @@ export default async function handler(req, res) {
       const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
       if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré. Utilisez « Configurer Telegraph » dans le studio, puis enregistrez le jeton dans TELEGRAPH_ACCESS_TOKEN.' });
       const page = await createTelegraphPage({ accessToken, title, content: images.length ? nodesFromArticle({ text, images }) : nodesFromPlainText(text), authorName: CREATOR_NAME });
-      await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text: `${title}\n\n${page.url}`, disable_web_page_preview: false, reply_markup: supportMarkup() });
+      const cover = images.find((image) => image.placement === 'cover');
+      const sent = await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text: `${title}\n\n${page.url}`, disable_web_page_preview: false, reply_markup: supportMarkup() });
+      // Métadonnées d'article écrites immédiatement dans Neon (même table, même upsert que le
+      // webhook — identifiant identique chatId_messageId, donc aucun doublon) : l'article et sa
+      // couverture Telegraph sont visibles dans le Mini App sans dépendre du round-trip webhook.
+      try {
+        const messageId = Number(sent.result?.message_id);
+        const chatId = Number(sent.result?.chat?.id);
+        if (messageId && chatId) {
+          await upsertChannelPost({
+            id: `${chatId}_${messageId}`,
+            source: 'studio',
+            channelId: chatId,
+            channelUsername: CHANNEL_USERNAME,
+            messageId,
+            contentType: 'text',
+            text: `${title}\n\n${page.url}`,
+            telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`,
+            articleUrl: page.url,
+            articleImageUrl: cover ? cover.src : null,
+            published: true,
+            publishedAt: new Date((sent.result?.date || Math.floor(Date.now() / 1000)) * 1000),
+            receivedAt: new Date(),
+          });
+        }
+      } catch (error) {
+        console.error('article metadata pre-insert failed (le webhook synchronisera le texte)', error);
+      }
       return res.status(200).json({ ok: true, url: page.url });
+    }
+
+    // Ressynchronisation d'un article déjà publié sur le canal (posté avant la synchronisation
+    // des métadonnées) : récupère la page Telegraph et met à jour Neon par le mécanisme normal.
+    if (action === 'resync_message') {
+      const messageId = Number(body.messageId);
+      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
+      if (!messageId) return res.status(400).json({ message: 'Identifiant du message requis.' });
+      if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré : TELEGRAPH_ACCESS_TOKEN est requis.' });
+      const path = (String(body.telegraphUrl || '').match(/telegra\.ph\/([\w\-./]+)/i) || [])[1] || '';
+      if (!path) return res.status(400).json({ message: 'Lien Telegraph de l’article requis.' });
+      const page = await getTelegraphPage({ accessToken, path });
+      if (!page?.title) return res.status(404).json({ message: 'Article Telegraph introuvable.' });
+      const chat = await telegram(token, 'getChat', { chat_id: CHANNEL_HANDLE });
+      const chatId = Number(chat.result?.id);
+      if (!chatId) return res.status(502).json({ message: 'Canal Telegram introuvable.' });
+      const cover = articleCoverFromPage(page);
+      await upsertChannelPost({
+        id: `${chatId}_${messageId}`,
+        source: 'studio',
+        channelId: chatId,
+        channelUsername: CHANNEL_USERNAME,
+        messageId,
+        contentType: 'text',
+        text: `${page.title}\n\n${articleExcerptFromPage(page)}\n\nhttps://telegra.ph/${path}`,
+        telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`,
+        articleUrl: `https://telegra.ph/${path}`,
+        articleImageUrl: cover,
+        published: true,
+        publishedAt: new Date(),
+        receivedAt: new Date(),
+      });
+      return res.status(200).json({ ok: true, cover });
     }
 
     // Image neuve → hébergée par Telegraph (stockage natif des articles, aucun binaire dans Neon).

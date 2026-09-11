@@ -75,6 +75,7 @@ const ROUTES = [
     name: 'ecrits', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#ecrits`, widths: [390, 820, 1280],
     asserts: [
       ['composition éditoriale chargée', `document.getElementById('publicationFeed').children.length > 0 && document.getElementById('publicationFeed').dataset.loading !== 'true'`, true],
+      ['article Telegraph avec couverture affiché (image telegra.ph)', `!!document.querySelector('#publicationFeed img[src*="telegra.ph/file/"]') && document.getElementById('publicationFeed').textContent.includes('Le numérique africain')`, true],
       ['lead « Jeunesse ouest-africaine » en tête', `document.querySelector('#publicationFeed .font-headline-lg-mobile').textContent.includes('Jeunesse ouest-africaine')`, true],
       ['filtre actif souligné terracotta', `getComputedStyle(document.querySelector('[data-filter="tout"]'), '::after').backgroundColor`, RGB.primary],
       ['carte lead sur surface blanche', `getComputedStyle(document.querySelector('#publicationFeed > article')).backgroundColor`, RGB.lowest],
@@ -114,6 +115,14 @@ const ROUTES = [
       ['navigation précédent/suivant', `document.querySelectorAll('#readerContent [data-reader-nav]').length >= 1`, true],
       ['bouton Telegraph présent', `document.getElementById('readerContent').textContent.includes('Telegraph')`, true],
       ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
+    ],
+  },
+  {
+    name: 'lecteur-article', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#post-9`, widths: [390],
+    readyExpr: `!document.getElementById('reader').hidden && document.getElementById('readerContent').children.length > 0`,
+    asserts: [
+      ['couverture Telegraph dans le lecteur', `!!document.querySelector('#readerContent img[src*="telegra.ph/file/"]')`, true],
+      ['bouton « Lire sur Telegraph » présent', `document.getElementById('readerContent').textContent.includes('Telegraph')`, true],
     ],
   },
   {

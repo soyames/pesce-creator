@@ -573,7 +573,7 @@ async function loadHome() {
 
 function renderHomeLead(post) {
   const { headline, standfirst } = headlineAndStandfirst(post);
-  const media = post.contentType === 'photo' ? photoFrame(post, { caption: 'Pesce Hounyo / Pesce Studio', badge: 'Grand Reportage' }) : post.contentType === 'video' ? videoFrame(post) : '';
+  const media = post.contentType === 'photo' ? photoFrame(post, { caption: 'Pesce Hounyo / Pesce Studio', badge: 'Grand Reportage' }) : post.contentType === 'video' ? videoFrame(post) : articleCoverFrame(post);
   return `<article class="w-full flex flex-col gap-space-sm bg-surface editorial-card cursor-pointer" data-post-id="${escapeAttribute(post.id)}">
 ${media}
 <div class="flex items-center gap-space-xs pt-space-xs">
@@ -813,13 +813,32 @@ function renderFrontPage(posts) {
   if (secondary.length) blocks.push(`<div class="grid grid-cols-1 gap-space-md">${secondary.join('')}</div>`);
   if (audio) blocks.push(renderAudioModule(audio));
   if (video) blocks.push(renderVideoEntry(video));
+  // Tous les écrits publiés restent visibles : liste compacte des publications non composées.
+  const remainingTexts = textPosts.filter((post) => !used.has(post.id));
+  if (remainingTexts.length) {
+    blocks.push(`<div class="flex flex-col gap-space-md">
+<div class="flex items-center gap-2"><span class="w-2 h-2 bg-primary rounded-full"></span><h3 class="font-headline-sm text-headline-sm text-on-surface">Derniers écrits</h3></div>
+${remainingTexts.map(renderTextCard).join('')}
+</div>`);
+  }
   blocks.push(renderArchiveBridge());
   return blocks.join('');
 }
 
+function articleCoverFrame(post) {
+  // Couverture d'article hébergée par Telegraph (métadonnée de référence — aucun binaire dans Neon).
+  if (!post.articleImageUrl) return '';
+  return `<div class="relative w-full aspect-[16/10] overflow-hidden my-space-xs bg-surface-container">
+<img class="w-full h-full object-cover" src="${escapeAttribute(post.articleImageUrl)}" alt="Couverture de l'article" loading="lazy">
+<div class="absolute bottom-0 inset-x-0 p-2 bg-gradient-to-t from-on-secondary-fixed/80 via-on-secondary-fixed/40 to-transparent text-surface">
+<span class="font-meta-detail text-[11px] text-surface-container-low opacity-90 tracking-tight">Article Telegraph • Couverture Pesce Studio</span>
+</div>
+</div>`;
+}
+
 function renderLeadCard(post) {
   const { headline, standfirst } = headlineAndStandfirst(post);
-  const media = post.contentType === 'photo' ? photoFrame(post, { caption: `${kickerOf(post)} • Cliché Pesce Hounyo`, zoom: true }) : post.contentType === 'video' ? videoFrame(post) : '';
+  const media = post.contentType === 'photo' ? photoFrame(post, { caption: `${kickerOf(post)} • Cliché Pesce Hounyo`, zoom: true }) : post.contentType === 'video' ? videoFrame(post) : articleCoverFrame(post);
   return `<article class="flex flex-col bg-surface-container-lowest p-space-md shadow-sm editorial-card cursor-pointer" data-post-id="${escapeAttribute(post.id)}">
 <div class="flex items-center justify-between mb-space-xs">
 <span class="font-kicker-label text-kicker-label uppercase text-primary tracking-wider font-bold">${escapeHtml(kickerOf(post).toUpperCase())}</span>
@@ -942,10 +961,22 @@ function renderArchiveBridge() {
 </section>`;
 }
 
+// Carte d'écrit : couverture Telegraph le cas échéant, titre, chapeau, « Lire ».
+function renderTextCard(post) {
+  const { headline, standfirst } = headlineAndStandfirst(post);
+  return `<article class="bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs editorial-card cursor-pointer" data-post-id="${escapeAttribute(post.id)}">
+<div class="flex items-center justify-between"><span class="font-kicker-label text-kicker-label uppercase text-primary font-bold">${escapeHtml(kickerOf(post))}</span><span class="font-meta-detail text-meta-detail text-on-surface-variant">${escapeHtml(relativeTime(post.publishedAt))} · ${readingTime(post.text)} min</span></div>
+${post.articleImageUrl ? `<div class="relative w-full aspect-[16/9] overflow-hidden bg-surface-container"><img class="w-full h-full object-cover" src="${escapeAttribute(post.articleImageUrl)}" alt="Couverture de l'article" loading="lazy"></div>` : ''}
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug">${escapeHtml(headline)}</h3>
+<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">${escapeHtml(standfirst || '')}</p>
+<div class="pt-space-xs flex items-center justify-between"><span class="font-meta-detail text-meta-detail text-on-surface">${escapeHtml(PESCE.CREATOR_NAME)}</span><button class="py-2 font-kicker-label text-kicker-label text-primary uppercase font-bold tracking-wider hover:underline" type="button" data-reader="${escapeAttribute(post.id)}">Lire →</button></div>
+</article>`;
+}
+
 // Vues filtrées : listes d'un seul type de contenu, dans la même langue visuelle.
 function renderFilteredList(posts) {
   return posts.map((post) => {
-    const { headline, standfirst } = headlineAndStandfirst(post);
+    const { headline } = headlineAndStandfirst(post);
     if (post.contentType === 'video') return renderVideoEntry(post);
     if (post.contentType === 'audio') return renderAudioModule(post);
     if (post.contentType === 'photo') {
@@ -955,12 +986,7 @@ function renderFilteredList(posts) {
 <p class="font-body-md text-body-md text-on-surface-variant">${escapeHtml(headline)}</p>
 </article>`;
     }
-    return `<article class="bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs editorial-card cursor-pointer" data-post-id="${escapeAttribute(post.id)}">
-<div class="flex items-center justify-between"><span class="font-kicker-label text-kicker-label uppercase text-primary font-bold">${escapeHtml(kickerOf(post))}</span><span class="font-meta-detail text-meta-detail text-on-surface-variant">${escapeHtml(relativeTime(post.publishedAt))} · ${readingTime(post.text)} min</span></div>
-<h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug">${escapeHtml(headline)}</h3>
-<p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">${escapeHtml(standfirst || '')}</p>
-<div class="pt-space-xs flex items-center justify-between"><span class="font-meta-detail text-meta-detail text-on-surface">${escapeHtml(PESCE.CREATOR_NAME)}</span><button class="font-kicker-label text-kicker-label text-primary uppercase font-bold tracking-wider hover:underline" type="button" data-reader="${escapeAttribute(post.id)}">Lire →</button></div>
-</article>`;
+    return renderTextCard(post);
   }).join('');
 }
 
@@ -1160,6 +1186,12 @@ ${next ? `<button class="flex-1 p-space-sm rounded-lg bg-surface-container-low h
 
 function readerMedia(post, caption) {
   const url = mediaUrlOf(post);
+  if (!url && post.articleImageUrl) {
+    return `<figure class="mb-space-lg"><div class="relative rounded-xl overflow-hidden shadow-sm bg-surface-container">
+<img class="w-full h-64 object-cover" src="${escapeAttribute(post.articleImageUrl)}" alt="Couverture de l'article">
+<div class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-inverse-surface/70 text-inverse-on-surface text-[10px] font-kicker-label tracking-wide uppercase">Telegraph</div>
+</div></figure>`;
+  }
   if (post.contentType === 'photo' && url) {
     return `<figure class="mb-space-lg">
 <div class="relative rounded-xl overflow-hidden shadow-sm bg-surface-container">

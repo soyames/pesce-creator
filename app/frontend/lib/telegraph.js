@@ -66,6 +66,34 @@ export async function uploadTelegraphImage({ accessToken, buffer, filename = 'im
   return { src, url: telegraphImageUrl(src) };
 }
 
+// Lit une page Telegraph (retour_complet) et en extrait la première image <figure><img> —
+// c'est la couverture de l'article. Renvoie l'URL absolue, ou null.
+export function articleCoverFromPage(page) {
+  if (!page || !Array.isArray(page.content)) return null;
+  for (const node of page.content) {
+    if (node?.tag === 'figure') {
+      const image = (node.children || []).find((child) => child?.tag === 'img');
+      const url = normalizeTelegraphImage(image?.attrs?.src);
+      if (url) return url;
+    }
+  }
+  return null;
+}
+
+// Extrait le chapeau d'une page Telegraph (premier paragraphe après d'éventuelles figures).
+export function articleExcerptFromPage(page) {
+  if (!page || !Array.isArray(page.content)) return '';
+  for (const node of page.content) {
+    if (node?.tag === 'p' && node.children?.[0]) return String(node.children[0]).slice(0, 300);
+  }
+  return '';
+}
+
+// Récupère une page Telegraph publiée (retour du contenu) pour resynchronisation.
+export function getTelegraphPage({ accessToken, path, returnContent = true }) {
+  return telegraphCall('getPage', { access_token: accessToken, path, return_content: returnContent });
+}
+
 // Chemin /file/… → URL absolue telegra.ph.
 export function telegraphImageUrl(src) {
   const path = String(src || '').startsWith('/') ? src : `/${src}`;

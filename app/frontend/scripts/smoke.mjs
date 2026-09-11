@@ -59,6 +59,30 @@ await run('publications : upsert (insert + merge) puis lecture exacte', async ()
   await db().query('DELETE FROM pesce_posts WHERE id = $1', [POST_ID]);
 });
 
+await run('publications : idempotence — le rejeu webhook ne duplique ni n’écrase la couverture d’article', async () => {
+  // Le Studio écrit la couverture au moment de la publication ; le webhook rejoue ensuite la
+  // même dépêche sans image : l'upsert doit conserver article_image_url.
+  await upsertChannelPost({
+    id: POST_ID, source: 'studio', channelId: -1000000000001, channelUsername: 'smoke_channel', messageId: 1,
+    contentType: 'text', text: 'Article smoke\n\nhttps://telegra.ph/Smoke-Article', telegramUrl: 'https://t.me/smoke_channel/1',
+    mediaFileId: null, mediaMimeType: null, mediaFileName: null, mediaDuration: null, mediaWidth: null, mediaHeight: null,
+    articleUrl: 'https://telegra.ph/Smoke-Article', articleImageUrl: 'https://telegra.ph/file/smoke-cover.jpg',
+    published: true, publishedAt: new Date(), receivedAt: new Date(),
+  });
+  await upsertChannelPost({
+    id: POST_ID, source: 'telegram', channelId: -1000000000001, channelUsername: 'smoke_channel', messageId: 1,
+    contentType: 'text', text: 'Article smoke\n\nhttps://telegra.ph/Smoke-Article', telegramUrl: 'https://t.me/smoke_channel/1',
+    mediaFileId: null, mediaMimeType: null, mediaFileName: null, mediaDuration: null, mediaWidth: null, mediaHeight: null,
+    articleUrl: null, articleImageUrl: null,
+    published: true, publishedAt: new Date(), receivedAt: new Date(),
+  });
+  const rows = (await db().query('SELECT * FROM pesce_posts WHERE id = $1', [POST_ID])).rows;
+  assert.equal(rows.length, 1, 'rejeu du webhook dupliqué');
+  assert.equal(rows[0].article_image_url, 'https://telegra.ph/file/smoke-cover.jpg', 'couverture écrasée par le rejeu');
+  assert.equal(rows[0].article_url, 'https://telegra.ph/Smoke-Article', 'URL d’article écrasée par le rejeu');
+  await db().query('DELETE FROM pesce_posts WHERE id = $1', [POST_ID]);
+});
+
 await run('publications : listes filtrées par type et par limite', async () => {
   await upsertChannelPost({ id: POST_ID, source: 'telegram', channelId: -1000000000001, channelUsername: 'smoke_channel', messageId: 1, contentType: 'photo', text: '', telegramUrl: null, mediaFileId: 'smoke_file', mediaMimeType: 'image/jpeg', mediaFileName: null, mediaDuration: null, mediaWidth: 10, mediaHeight: 10, published: true, publishedAt: new Date(), receivedAt: new Date() });
   const all = await listChannelPosts({ limit: 50 });

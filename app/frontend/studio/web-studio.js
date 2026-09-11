@@ -981,6 +981,16 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
 <p id="backfillStatus" class="form-status" aria-live="polite"></p>
 </section>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm xl:col-span-2">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Synchroniser un article publié</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Un article déjà sur le canal (avant la synchronisation des métadonnées) peut être resynchronisé : indiquez son numéro de message (dernier chiffre du lien t.me, ex. « 123 » pour t.me/PesceHounyoOfficiel/123) et son lien Telegraph. La couverture est récupérée depuis Telegraph et référencée dans Neon — aucune republication, aucun doublon.</p>
+<form id="resyncForm" class="flex flex-col sm:flex-row items-stretch gap-space-sm">
+<input id="resyncMessageId" class="editorial-input sm:w-40" type="text" inputmode="numeric" placeholder="N° de message">
+<input id="resyncTelegraphUrl" class="editorial-input flex-1" type="text" maxlength="512" placeholder="https://telegra.ph/…">
+<button id="resyncSubmit" class="sm:w-auto py-3 px-space-md bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Synchroniser</button>
+</form>
+<p id="resyncStatus" class="form-status" aria-live="polite"></p>
+</section>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm xl:col-span-2">
 <h2 class="font-headline-sm text-headline-sm text-on-surface">Studio Telegram</h2>
 <p class="font-body-md text-body-md text-on-surface-variant">Le Studio Telegram (Mini App) reste disponible pour la création sur mobile : même base de données, mêmes brouillons, mêmes directs et mêmes messages. Ouvrez-le avec <strong>${escapeHtml(studioDeepLink())}</strong> depuis le compte créateur.</p>
 </section>
@@ -1268,6 +1278,23 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
       switchTab('rediger');
     });
     document.getElementById('backfillSupportButton')?.addEventListener('click', backfillSupport);
+    document.getElementById('resyncSubmit')?.addEventListener('click', async () => {
+      const messageId = document.getElementById('resyncMessageId')?.value.trim() || '';
+      const telegraphUrl = document.getElementById('resyncTelegraphUrl')?.value.trim() || '';
+      const status = document.getElementById('resyncStatus');
+      const button = document.getElementById('resyncSubmit');
+      if (!messageId || !telegraphUrl) { if (status) status.textContent = 'Le numéro de message et le lien Telegraph sont requis.'; return; }
+      button.disabled = true; button.textContent = 'Synchronisation…';
+      try {
+        const response = await studioAction({ action: 'resync_message', messageId, telegraphUrl });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) { showLogin(); return; }
+        if (!response.ok) throw new Error(data.message || 'Synchronisation impossible.');
+        if (status) status.textContent = data.cover ? 'Article synchronisé avec sa couverture Telegraph.' : 'Article synchronisé (sans couverture détectée).';
+        await load();
+      } catch (error) { if (status) status.textContent = error.message || 'Synchronisation impossible.'; }
+      finally { button.disabled = false; button.textContent = 'Synchroniser'; }
+    });
     document.getElementById('telegraphSetupButton')?.addEventListener('click', telegraphSetup);
     document.getElementById('liveForm')?.addEventListener('submit', submitLive);
     document.querySelectorAll('.live-edit').forEach((button) => button.addEventListener('click', () => editLive(button)));
