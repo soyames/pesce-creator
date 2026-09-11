@@ -1014,6 +1014,12 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm xl:col-span-2">
 ${renderTelegraph()}
 </section>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm xl:col-span-2">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Réconcilier avec le canal</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Le canal Telegram est la source éditoriale de vérité : les publications supprimées du canal cessent d'apparaître dans l'application, et les articles visibles manquants sont réintégrés (sans republication, sans doublon). Un échec de lecture ne modifie jamais rien.</p>
+<button id="reconcileButton" class="self-start px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Réconcilier maintenant</button>
+<p id="reconcileStatus" class="form-status" aria-live="polite"></p>
+</section>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
 <h2 class="font-headline-sm text-headline-sm text-on-surface">Bouton de soutien du canal</h2>
 <p class="font-body-md text-body-md text-on-surface-variant">Les nouvelles publications reçoivent automatiquement le bouton « ⭐ Soutenir le travail de Pesce ». Utilisez ceci une fois pour les publications déjà présentes.</p>
@@ -1343,6 +1349,20 @@ ${renderTelegraph()}
       switchTab('rediger');
     });
     document.getElementById('backfillSupportButton')?.addEventListener('click', backfillSupport);
+    document.getElementById('reconcileButton')?.addEventListener('click', async () => {
+      const status = document.getElementById('reconcileStatus');
+      const button = document.getElementById('reconcileButton');
+      button.disabled = true; button.textContent = 'Réconciliation…';
+      try {
+        const response = await studioAction({ action: 'reconcile_channel' });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) { showLogin(); return; }
+        if (!response.ok) throw new Error(data.message || 'Réconciliation impossible.');
+        if (status) status.textContent = `${data.fetched} messages lus · ${data.removed} publication(s) marquée(s) supprimée(s) · ${data.ingested} article(s) réintégré(s).`;
+        await load();
+      } catch (error) { if (status) status.textContent = error.message || 'Réconciliation impossible.'; }
+      finally { button.disabled = false; button.textContent = 'Réconcilier maintenant'; }
+    });
     document.getElementById('resyncSubmit')?.addEventListener('click', async () => {
       const messageId = document.getElementById('resyncMessageId')?.value.trim() || '';
       const telegraphUrl = document.getElementById('resyncTelegraphUrl')?.value.trim() || '';

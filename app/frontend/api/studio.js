@@ -4,8 +4,9 @@
 //     réservée aux adresses PESCE_WEB_ADMIN_EMAILS.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
-import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, mergeIntoExistingArticle, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
+import { createDraft, createLiveSchedule, deleteDraft, findPostByArticleUrl, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listReconcilablePosts, listSupportTickets, markPaymentRefunded, markPostSourceDeleted, mergeIntoExistingArticle, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
 import { backfillTelegraphArticles } from '../lib/article-backfill.js';
+import { computeRemovedMessageIds, extractMessageIdsFromPreview, fetchChannelPreview } from '../lib/channel-reconcile.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
@@ -49,6 +50,10 @@ export default async function handler(req, res) {
       // tout article publié sur Telegraph est référencé dans pesce_posts même si le webhook
       // n'a pas été reçu — la couverture vient de Telegraph, jamais d'un binaire local.
       try { await backfillTelegraphArticles({ channelUsername: CHANNEL_USERNAME }); } catch (error) { console.error('telegraph backfill failed', error); }
+      // Réconciliation automatique avec le canal (source de vérité) : supprime de l'état actif
+      // les publications dont le message a disparu du canal, et ingère les articles visibles
+      // absents. Sécurisée : un échec de lecture ne modifie RIEN.
+      try { await reconcileChannel(); } catch (error) { console.error('channel reconcile failed', error); }
       return res.status(200).json({ ...serialize(overview), telegraphConfigured: Boolean(process.env.TELEGRAPH_ACCESS_TOKEN) });
     }
     if (req.method !== 'POST') return res.status(405).json({ message: 'Méthode non autorisée.' });
@@ -141,6 +146,44 @@ export default async function handler(req, res) {
         articleImageUrl: cover ? cover.src : null,
         draftId,
       });
+    }
+
+    // Réconciliation explicite avec le canal (source de vérité) : supprime de l'état actif les
+    // publications dont le message a disparu, ingère les articles visibles absents.
+    if (action === 'reconcile_channel') {
+      try {
+        const html = await fetchChannelPreview(CHANNEL_USERNAME);
+        const fetchedIds = extractMessageIdsFromPreview(html);
+        if (fetchedIds.length === 0) return res.status(200).json({ ok: true, fetched: 0, removed: 0, ingested: 0, message: 'Aperçu vide — aucune modification (règle de sécurité).' });
+        const rows = await listReconcilablePosts();
+        const removedIds = computeRemovedMessageIds(rows, fetchedIds);
+        for (const rowId of removedIds) await markPostSourceDeleted(rowId);
+        // Ingestion : même logique que la réconciliation automatique.
+        const links = telegraphLinksFromPreview(html);
+        let ingested = 0;
+        for (const [messageId, { path, url }] of links) {
+          if (await findPostByArticleUrl(url)) continue;
+          let page = null;
+          try { page = await getTelegraphPage({ accessToken: process.env.TELEGRAPH_ACCESS_TOKEN, path }); } catch { page = null; }
+          if (!page?.title) continue;
+          const titleMatch = rows.find((row) => row.articleUrl && normalizeTitle((row.text || '').split('\n')[0]) === normalizeTitle(page.title));
+          if (titleMatch) { await mergeIntoExistingArticle({ ...rows.find((row) => row.id === titleMatch.id), telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`, messageId }); continue; }
+          const chat = await telegram(token, 'getChat', { chat_id: CHANNEL_HANDLE });
+          const chatId = Number(chat.result?.id);
+          if (!chatId) continue;
+          await upsertChannelPost({
+            id: `${chatId}_${messageId}`, source: 'telegram', channelId: chatId, channelUsername: CHANNEL_USERNAME, messageId,
+            contentType: 'text', text: `${page.title}\n\n${articleExcerptFromPage(page)}\n\n${url}`,
+            telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`, articleUrl: url, articleImageUrl: articleCoverFromPage(page),
+            published: true, publishedAt: new Date(), receivedAt: new Date(),
+          });
+          ingested += 1;
+        }
+        return res.status(200).json({ ok: true, fetched: fetchedIds.length, removed: removedIds.length, ingested });
+      } catch (error) {
+        console.error('channel reconcile failed', error);
+        return res.status(502).json({ message: 'Réconciliation impossible : lecture du canal échouée — aucune modification appliquée.' });
+      }
     }
 
     // Ressynchronisation d'un article déjà publié sur le canal (posté avant la synchronisation
@@ -405,6 +448,75 @@ async function telegram(token, method, payload) {
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(`Telegram ${method} a échoué: ${data.description || response.status}`);
   return data;
+}
+
+// — Réconciliation avec le canal (source éditoriale de vérité), idempotente et sécurisée.
+//   La Bot API ne peut ni lister l'historique ni détecter les suppressions : on lit l'aperçu
+//   public du canal. Un échec de lecture (ou un aperçu vide) ne modifie JAMAIS l'état existant.
+let lastChannelReconcile = 0;
+
+function normalizeTitle(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 120);
+}
+
+function telegraphLinksFromPreview(html) {
+  const links = new Map(); // messageId → { path, url }
+  const blocks = String(html || '').split(/data-post="/);
+  for (const block of blocks.slice(1)) {
+    const messageMatch = block.match(/^[^"]+\/(\d+)"/);
+    if (!messageMatch) continue;
+    const linkMatch = block.match(/https:\/\/telegra\.ph\/([A-Za-z0-9%-_.]+)/);
+    if (!linkMatch) continue;
+    const path = decodeURIComponent(linkMatch[1]);
+    links.set(Number(messageMatch[1]), { path, url: `https://telegra.ph/${path}` });
+  }
+  return links;
+}
+
+async function reconcileChannel() {
+  if (Date.now() - lastChannelReconcile < 5 * 60 * 1000) return; // au plus toutes les 5 minutes par instance
+  lastChannelReconcile = Date.now();
+  const html = await fetchChannelPreview(CHANNEL_USERNAME); // échec → exception → rien n'est modifié
+  const fetchedIds = extractMessageIdsFromPreview(html);
+  if (fetchedIds.length === 0) return; // sécurité : un aperçu vide ne veut PAS dire « tout est supprimé »
+  const rows = await listReconcilablePosts();
+  let removed = 0;
+  for (const rowId of computeRemovedMessageIds(rows, fetchedIds)) {
+    await markPostSourceDeleted(rowId);
+    removed += 1;
+  }
+  // Ingestion des articles visibles absents de l'état (déduplication par article_url PUIS par
+  // titre — les messages 8/9/11 du même article restent une seule publication).
+  const links = telegraphLinksFromPreview(html);
+  let ingested = 0;
+  for (const [messageId, { path, url }] of links) {
+    if (await findPostByArticleUrl(url)) continue;
+    let page = null;
+    try { page = await getTelegraphPage({ accessToken: process.env.TELEGRAPH_ACCESS_TOKEN, path }); } catch { page = null; }
+    if (!page?.title) continue;
+    const titleMatch = rows.find((row) => row.articleUrl && normalizeTitle((row.text || '').split('\n')[0]) === normalizeTitle(page.title));
+    if (titleMatch) { await mergeIntoExistingArticle({ ...rows.find((row) => row.id === titleMatch.id), telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`, messageId }); continue; }
+    const chat = await telegram(token, 'getChat', { chat_id: CHANNEL_HANDLE });
+    const chatId = Number(chat.result?.id);
+    if (!chatId) continue;
+    await upsertChannelPost({
+      id: `${chatId}_${messageId}`,
+      source: 'telegram',
+      channelId: chatId,
+      channelUsername: CHANNEL_USERNAME,
+      messageId,
+      contentType: 'text',
+      text: `${page.title}\n\n${articleExcerptFromPage(page)}\n\n${url}`,
+      telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`,
+      articleUrl: url,
+      articleImageUrl: articleCoverFromPage(page),
+      published: true,
+      publishedAt: new Date(),
+      receivedAt: new Date(),
+    });
+    ingested += 1;
+  }
+  console.log(`channel reconcile: ${fetchedIds.length} messages lus, ${removed} marqués supprimés, ${ingested} articles ingérés`);
 }
 
 // Envoi multipart (audio enregistré, etc.) — le corps est un FormData, pas du JSON.

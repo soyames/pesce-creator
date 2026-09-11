@@ -9,7 +9,7 @@ import {
   setSupportSession, trackAudienceEvent, updateLiveSchedule, updateSupportTicket, upsertChannelPost, upsertPayment, db,
 } from '../lib/db.js';
 import { createWebSession, destroyWebSession, webSessionEmailFromRequest, WEB_SESSION_COOKIE } from '../lib/web-session.js';
-import { mergeIntoExistingArticle } from '../lib/db.js';
+import { listReconcilablePosts, markPostSourceDeleted, mergeIntoExistingArticle } from '../lib/db.js';
 
 const POST_ID = `smoke_post_${Date.now()}`;
 const CHARGE_ID = `smoke_charge_${Date.now()}`;
@@ -58,6 +58,18 @@ await run('publications : upsert (insert + merge) puis lecture exacte', async ()
   assert.ok(row.published_at instanceof Date);
   assert.ok(row.updated_at instanceof Date);
   await db().query('DELETE FROM pesce_posts WHERE id = $1', [POST_ID]);
+});
+
+await run('source de vérité : une publication marquée supprimée sort des listes publiques, reste en audit', async () => {
+  const id = `smoke_source_${Date.now()}`;
+  await upsertChannelPost({ id, source: 'telegram', channelId: -1000000000001, channelUsername: 'smoke_channel', messageId: 7000 + (Date.now() % 1000), contentType: 'text', text: 'Publication à supprimer', telegramUrl: null, mediaFileId: null, mediaMimeType: null, mediaFileName: null, mediaDuration: null, mediaWidth: null, mediaHeight: null, published: true, publishedAt: new Date(), receivedAt: new Date() });
+  assert.ok((await listChannelPosts({ limit: 50 })).some((post) => post.id === id), 'post actif absent du flux');
+  assert.ok((await listReconcilablePosts()).some((post) => post.id === id), 'post absent des candidats à la réconciliation');
+  await markPostSourceDeleted(id);
+  assert.ok(!(await listChannelPosts({ limit: 50 })).some((post) => post.id === id), 'post supprimé encore dans le flux public');
+  const row = (await db().query('SELECT * FROM pesce_posts WHERE id = $1', [id])).rows[0];
+  assert.ok(row.source_deleted_at instanceof Date, 'horodatage de suppression non conservé (audit)');
+  await db().query('DELETE FROM pesce_posts WHERE id = $1', [id]);
 });
 
 await run('articles : les messages 8/9/11 d’un même article Telegraph restent UNE publication', async () => {

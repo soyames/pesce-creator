@@ -84,6 +84,12 @@ const FIXTURE_POSTS = [
     articleImageUrl: 'https://telegra.ph/file/preview-couverture.jpg',
     publishedAt: iso(-160 * 3600e3), updatedAt: iso(-160 * 3600e3),
   },
+  {
+    id: 'post-12', source: 'telegram', contentType: 'text', messageId: 3,
+    text: 'Test supprimé du canal\n\nCette publication a disparu de sa source : elle ne doit plus apparaître.',
+    telegramUrl: `${CHANNEL_URL}/3`, sourceDeletedAt: iso(-3 * 3600e3),
+    publishedAt: iso(-200 * 3600e3), updatedAt: iso(-200 * 3600e3),
+  },
 ].map((post) => {
   const enriched = { ...post };
   if (post.mediaFileId) enriched.mediaUrl = `./api/media?file_id=${post.mediaFileId}&token=preview`;
@@ -191,7 +197,9 @@ window.__PESCE_PREVIEW__ = true;
     if (url.indexOf('/api/content') !== -1) {
       var type = (url.match(/type=([a-z]+)/) || [])[1] || '';
       var limit = Number((url.match(/limit=(\\d+)/) || [])[1] || 30);
-      var list = isEmpty ? [] : (type ? POSTS.filter(function (p) { return p.contentType === type; }) : POSTS);
+      // Règle de source : les publications supprimées du canal ne sont plus servies.
+      var active = POSTS.filter(function (p) { return !p.sourceDeletedAt; });
+      var list = isEmpty ? [] : (type ? active.filter(function (p) { return p.contentType === type; }) : active);
       return Promise.resolve(json(200, { channel: { username: '${CHANNEL_USERNAME}', url: '${CHANNEL_URL}' }, posts: list.slice(0, limit) }));
     }
     if (url.indexOf('/api/live') !== -1) return Promise.resolve(json(200, { lives: isEmpty ? [] : LIVES }));

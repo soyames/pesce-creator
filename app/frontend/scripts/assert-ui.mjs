@@ -76,6 +76,7 @@ const ROUTES = [
     asserts: [
       ['composition éditoriale chargée', `document.getElementById('publicationFeed').children.length > 0 && document.getElementById('publicationFeed').dataset.loading !== 'true'`, true],
       ['article Telegraph avec couverture affiché (image telegra.ph)', `!!document.querySelector('#publicationFeed img[src*="telegra.ph/file/"]') && document.getElementById('publicationFeed').textContent.includes('Le numérique africain')`, true],
+      ['publication supprimée de la source absente du flux public', `!document.getElementById('publicationFeed').textContent.includes('Test supprimé du canal')`, true],
       ['lead « Jeunesse ouest-africaine » en tête', `document.querySelector('#publicationFeed .font-headline-lg-mobile').textContent.includes('Jeunesse ouest-africaine')`, true],
       ['filtre actif souligné terracotta', `getComputedStyle(document.querySelector('[data-filter="tout"]'), '::after').backgroundColor`, RGB.primary],
       ['carte lead sur surface blanche', `getComputedStyle(document.querySelector('#publicationFeed > article')).backgroundColor`, RGB.lowest],
@@ -246,6 +247,8 @@ const ROUTES = [
       ['messages réels affichés', `document.getElementById('webStudioBody').textContent.includes('Messages & demandes')`, true],
       ['audience réelle affichée', `document.getElementById('webStudioBody').textContent.includes('Telegram Stars')`, true],
       ['Telegraph configuré visible dans Paramètres', `document.getElementById('webStudioBody').textContent.includes('Compte configuré')`, true],
+      ['réconciliation avec le canal disponible', `document.getElementById('webStudioBody').textContent.includes('Réconcilier avec le canal')`, true],
+      ['publication supprimée de la source exclue des écrits', `!document.getElementById('webStudioBody').textContent.includes('Test supprimé du canal')`, true],
       ['session affichée', `document.getElementById('webSessionEmail').textContent.includes('pescestudio8@gmail.com')`, true],
       ['déconnexion présente', `!!document.getElementById('webLogout')`, true],
       ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],

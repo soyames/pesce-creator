@@ -123,6 +123,16 @@ CREATE INDEX IF NOT EXISTS pesce_audience_events_at_idx ON pesce_audience_events
 `,
   },
   {
+    // Cycle de vie de la source : une publication supprimée du canal Telegram cesse d'être une
+    // publication active (le canal reste la source éditoriale de vérité). La ligne est conservée
+    // pour l'historique/audit mais exclue des requêtes publiques.
+    name: '007_source_lifecycle.sql',
+    sql: `
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS source_deleted_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS pesce_posts_active_idx ON pesce_posts (published_at DESC) WHERE published = true AND source_deleted_at IS NULL;
+`,
+  },
+  {
     // Articles (Telegraph) : URL de l'article et image de couverture hébergée par Telegraph.
     // Métadonnées/références uniquement — jamais de binaire dans Neon.
     name: '006_article_metadata.sql',

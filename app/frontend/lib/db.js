@@ -84,6 +84,7 @@ const mapPost = (row) => row && ({
   mediaThumbnailFileId: row.media_thumbnail_file_id,
   articleUrl: row.article_url,
   articleImageUrl: row.article_image_url,
+  sourceDeletedAt: row.source_deleted_at,
   published: row.published === true,
   publishedAt: row.published_at,
   receivedAt: row.received_at,
@@ -126,7 +127,7 @@ export async function listChannelPosts({ type, limit = 20 } = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
   const result = await (await ensureDb()).query(
     `SELECT * FROM pesce_posts
-     WHERE published = true AND ($1::text IS NULL OR content_type = $1)
+     WHERE published = true AND source_deleted_at IS NULL AND ($1::text IS NULL OR content_type = $1)
      ORDER BY published_at DESC NULLS LAST, id DESC
      LIMIT $2`,
     [type || null, safeLimit]
@@ -315,6 +316,23 @@ export async function mergeIntoExistingArticle(post) {
   return existing.id;
 }
 
+// Réconciliation avec le canal : lignes actives portant un message Telegram (candidates).
+export async function listReconcilablePosts() {
+  const result = await (await ensureDb()).query(
+    `SELECT * FROM pesce_posts WHERE published = true AND source_deleted_at IS NULL AND message_id IS NOT NULL ORDER BY message_id DESC LIMIT 200`
+  );
+  return result.rows.map(mapPost);
+}
+
+// Marque une publication comme supprimée de sa source (conservée pour l'audit, exclue du public).
+export async function markPostSourceDeleted(postId, deletedAt = new Date()) {
+  await (await ensureDb()).query(
+    `UPDATE pesce_posts SET source_deleted_at = $2, updated_at = now() WHERE id = $1`,
+    [String(postId), deletedAt]
+  );
+  return String(postId);
+}
+
 // Recherche d'une publication par son URL d'article (Telegraph) — déduplication du backfill.
 export async function findPostByArticleUrl(articleUrl) {
   if (!articleUrl) return null;
@@ -462,7 +480,7 @@ export async function getAudienceStats() {
 // — Vue d'ensemble du studio (indicateurs + listes récentes)
 export async function getStudioOverview() {
   const [totalsResult, starsResult, supportersResult, openTicketsResult, recentPosts, recentPayments, recentTickets, drafts, liveSchedules, audience] = await Promise.all([
-    (await ensureDb()).query('SELECT content_type, COUNT(*)::int AS count FROM pesce_posts WHERE published = true GROUP BY content_type'),
+    (await ensureDb()).query('SELECT content_type, COUNT(*)::int AS count FROM pesce_posts WHERE published = true AND source_deleted_at IS NULL GROUP BY content_type'),
     (await ensureDb()).query('SELECT COALESCE(SUM(amount), 0)::int AS stars, COUNT(*)::int AS payments FROM pesce_payments'),
     (await ensureDb()).query('SELECT COUNT(DISTINCT user_id)::int AS supporters FROM pesce_payments WHERE user_id IS NOT NULL'),
     (await ensureDb()).query(`SELECT COUNT(*)::int AS open_tickets FROM pesce_support_tickets WHERE status = 'open'`),
