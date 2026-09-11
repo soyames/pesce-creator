@@ -33,11 +33,15 @@ function parseJwt(token) {
   }
 }
 
-async function googlePublicKeys() {
+async function googlePublicKeys(certsUrl) {
   if (cachedCerts && Date.now() - cachedAt < CERTS_TTL_MS) return cachedCerts;
-  const response = await fetch(GOOGLE_CERTS_URL);
+  const response = await fetch(certsUrl || GOOGLE_CERTS_URL);
   if (!response.ok) throw new Error(`Clés Google indisponibles (${response.status}).`);
-  cachedCerts = await response.json();
+  const data = await response.json();
+  // Le point de terminaison JWKS de Google renvoie { keys: [{ kid, n, e, … }, …] } :
+  // on le normalise en table kid → JWK avant toute recherche.
+  const keys = Array.isArray(data.keys) ? data.keys : [];
+  cachedCerts = Object.fromEntries(keys.map((key) => [key.kid, key]));
   cachedAt = Date.now();
   return cachedCerts;
 }
@@ -50,8 +54,8 @@ function jwkToPublicKey(jwk) {
 
 // Vérifie la signature du jeton avec la clé Google correspondant à son kid.
 // `certs` (map kid → JWK) peut être injecté pour les tests ; sinon on utilise les JWKS de Google.
-async function verifySignature(parsed, { certs } = {}) {
-  const keys = certs || (await googlePublicKeys());
+async function verifySignature(parsed, { certs, certsUrl } = {}) {
+  const keys = certs || (await googlePublicKeys(certsUrl));
   const jwk = keys[parsed.header?.kid];
   if (!jwk || (!jwk.n || !jwk.e)) return false;
   const key = jwkToPublicKey(jwk);
@@ -73,13 +77,14 @@ export function validateGoogleClaims(payload, { clientId, now = Date.now() } = {
 }
 
 // Point d'entrée : renvoie l'adresse vérifiée, ou null si le jeton est invalide/expiré.
-// `certs` (map kid → JWK) est injectable pour les tests ; en production, les JWKS de Google.
-export async function verifyGoogleIdToken(token, { clientId, certs } = {}) {
+// `certs` (map kid → JWK) et `certsUrl` (endpoint JWKS) sont injectables pour les tests ;
+// en production, ce sont les JWKS de Google.
+export async function verifyGoogleIdToken(token, { clientId, certs, certsUrl } = {}) {
   const parsed = parseJwt(token);
   if (!parsed) return null;
   if (parsed.header?.alg !== 'RS256') return null;
   try {
-    if (!(await verifySignature(parsed, { certs }))) return null;
+    if (!(await verifySignature(parsed, { certs, certsUrl }))) return null;
   } catch (error) {
     console.error('google id token verification failed', error);
     return null; // clés Google injoignables : refus par défaut (fail-closed)

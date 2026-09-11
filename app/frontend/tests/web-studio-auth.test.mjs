@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import studioAuthHandler from '../api/studio-auth.js';
@@ -122,6 +123,37 @@ test('verifyGoogleIdToken : signature RS256 réelle vérifiée, altérations ref
     null,
     'audience étrangère acceptée'
   );
+});
+
+// — Régression du MÉCANISME de l'échec production : le point de terminaison JWKS de Google
+// renvoie { "keys": [{ kid, n, e, … }, …] } (table → liste) ; la vérification doit normaliser
+// cette forme. L'ancien code indexait le kid directement sur l'objet racine et refusait ainsi
+// TOUT jeton Google valide. Ce test sert de vraies clés via un vrai endpoint JWKS local.
+test('verifyGoogleIdToken : forme JWKS réelle de Google ({ keys: […] }) acceptée', async () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: 'jwk' });
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ keys: [jwk] }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const certsUrl = `http://127.0.0.1:${server.address().port}/certs`;
+
+  const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const signingInput = `${b64({ alg: 'RS256', kid: jwk.kid, typ: 'JWT' })}.${b64(claims())}`;
+  const signature = crypto.sign('sha256', Buffer.from(signingInput), privateKey).toString('base64url');
+  const token = `${signingInput}.${signature}`;
+  const clientId = 'client-test.apps.googleusercontent.com';
+
+  try {
+    assert.equal(
+      await verifyGoogleIdToken(token, { clientId, certsUrl }),
+      'pescestudio8@gmail.com',
+      'jeton valide refusé avec la forme JWKS réelle (mécanisme de l\'échec production)'
+    );
+  } finally {
+    server.close();
+  }
 });
 
 // — Liste d'autorisation

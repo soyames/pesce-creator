@@ -83,21 +83,34 @@
       return;
     }
     try {
-      google.accounts.id.initialize({ client_id: config.clientId, locale: 'fr', callback: (response) => handleGoogleCredential(response?.credential) });
+      // use_fedcm_for_prompt : flux FedCM de Google Identity Services (migration officielle) —
+      // garantit que le clic du bouton aboutit même lorsque les cookies tiers sont bloqués.
+      google.accounts.id.initialize({ client_id: config.clientId, locale: 'fr', use_fedcm_for_prompt: true, callback: (response) => handleGoogleCredential(response?.credential || (typeof response === 'string' ? response : '')) });
       google.accounts.id.renderButton(document.getElementById('gsiContainer'), { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', width: 280 });
     } catch {
       if (hint) hint.textContent = 'La connexion est momentanément indisponible — réessayez dans un instant.';
     }
   }
 
+  // Après un jeton Google accepté, on ne dépend PAS d'un rechargement : la session est
+  // immédiatement vérifiée puis le Bureau s'ouvre directement (rechargement en repli).
   async function handleGoogleCredential(credential) {
+    const hint = document.getElementById('loginHint');
+    if (!credential) { showLogin('Connexion impossible — jeton Google manquant.'); return; }
+    if (hint) hint.textContent = 'Connexion en cours…';
     try {
-      const response = await fetch('/api/studio-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', credential }) });
+      const response = await fetch('/api/studio-auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ action: 'login', credential }) });
       const data = await response.json().catch(() => ({}));
       if (response.status === 403) { showLogin('Ce compte Google n’est pas autorisé à accéder au Studio. Seul l’administrateur du Studio peut entrer.'); return; }
-      if (!response.ok) { showLogin(data.message || 'Connexion impossible — réessayez.'); return; }
+      if (!response.ok) { console.warn('studio login refused', response.status, data.message || ''); showLogin(data.message || 'Connexion impossible — réessayez.'); return; }
+      // Succès : la session (cookie HttpOnly) est posée — on l'utilise immédiatement.
+      try {
+        const sessionResponse = await fetch('/api/studio-auth?action=session', { cache: 'no-store', credentials: 'include' });
+        if (sessionResponse.ok) { await enterShell(); return; }
+      } catch (error) { console.warn('studio session check failed', error); }
       location.reload();
     } catch (error) {
+      console.warn('studio login failed', error);
       showLogin('Connexion impossible — réessayez dans un instant.');
     }
   }
