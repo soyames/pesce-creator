@@ -268,7 +268,7 @@ ${excerpt ? `<p class="font-body-sm text-body-sm text-on-surface-variant line-cl
 
   // — DIRECTS : programmation réelle (le direct reste diffusé sur sa plateforme externe).
   function liveStatusLabel(status) {
-    return { scheduled: 'programmé', live: 'en direct', cancelled: 'annulé', completed: 'terminé' }[status] || status;
+    return { scheduled: 'à venir', ready: 'prêt', live: 'en direct', ended: 'terminé', cancelled: 'annulé', failed: 'échoué' }[status] || status;
   }
 
   function toDatetimeLocal(value) {
@@ -313,7 +313,7 @@ ${live.link ? `<div class="flex items-center gap-1.5"><span class="material-symb
 <input id="liveDate" class="editorial-input" type="datetime-local" required>
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Heure de votre appareil — l'audience verra l'heure convertie dans son propre fuseau horaire.</p>
 <input id="liveLink" class="editorial-input" type="text" maxlength="512" placeholder="Lien du direct (YouTube, …) — optionnel">
-<select id="liveStatus" class="editorial-input"><option value="scheduled">Programmé</option><option value="live">En direct</option><option value="completed">Terminé</option></select>
+<select id="liveStatus" class="editorial-input"><option value="scheduled">À venir</option><option value="ready">Prêt</option><option value="live">En direct</option><option value="ended">Terminé</option><option value="cancelled">Annulé</option><option value="failed">Échoué</option></select>
 <div class="composer-actions flex gap-space-sm"><button id="liveSubmit" class="flex-1 bg-on-secondary-fixed text-surface py-3 px-space-md font-kicker-label text-kicker-label uppercase tracking-wider hover:bg-primary transition-colors" type="submit">Planifier le direct</button></div>
 <p id="liveStatusText" class="form-status" aria-live="polite"></p>
 </form>

@@ -365,7 +365,7 @@ export async function updateSupportTicket(ticketId, data) {
 }
 
 // — Programmation des directs (le média reste sur la plateforme externe ; seules les métadonnées sont stockées)
-export const LIVE_STATUSES = ['scheduled', 'live', 'cancelled', 'completed'];
+export const LIVE_STATUSES = ['scheduled', 'ready', 'live', 'ended', 'cancelled', 'failed'];
 
 const mapLive = (row) => row && ({
   id: row.id,

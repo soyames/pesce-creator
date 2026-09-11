@@ -671,6 +671,10 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
 `;
   }
 
+  function liveStatusLabel(status) {
+    return { scheduled: 'À venir', ready: 'Prêt', live: 'En direct', ended: 'Terminé', cancelled: 'Annulé', failed: 'Échoué' }[status] || status;
+  }
+
   async function publishVideo() {
     const title = document.getElementById('videoTitle')?.value.trim() || '';
     const description = document.getElementById('videoDescription')?.value.trim() || '';
@@ -915,12 +919,20 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
 <div class="flex flex-col gap-space-md">
 ${lives.length ? lives.map((live) => `<div class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-xs" data-live-id="${escapeAttribute(live.id)}">
 <div class="flex items-center justify-between">
-<span class="font-kicker-label text-[0.6875rem] text-primary uppercase">${live.status === 'live' ? 'En direct' : 'Programmé'}</span>
+<span class="font-kicker-label text-[0.6875rem] text-primary uppercase">${liveStatusLabel(live.status)}</span>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(live.scheduledAt)}</span>
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(live.title)}</h3>
 ${live.description ? `<p class="font-body-sm text-body-sm text-on-surface-variant">${escapeHtml(live.description)}</p>` : ''}
 <p class="font-meta-detail text-meta-detail text-on-surface-variant">Canal Telegram${live.link ? ' · lien fourni' : ''}</p>
+${live.status === 'live' || live.status === 'ready' ? `<div class="bg-surface-container-low rounded-lg p-space-sm flex flex-col gap-space-xs" data-rtmp-room>
+<span class="font-kicker-label text-kicker-label text-primary uppercase">Régie RTMP</span>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Les identifiants RTMP (serveur + clé) sont fournis par Telegram et réservés au compte créateur — la clé est un secret. Diffusez depuis OBS ou tout encodeur externe compatible.</p>
+<div class="flex items-center gap-space-sm flex-wrap">
+<button class="live-rtmp-fetch px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-live-id="${escapeAttribute(live.id)}">Afficher serveur &amp; clé</button>
+</div>
+<div class="hidden flex-col gap-1" data-rtmp-credentials></div>
+</div>` : ''}
 <div class="flex gap-space-xs pt-1">
 <button class="live-edit px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-live-id="${escapeAttribute(live.id)}">Modifier</button>
 <button class="live-cancel px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-live-id="${escapeAttribute(live.id)}">Annuler</button>
@@ -935,7 +947,7 @@ ${live.description ? `<p class="font-body-sm text-body-sm text-on-surface-varian
 <input id="liveDate" class="editorial-input" type="datetime-local" required>
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Heure de votre appareil — l'audience verra l'heure convertie dans son propre fuseau horaire.</p>
 <input id="liveLink" class="editorial-input" type="text" maxlength="512" placeholder="Lien du direct (YouTube, …) — optionnel">
-<select id="liveStatus" class="editorial-input"><option value="scheduled">Programmé</option><option value="live">En direct</option><option value="completed">Terminé</option></select>
+<select id="liveStatus" class="editorial-input"><option value="scheduled">À venir</option><option value="ready">Prêt</option><option value="live">En direct</option><option value="ended">Terminé</option><option value="cancelled">Annulé</option><option value="failed">Échoué</option></select>
 <button id="liveSubmit" class="py-3 px-space-md bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="submit">Planifier le direct</button>
 <p id="liveStatusText" class="form-status" aria-live="polite"></p>
 </form>
@@ -1341,12 +1353,18 @@ ${renderTelegraph()}
     bindMediaEvents();
     bindVideoComposer();
     bindAudioComposer();
-    // Délégation du corps : « Insérer dans un article » depuis la Photothèque.
+    // Délégation du corps : « Insérer dans un article » (Photothèque) et copie RTMP (régie).
     document.getElementById('webStudioBody')?.addEventListener('click', (event) => {
       const photoInsert = event.target.closest('.photo-insert');
-      if (!photoInsert) return;
-      if (photoInsert.dataset.photoInsert) addImageFromChannel(photoInsert.dataset.photoInsert, photoInsert.dataset.photoCaption || '');
-      switchTab('rediger');
+      if (photoInsert) {
+        if (photoInsert.dataset.photoInsert) addImageFromChannel(photoInsert.dataset.photoInsert, photoInsert.dataset.photoCaption || '');
+        switchTab('rediger');
+        return;
+      }
+      const rtmpCopy = event.target.closest('.rtmp-copy');
+      if (rtmpCopy) {
+        navigator.clipboard?.writeText(rtmpCopy.dataset.copy || '').then(() => { rtmpCopy.textContent = 'Copié'; }).catch(() => {});
+      }
     });
     document.getElementById('backfillSupportButton')?.addEventListener('click', backfillSupport);
     document.getElementById('reconcileButton')?.addEventListener('click', async () => {
@@ -1384,6 +1402,33 @@ ${renderTelegraph()}
     document.getElementById('liveForm')?.addEventListener('submit', submitLive);
     document.querySelectorAll('.live-edit').forEach((button) => button.addEventListener('click', () => editLive(button)));
     document.querySelectorAll('.live-cancel').forEach((button) => button.addEventListener('click', () => cancelLive(button)));
+    // — Régie RTMP : identifiants réservés au compte créateur, servis par l'API authentifiée.
+    document.querySelectorAll('.live-rtmp-fetch').forEach((button) => button.addEventListener('click', async () => {
+      const room = button.closest('[data-rtmp-room]');
+      const box = room?.querySelector('[data-rtmp-credentials]');
+      if (!box) return;
+      button.disabled = true; button.textContent = 'Chargement…';
+      try {
+        const response = await studioAction({ action: 'live_rtmp', liveId: button.dataset.liveId });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) { showLogin(); return; }
+        if (!response.ok) throw new Error(data.message || 'Flux RTMP indisponible.');
+        box.innerHTML = `<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-kicker-label text-kicker-label uppercase text-on-surface-variant">Serveur</span><code class="px-2 py-1 rounded bg-surface text-on-surface text-[12px]">${escapeHtml(data.url)}</code><button class="rtmp-copy px-space-sm py-1.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface" type="button" data-copy="${escapeAttribute(data.url)}">Copier le serveur</button>
+</div>
+<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-kicker-label text-kicker-label uppercase text-on-surface-variant">Clé de stream</span><code class="px-2 py-1 rounded bg-surface text-on-surface text-[12px]">${escapeHtml(data.key)}</code><button class="rtmp-copy px-space-sm py-1.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface" type="button" data-copy="${escapeAttribute(data.key)}">Copier la clé</button>
+</div>
+<p class="font-meta-detail text-[11px] text-error">La clé de stream est secrète : ne la partagez jamais, ne la publiez jamais.</p>`;
+        box.classList.remove('hidden');
+        box.classList.add('flex');
+      } catch (error) {
+        box.innerHTML = `<p class="font-body-sm text-body-sm text-on-surface-variant">${escapeHtml(error.message || 'Flux RTMP indisponible.')}</p>`;
+        box.classList.remove('hidden');
+        box.classList.add('flex');
+      }
+      finally { button.disabled = false; button.textContent = 'Afficher serveur & clé'; }
+    }));
     document.querySelectorAll('.payment-refund').forEach((button) => button.addEventListener('click', () => refundPayment(button)));
     document.querySelectorAll('.draft-delete').forEach((button) => button.addEventListener('click', () => deleteDraftRow(button)));
     document.querySelectorAll('.draft-load').forEach((button) => button.addEventListener('click', () => {

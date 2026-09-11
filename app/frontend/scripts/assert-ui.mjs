@@ -548,14 +548,16 @@ async function main() {
         if (message.sessionId !== attached.sessionId) return;
         if (message.method === 'Runtime.exceptionThrown') {
           const detail = message.params?.exceptionDetails?.exception?.description || message.params?.exceptionDetails?.text || 'exception';
-          // Bruit interne du navigateur headless (Edge injecte des scripts de télémétrie qui
-          // messagent un auditeur absent) — ne se produit pas sur about:blank et n'a aucun
-          // rapport avec le code de l'application. Ignoré pour ne signaler que les vraies erreurs.
+          // Bruit interne du navigateur headless (télémétrie/extensions d'Edge qui messagent un
+          // auditeur absent ou ferment un canal de messages) — jamais du code applicatif.
           if (String(detail).includes('tabs:outgoing.message.ready')) return;
+          if (String(detail).includes('message channel closed before a response')) return;
           consoleErrors.push(`exception: ${String(detail).slice(0, 160)}`);
         }
         if (message.method === 'Runtime.consoleAPICalled' && message.params?.type === 'error') {
           const text = (message.params.args || []).map((arg) => arg.value ?? arg.description ?? '').join(' ').slice(0, 160);
+          // Bruit du navigateur headless (extensions internes d'Edge) — jamais du code applicatif.
+          if (text.includes('chrome-extension://')) return;
           consoleErrors.push(`console.error: ${text}`);
         }
       };

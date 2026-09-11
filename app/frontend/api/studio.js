@@ -7,6 +7,7 @@
 import { createDraft, createLiveSchedule, deleteDraft, findPostByArticleUrl, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listReconcilablePosts, listSupportTickets, markPaymentRefunded, markPostSourceDeleted, mergeIntoExistingArticle, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
 import { backfillTelegraphArticles } from '../lib/article-backfill.js';
 import { computeRemovedMessageIds, extractMessageIdsFromPreview, fetchChannelPreview } from '../lib/channel-reconcile.js';
+import { getChannelLiveState, getChannelRtmp } from '../lib/mtproto.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
@@ -146,6 +147,36 @@ export default async function handler(req, res) {
         articleImageUrl: cover ? cover.src : null,
         draftId,
       });
+    }
+
+    // — Régie des directs : contrôle RTMP via MTProto (utilisateur autorisé uniquement).
+    // La clé de stream est un secret : elle ne sort JAMAIS de cette route authentifiée.
+    if (action === 'live_rtmp') {
+      const liveId = String(body.liveId || '').trim();
+      if (!liveId) return res.status(400).json({ message: 'Direct manquant.' });
+      try {
+        const rtmp = await getChannelRtmp({ channelUsername: CHANNEL_USERNAME });
+        if (!rtmp?.url || !rtmp?.key) return res.status(503).json({ message: 'Telegram n’a pas fourni de flux RTMP pour ce direct.' });
+        return res.status(200).json({ ok: true, url: rtmp.url, key: rtmp.key });
+      } catch (error) {
+        console.error('live rtmp failed', error.message);
+        return res.status(503).json({ message: error.message || 'Flux RTMP indisponible pour le moment.' });
+      }
+    }
+
+    // — Synchronisation d'état avec l'appel Telegram réel (MTProto) : autoritaire quand configuré.
+    if (action === 'live_status_sync') {
+      const liveId = String(body.liveId || '').trim();
+      if (!liveId) return res.status(400).json({ message: 'Direct manquant.' });
+      try {
+        const state = await getChannelLiveState({ channelUsername: CHANNEL_USERNAME });
+        if (!state) return res.status(200).json({ ok: true, live: false, message: 'Aucun appel de groupe actif connu.' });
+        if (state.active) await updateLiveSchedule(liveId, { status: 'live' });
+        return res.status(200).json({ ok: true, live: state.active, title: state.title });
+      } catch (error) {
+        console.error('live status sync failed', error.message);
+        return res.status(503).json({ message: error.message || 'État du direct indisponible pour le moment.' });
+      }
     }
 
     // Réconciliation explicite avec le canal (source de vérité) : supprime de l'état actif les

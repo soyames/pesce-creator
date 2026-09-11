@@ -25,6 +25,21 @@ Ne jamais imprimer, exposer, journaliser, committer ni révéler un secret : cre
 - Si une commande risquerait de révéler un secret, ne pas l'exécuter.
 - Le scan automatisé existe : `npm run scan` (`scripts/secret-scan.mjs`), intégré à `npm test`. Étendre ses motifs lors de l'ajout de nouveaux types de secrets.
 
+## Régie des directs (MTProto)
+
+La Bot API ne contrôle PAS les livestreams du canal : les flux RTMP (serveur + clé) et l'état
+réel des appels sont fournis par l'API utilisateur MTProto (`phone.getGroupCallStreamRtmpUrl`,
+`phone.getGroupCall…`), derrière la façade serveur `lib/mtproto.js`. Configuration unique,
+réservée au propriétaire du canal (documentée dans `scripts/mtproto-setup.mjs`) :
+
+1. Créer les identifiants sur my.telegram.org (API development tools).
+2. En local : `PESCE_MT_PROTO_API_ID=… PESCE_MT_PROTO_API_HASH=… node scripts/mtproto-setup.mjs`
+   (connexion interactive), puis sauvegarder la chaîne de session affichée.
+3. Sur Vercel (type Secret) : `PESCE_MT_PROTO_API_ID`, `PESCE_MT_PROTO_API_HASH`, `PESCE_MT_PROTO_SESSION`.
+
+Sans configuration, toute opération MTProto échoue proprement (503 explicite) : la clé de
+stream ne transite QUE par l'API authentifiée du Studio — jamais par une route publique.
+
 ## Commandes utiles
 
 ```bash
