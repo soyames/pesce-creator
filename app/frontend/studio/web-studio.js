@@ -194,12 +194,13 @@
     const tickets = studioData?.openTickets || 0;
     const upcoming = (studioData?.liveSchedules || []).filter((live) => live.status === 'live' || live.status === 'scheduled');
     const nextLive = upcoming[0] || null;
-    const textPosts = posts.filter((post) => ['text', 'document', 'other'].includes(post.contentType));
+    // Même définition que l'onglet Écrits (destination de la carte) : contentType === 'text'.
+    const textPosts = posts.filter((post) => post.contentType === 'text');
     return `
 <div class="bg-surface-container-low rounded-xl p-space-lg flex flex-col gap-1">
 <span class="font-kicker-label text-kicker-label text-primary uppercase">Carnet de bord</span>
 <h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Bonjour, Pesce.</h1>
-<p class="font-body-md text-body-md text-on-surface-variant">Voici votre espace pour créer, gérer et publier le contenu de Pesce — synchronisé avec le canal Telegram et la base Neon.</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Voici votre espace pour créer, gérer et publier le contenu de Pesce — vos publications sont enregistrées dans Pesce Studio et diffusées sur le canal Telegram.</p>
 <button class="self-start mt-space-sm inline-flex items-center gap-2 px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-wider hover:bg-primary transition-colors rounded-lg" type="button" data-web-tab-goto="rediger"><span class="material-symbols-outlined text-[20px]">edit_square</span> Rédiger une publication</button>
 </div>
 <div class="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
@@ -332,7 +333,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <div class="flex items-center gap-space-sm flex-wrap">
 <button id="mediaChannelPick" class="px-space-md py-2.5 border border-outline-variant rounded-lg bg-surface-container-lowest font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button">Choisir une photo du canal</button>
 <button id="mediaUploadPick" class="px-space-md py-2.5 border border-outline-variant rounded-lg bg-surface-container-lowest font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button">Téléverser une image</button>
-<input id="mediaFileInput" class="hidden" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+<input id="mediaFileInput" class="hidden" type="file" accept="image/jpeg,image/png,image/gif">
 </div>
 <div id="mediaPickerGrid" class="hidden grid grid-cols-3 md:grid-cols-4 gap-space-sm"></div>
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Les images sont hébergées par Telegraph et apparaissent dans l'article publié (couverture en tête, images insérées après le paragraphe choisi).</p>
@@ -347,7 +348,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 </div>
 </div>
 <div class="flex flex-col sm:flex-row items-stretch gap-space-sm">
-<button id="publishSubmit" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-body-sm text-body-sm font-bold uppercase tracking-wider rounded-lg hover:bg-primary-container transition-colors flex items-center justify-center gap-2" type="button"><span class="material-symbols-outlined text-[1.2rem]">send</span> Publier sur Telegram</button>
+<button id="publishSubmit" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-body-sm text-body-sm font-bold uppercase tracking-wider rounded-lg hover:bg-primary-container transition-colors flex items-center justify-center gap-2" type="button"><span class="material-symbols-outlined text-[1.2rem]">send</span> Publier</button>
 <button id="draftButton" class="sm:w-auto py-3 px-space-md bg-surface-container-lowest border border-outline-variant text-on-surface font-body-sm text-body-sm font-medium rounded-lg transition-colors flex items-center justify-center" type="button">Enregistrer l'ébauche</button>
 </div>
 <p id="publishStatus" class="form-status" aria-live="polite"></p>
@@ -512,20 +513,26 @@ ${image.placement !== 'cover' ? `<span class="flex items-center gap-1 font-meta-
   }
 
   async function uploadArticleImage(file) {
-    if (file.size > 4 * 1024 * 1024) { alert('Image trop volumineuse (4 Mo maximum).'); return; }
+    // Telegraph n'accepte que JPEG, PNG et GIF : un autre format (webp, heic…) serait refusé
+    // côté Telegraph avec une erreur incompréhensible — on l'explique avant même l'envoi.
+    if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
+      alert('Ce format d’image n’est pas accepté par Telegraph : utilisez une image JPEG, PNG ou GIF.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) { alert('Image trop volumineuse (3 Mo maximum).'); return; }
     const status = document.getElementById('publishStatus');
-    if (status) status.textContent = 'Téléversement vers Telegraph…';
+    if (status) status.textContent = 'Téléversement de la couverture vers Telegraph…';
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const response = await studioAction({ action: 'article_image_upload', data: String(reader.result), filename: file.name });
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) { showLogin(); return; }
-        if (!response.ok) throw new Error(data.message || 'Téléversement impossible.');
+        if (!response.ok) throw new Error(data.message || 'Impossible d’ajouter l’image de couverture. L’article n’a pas été publié.');
         articleImages.push({ id: String(Date.now()) + '-' + articleImages.length, src: data.src, url: data.url, caption: '', credit: '', placement: articleImages.length === 0 ? 'cover' : 'inline', afterParagraph: 1 });
         renderMediaList(); refreshBat();
-        if (status) status.textContent = 'Image téléversée vers Telegraph.';
-      } catch (error) { if (status) status.textContent = error.message || 'Téléversement impossible.'; }
+        if (status) status.textContent = 'Image téléversée vers Telegraph — elle servira de couverture à l’article.';
+      } catch (error) { if (status) status.textContent = error.message || 'Impossible d’ajouter l’image de couverture. L’article n’a pas été publié.'; }
     };
     reader.readAsDataURL(file);
   }
@@ -537,11 +544,11 @@ ${image.placement !== 'cover' ? `<span class="flex items-center gap-1 font-meta-
       const response = await studioAction({ action: 'article_image_from_channel', fileId });
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) { showLogin(); return; }
-      if (!response.ok) throw new Error(data.message || 'Transfert impossible.');
+      if (!response.ok) throw new Error(data.message || 'Impossible d’ajouter l’image de couverture. L’article n’a pas été publié.');
       articleImages.push({ id: String(Date.now()) + '-' + articleImages.length, src: data.src, url: data.url, caption: caption || '', credit: '', placement: articleImages.length === 0 ? 'cover' : 'inline', afterParagraph: 1 });
       renderMediaList(); refreshBat();
       if (status) status.textContent = 'Photo transférée vers Telegraph.';
-    } catch (error) { if (status) status.textContent = error.message || 'Transfert impossible.'; }
+    } catch (error) { if (status) status.textContent = error.message || 'Impossible d’ajouter l’image de couverture. L’article n’a pas été publié.'; }
   }
 
   // — BROUILLONS : système existant.
@@ -566,11 +573,11 @@ ${drafts.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${d
     const kindLabel = { text: 'Écrit', video: 'Vidéo', audio: 'Audio', photo: 'Photo' }[type] || 'Publication';
     return `
 <div class="flex items-center justify-between">
-<div><span class="font-kicker-label text-kicker-label text-primary uppercase">Canal officiel</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">${escapeHtml(title)}</h1></div>
+<div><span class="font-kicker-label text-kicker-label text-primary uppercase">Pesce Studio</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">${escapeHtml(title)}</h1></div>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${items.length} ${kindLabel.toLowerCase()}${items.length > 1 ? 's' : ''}</span>
 </div>
 ${type === 'text' ? `<div class="bg-surface-container-low rounded-xl p-space-md flex items-center justify-between gap-space-md">
-<p class="font-body-sm text-body-sm text-on-surface-variant">Les écrits publiés depuis le canal ou le pupitre apparaissent ici — la source éditoriale reste Telegram.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Les écrits publiés depuis Pesce Studio apparaissent ici. Telegram reste un canal de diffusion.</p>
 <button class="shrink-0 px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button" data-web-tab-goto="rediger">Rédiger</button>
 </div>` : ''}
 ${items.length ? `<div class="grid grid-cols-1 ${type === 'photo' ? 'md:grid-cols-3' : 'xl:grid-cols-2'} gap-space-md">${items.map((post) => renderPostItem(post, type)).join('')}</div>` : `<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm text-center"><p class="font-body-sm text-body-sm text-on-surface-variant">Aucun contenu de ce type sur le canal pour le moment.</p></div>`}
@@ -605,6 +612,7 @@ ${frame}
 <p class="font-body-sm text-body-sm text-on-surface line-clamp-2">${escapeHtml(headline)}</p>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
 ${post.messageId ? `<button class="video-edit self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-video-edit="${escapeAttribute(post.id)}">Modifier</button>` : ''}
+${renderDistributionRetry(post)}
 </div>
 </article>`;
     }
@@ -623,7 +631,8 @@ ${mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribu
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(headline)}</h3>
 <p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml((post.text || '').split('\n').slice(1).join(' ').trim().slice(0, 200))}</p>
-<span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.telegramUrl ? `<a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Canal Telegram'}</span>
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.telegramUrl ? `<a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Diffusion Telegram en attente'}</span>
+${renderDistributionRetry(post)}
 </article>`;
   }
 
@@ -631,6 +640,30 @@ ${mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribu
     const total = Math.round(Number(seconds) || 0);
     if (!total) return '';
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  }
+
+  // Relance de diffusion (échec précédent enregistré) : la publication canonique reste, seule la
+  // copie Telegram manque — même ligne, même identité : jamais de doublon.
+  function renderDistributionRetry(post) {
+    if (!post.distributionError || post.distributedAt || !['text', 'video', 'document', 'other'].includes(post.contentType)) return '';
+    return `<div class="flex items-center gap-2 pt-1">
+<button class="distribution-retry px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-distribution-retry="${escapeAttribute(post.id)}">Relancer la diffusion Telegram</button>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[0.6875rem]">Diffusion en attente</p>
+</div>`;
+  }
+
+  async function retryDistribution(button) {
+    const postId = button.dataset.distributionRetry;
+    if (!postId) return;
+    button.disabled = true; button.textContent = 'Diffusion…';
+    try {
+      const response = await studioAction({ action: 'distribute_post', postId });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { showLogin(); return; }
+      if (!response.ok) throw new Error(data.message || 'Diffusion impossible.');
+      await load();
+    } catch (error) { alert(error.message || 'Diffusion impossible.'); }
+    finally { button.disabled = false; button.textContent = 'Relancer la diffusion Telegram'; }
   }
 
   // — VIDÉOS : YouTube reste l'hébergeur (V1). Le studio publie la référence validée,
@@ -661,7 +694,7 @@ ${mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribu
 <p id="videoUrlStatus" class="font-meta-detail text-meta-detail text-on-surface-variant"></p>
 </div>
 <div class="flex flex-col sm:flex-row gap-space-sm">
-<button id="videoPublish" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Publier sur Telegram</button>
+<button id="videoPublish" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Publier</button>
 <button id="videoDraft" class="sm:w-auto py-3 px-space-md border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Enregistrer l'ébauche</button>
 </div>
 <p id="videoStatus" class="form-status" aria-live="polite"></p>
@@ -684,18 +717,25 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
     if (!title || !youtubeIdOf(youtubeUrl)) { if (status) status.textContent = 'Le titre et un lien YouTube valide sont requis.'; return; }
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const { response, data } = await studioActionOrRetry({ action: videoEditingMessageId ? 'video_update' : 'video_publish', title, description, youtubeUrl, ...(videoEditingMessageId ? { messageId: videoEditingMessageId } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
+      const { response, data } = await studioActionOrRetry({ action: videoEditingMessageId ? 'video_update' : 'video_publish', title, description, youtubeUrl, ...(videoEditingMessageId ? { messageId: videoEditingMessageId } : { publishKey: nextPublishKey() }), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
       if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
-      if (status) status.textContent = videoEditingMessageId ? 'Vidéo mise à jour sur le canal.' : 'Vidéo publiée sur le canal Telegram — le Mini App la présente en carte avec miniature et bouton ⭐ Soutenir.';
+      if (status) {
+        status.textContent = videoEditingMessageId
+          ? 'Vidéo mise à jour dans Pesce Studio.'
+          : (data.distributed === false
+            ? 'PUBLICATION RÉUSSIE — la vidéo est dans Pesce Studio et le Mini App. La diffusion Telegram a échoué : relancez-la depuis « Vidéos ».'
+            : 'PUBLICATION RÉUSSIE — la vidéo est dans Pesce Studio et le Mini App, et diffusée sur Telegram.');
+      }
+      pendingPublishKey = null;
       removeDraftLocally(activeDraftId);
       activeDraftId = null;
       videoEditingMessageId = null;
       document.getElementById('videoForm')?.reset();
       document.getElementById('videoPreview')?.classList.add('hidden');
       await load();
-    } catch (error) { if (status) status.textContent = error.message || 'Publication impossible.'; }
-    finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
+    } catch (error) { if (status) status.textContent = error.message || 'Publication impossible — réessayez.'; }
+    finally { button.disabled = false; button.textContent = 'Publier'; }
   }
 
   function bindVideoComposer() {
@@ -781,7 +821,7 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
 <input id="audioAuthor" class="editorial-input" type="text" maxlength="256" placeholder="Auteur / source (optionnel)">
 </div>
 <div class="flex flex-col sm:flex-row gap-space-sm">
-<button id="audioPublish" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Publier sur Telegram</button>
+<button id="audioPublish" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Publier</button>
 <button id="audioDraft" class="sm:w-auto py-3 px-space-md border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Enregistrer l'ébauche</button>
 </div>
 <p id="audioStatus" class="form-status" aria-live="polite"></p>
@@ -872,10 +912,11 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
     if (!title || !audioDataUrl) { if (status) status.textContent = 'Un enregistrement (ou un fichier importé) et un titre sont requis.'; return; }
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const { response, data } = await studioActionOrRetry({ action: 'audio_publish', title, description, author, data: audioDataUrl, filename: audioFileName, ...(activeDraftId ? { draftId: activeDraftId } : {}) });
+      const { response, data } = await studioActionOrRetry({ action: 'audio_publish', title, description, author, data: audioDataUrl, filename: audioFileName, publishKey: nextPublishKey(), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
       if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
-      if (status) status.textContent = 'Audio publié sur le canal Telegram — le Mini App le présente avec lecteur intégré et bouton ⭐ Soutenir.';
+      if (status) status.textContent = 'PUBLICATION RÉUSSIE — l’audio est hébergé et le Mini App le présente avec lecteur intégré.';
+      pendingPublishKey = null;
       removeDraftLocally(activeDraftId);
       activeDraftId = null;
       audioDataUrl = null;
@@ -885,8 +926,12 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
       document.getElementById('audioDescription').value = '';
       document.getElementById('audioAuthor').value = '';
       await load();
-    } catch (error) { if (status) status.textContent = error.message || 'Publication impossible.'; }
-    finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
+    } catch (error) {
+      // Échec d'hébergement : le brouillon et l'enregistrement local sont conservés — la reprise
+      // (même clé de publication) renvoie le fichier sans créer de doublon.
+      if (status) status.textContent = error.message || 'Publication impossible — réessayez.';
+    }
+    finally { button.disabled = false; button.textContent = 'Publier'; }
   }
 
   // — ARTICLES TELEGRAPH : capacité existante, terminologie corrigée.
@@ -976,6 +1021,10 @@ ${tickets.length ? tickets.map((ticket) => {
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(ticket.username ? '@' + ticket.username : ticket.firstName || 'Lecteur')}</h3>
 <p class="font-body-md text-body-md text-on-surface-variant">${escapeHtml(ticket.message || '')}</p>
+${replied && ticket.lastReply ? `<div class="bg-surface-container-low rounded-lg p-space-sm flex flex-col gap-0.5">
+<span class="font-kicker-label text-[0.625rem] text-primary uppercase">Votre réponse enregistrée${ticket.lastReplyAt ? ` · ${escapeHtml(formatDate(ticket.lastReplyAt))}` : ''}${ticket.lastReplyMessageId ? ` · message Telegram n° ${ticket.lastReplyMessageId}` : ''}</span>
+<p class="font-body-sm text-body-sm text-on-surface line-clamp-2">${escapeHtml(ticket.lastReply)}</p>
+</div>` : ''}
 <textarea class="ticket-reply-input editorial-input" rows="3" maxlength="4000" placeholder="${replied ? 'Répondre à nouveau dans Telegram…' : 'Répondre dans Telegram…'}"></textarea>
 <div class="flex gap-space-sm">
 <button class="ticket-reply flex-1 py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">${replied ? 'Répondre à nouveau' : 'Répondre'}</button>
@@ -1035,7 +1084,7 @@ ${renderTelegraph()}
 </section>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm xl:col-span-2">
 <h2 class="font-headline-sm text-headline-sm text-on-surface">Réconcilier avec le canal</h2>
-<p class="font-body-md text-body-md text-on-surface-variant">Le canal Telegram est la source éditoriale de vérité : les publications supprimées du canal cessent d'apparaître dans l'application, et les articles visibles manquants sont réintégrés (sans republication, sans doublon). Un échec de lecture ne modifie jamais rien.</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Les publications provenant du canal Telegram qui en ont été supprimées cessent d'apparaître dans l'application, et les articles visibles manquants sont réintégrés (sans republication, sans doublon). Les publications créées dans Pesce Studio restent disponibles même si leur copie Telegram est supprimée. Un échec de lecture ne modifie jamais rien.</p>
 <button id="reconcileButton" class="self-start px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Réconcilier maintenant</button>
 <p id="reconcileStatus" class="form-status" aria-live="polite"></p>
 </section>
@@ -1067,19 +1116,27 @@ ${renderTelegraph()}
   }
 
   // — Actions (identiques au Studio Telegram : mêmes API, même base).
-  // Envoi d'une action avec reprise idempotente : si l'envoi Telegram a réussi mais que la
-  // persistance Neon a échoué (502 + sent), le serveur reprend avec l'identité du message —
-  // aucun doublon Telegram n'est possible.
+  // Le serveur persiste la publication canonique AVANT toute diffusion Telegram : un 502 signifie
+  // « rien n'a été publié » — une seule nouvelle tentative avec le MÊME corps (même clé de
+  // publication) est donc sûre et sans doublon possible.
   async function studioActionOrRetry(payload) {
-    const response = await studioAction(payload);
-    const data = await response.json().catch(() => ({}));
-    if (response.status === 401) { showLogin(); return { response, data }; }
-    if (response.status === 502 && data.sent?.chatId && data.sent?.messageId) {
-      const retry = await studioAction({ ...payload, resume: data.sent });
-      const retryData = await retry.json().catch(() => ({}));
-      return { response: retry, data: retryData, retried: true };
-    }
-    return { response, data };
+    const attempt = async () => {
+      const response = await studioAction(payload);
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) showLogin();
+      return { response, data };
+    };
+    const result = await attempt();
+    if (result.response.status === 502) return attempt();
+    return result;
+  }
+
+  // Clé d'idempotence de publication : conservée entre tentatives de la même intention —
+  // une reprise après échec retrouve la même publication (jamais de doublon).
+  let pendingPublishKey = null;
+  function nextPublishKey() {
+    if (!pendingPublishKey) pendingPublishKey = `web:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
+    return pendingPublishKey;
   }
 
   function removeDraftLocally(draftId) {
@@ -1104,12 +1161,13 @@ ${renderTelegraph()}
     }
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const { response, data } = await studioActionOrRetry({ action: title ? 'article_publish' : 'publish', text, ...(title ? { title, images } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
+      const { response, data } = await studioActionOrRetry({ action: title ? 'article_publish' : 'publish', text, publishKey: nextPublishKey(), ...(title ? { title, images } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
       if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
-      status.textContent = title
-        ? (images.length ? 'Article illustré publié sur Telegraph (images hébergées par Telegraph) et envoyé sur le canal avec le bouton ⭐ Soutenir.' : 'Article publié sur Telegraph et envoyé sur le canal avec le bouton ⭐ Soutenir.')
-        : 'Publication envoyée sur le canal Telegram. Le bouton ⭐ Soutenir est ajouté automatiquement.';
+      status.textContent = data.distributed === false
+        ? `PUBLICATION RÉUSSIE — ${title ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App. La diffusion Telegram a échoué : vous pouvez la relancer depuis « Écrits » sans créer de doublon.`
+        : `PUBLICATION RÉUSSIE — ${title ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App, et diffusé${title ? '' : 'e'} sur Telegram avec le bouton ⭐ Soutenir.`;
+      pendingPublishKey = null;
       removeDraftLocally(activeDraftId);
       activeDraftId = null;
       articleImages = [];
@@ -1118,20 +1176,11 @@ ${renderTelegraph()}
       refreshBat();
       await load();
     } catch (error) {
-      const confirmed = await verifyPublish(text);
-      status.textContent = confirmed
-        ? 'Publication partie sur le canal (confirmation reçue via la synchronisation).'
-        : `Publication incertaine — vérifiez le canal Telegram avant de réessayer. (${error.message || 'erreur inconnue'})`;
-      if (confirmed) { removeDraftLocally(activeDraftId); activeDraftId = null; articleImages = []; renderMediaList(); document.getElementById('publishForm')?.reset(); await load(); }
+      // Persistance canonique d'abord côté serveur : une erreur signifie que RIEN n'a été
+      // publié — la reprise (même clé) ne peut créer aucun doublon.
+      status.textContent = error.message || 'Publication impossible — réessayez.';
     }
-    finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
-  }
-
-  async function verifyPublish(text) {
-    try {
-      const overview = await api('/api/studio', { cache: 'no-store' });
-      return (overview.recentPosts || []).some((post) => (post.text || '') === text);
-    } catch { return false; }
+    finally { button.disabled = false; button.textContent = 'Publier'; }
   }
 
   async function saveDraft() {
@@ -1368,6 +1417,8 @@ ${renderTelegraph()}
         switchTab('rediger');
         return;
       }
+      const distributionRetry = event.target.closest('.distribution-retry');
+      if (distributionRetry) { retryDistribution(distributionRetry); return; }
       const rtmpCopy = event.target.closest('.rtmp-copy');
       if (rtmpCopy) {
         navigator.clipboard?.writeText(rtmpCopy.dataset.copy || '').then(() => { rtmpCopy.textContent = 'Copié'; }).catch(() => {});

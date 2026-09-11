@@ -155,4 +155,31 @@ CREATE TABLE IF NOT EXISTS pesce_web_sessions (
 CREATE INDEX IF NOT EXISTS pesce_web_sessions_expires_idx ON pesce_web_sessions (expires_at);
 `,
   },
+  {
+    // Modèle d'origine des publications + état de distribution explicite :
+    //   - origin 'studio'  : publication créée dans Pesce Studio (canonique). La suppression de
+    //     sa copie Telegram (distribution) ne la retire JAMAIS de l'application.
+    //   - origin 'telegram': publication ingérée depuis le canal (source Telegram). La
+    //     réconciliation peut la marquer inactive quand son message source disparaît.
+    // Les lignes existantes publiées par le Studio portent source='studio' ET un message_id
+    // (identité Telegram attachée) ; tout le reste est de l'ingestion Telegram (y compris le
+    // backfill Telegraph, dont source='studio' mais sans message).
+    // publish_key : clé d'idempotence de publication (aucun doublon Telegraph/Telegram en reprise).
+    // distributed_at / distribution_error : la diffusion Telegram est secondaire et explicite —
+    // un échec de diffusion n'efface jamais la publication canonique.
+    name: '008_origin_distribution.sql',
+    sql: `
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS origin TEXT;
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS publish_key TEXT;
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS distributed_at TIMESTAMPTZ;
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS distribution_error TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS pesce_posts_publish_key_idx ON pesce_posts (publish_key) WHERE publish_key IS NOT NULL;
+
+UPDATE pesce_posts SET origin = 'studio' WHERE source = 'studio' AND message_id IS NOT NULL AND origin IS NULL;
+UPDATE pesce_posts SET origin = 'telegram' WHERE origin IS NULL;
+
+ALTER TABLE pesce_support_tickets ADD COLUMN IF NOT EXISTS last_reply_message_id BIGINT;
+ALTER TABLE pesce_support_tickets ADD COLUMN IF NOT EXISTS reply_count INTEGER NOT NULL DEFAULT 0;
+`,
+  },
 ];

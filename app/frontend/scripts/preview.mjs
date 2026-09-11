@@ -279,7 +279,10 @@ window.__PESCE_WEB_PREVIEW__ = true;
     if (url.indexOf('/api/content') !== -1) {
       var type = (url.match(/type=([a-z]+)/) || [])[1] || '';
       var limit = Number((url.match(/limit=(\\d+)/) || [])[1] || 30);
-      var list = type ? ${postsJson}.filter(function (p) { return p.contentType === type; }) : ${postsJson};
+      // Règle de source identique au vrai /api/content : les publications supprimées de la
+      // source (Telegram) ne sont plus servies.
+      var active = ${postsJson}.filter(function (p) { return !p.sourceDeletedAt; });
+      var list = type ? active.filter(function (p) { return p.contentType === type; }) : active;
       return Promise.resolve(json(200, { channel: { username: '${CHANNEL_USERNAME}', url: '${CHANNEL_URL}' }, posts: list.slice(0, limit) }));
     }
     if (url.indexOf('/api/live') !== -1) return Promise.resolve(json(200, { lives: [] }));

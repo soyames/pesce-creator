@@ -39,11 +39,43 @@ export function computeRemovedMessageIds(rows, fetchedIds, { now = Date.now } = 
   return removed;
 }
 
-// Récupère une page d'aperçu public du canal (injectable pour les tests).
-export async function fetchChannelPreview(username, { fetchImpl = fetch } = {}) {
-  const response = await fetchImpl(`https://t.me/s/${encodeURIComponent(username)}`, {
+// Récupère une page d'aperçu public du canal (injectable pour les tests). `before` pagine
+// vers les messages plus anciens (t.me/s/<canal>?before=<message_id>).
+export async function fetchChannelPreview(username, { before = null, fetchImpl = fetch } = {}) {
+  const url = `https://t.me/s/${encodeURIComponent(username)}${before ? `?before=${encodeURIComponent(String(before))}` : ''}`;
+  const response = await fetchImpl(url, {
     headers: { 'User-Agent': 'PesceStudio-Reconcile/1.0' },
   });
   if (!response.ok) throw new Error(`Aperçu du canal indisponible (${response.status}).`);
   return response.text();
+}
+
+// Seule une ligne TÉLÉGRAM-ORIGINÉE peut être marquée supprimée par réconciliation : une
+// publication créée dans le Studio survit à la suppression de sa copie Telegram (distribution).
+// Les lignes héritées sans origine conservent l'ancien comportement (réconciliables).
+export function isReconcilableSourceRow(row) {
+  if (!row || row.origin === 'studio') return false;
+  const messageId = Number(row.messageId);
+  return Number.isFinite(messageId) && messageId > 0;
+}
+
+// Fenêtre paginée d'identifiants : lit l'aperçu jusqu'à couvrir `untilMessageId` (messages plus
+// anciens compris), bornée à `maxPages`. Les lignes hors fenêtre restent intouchées (règle de
+// sécurité : on ne peut rien affirmer sur ce qu'on n'a pas lu). `startFrom` évite de relire la
+// première page déjà consommée.
+export async function fetchPreviewWindow(username, { startFrom = null, untilMessageId = null, maxPages = 30, fetchImpl = fetch, log = null } = {}) {
+  const allIds = [];
+  let before = startFrom;
+  let covered = untilMessageId === null;
+  for (let page = 0; page < maxPages; page += 1) {
+    const html = await fetchChannelPreview(username, { before, fetchImpl });
+    const ids = extractMessageIdsFromPreview(html);
+    if (ids.length === 0) break;
+    for (const id of ids) if (!allIds.includes(id)) allIds.push(id);
+    const minId = Math.min(...ids);
+    if (untilMessageId !== null && minId <= untilMessageId) { covered = true; break; }
+    before = minId;
+  }
+  if (!covered && untilMessageId !== null && typeof log === 'function') log(`fenêtre de réconciliation bornée à ${maxPages} pages (les messages antérieurs restent hors couverture)`);
+  return allIds;
 }

@@ -1,6 +1,6 @@
 // Webhook Telegram du bot @PesceStudioBot : commandes, sessions de support, paiements en Étoiles
 // et ingestion des publications du canal (channel_post) avec bouton de soutien.
-import { createSupportTicket, deleteSupportSession, getSupportSession, markUpdateProcessed, mergeIntoExistingArticle, pruneWebhookUpdates, setSupportSession, upsertChannelPost, upsertPayment } from '../lib/db.js';
+import { createSupportTicket, deleteSupportSession, findPostByTelegramIdentity, getSupportSession, markUpdateProcessed, mergeIntoExistingArticle, mergeTelegramCopyIntoPost, pruneWebhookUpdates, setSupportSession, upsertChannelPost, upsertPayment } from '../lib/db.js';
 import { creatorTelegramUserIds, isCreatorTelegramUser } from '../lib/telegram-auth.js';
 import { newTicketId } from '../lib/tickets.js';
 import { youtubeIdOf } from '../lib/youtube.js';
@@ -39,10 +39,21 @@ export default async function handler(req, res) {
     // traitement, le rejeu de Telegram ré-exécute l'upsert au lieu de perdre la publication.
     if (channelPost) {
       const post = await enrichChannelPost(normalize(channelPost));
-      // Déduplication par URL d'article : un même article Telegraph publié plusieurs fois sur le
-      // canal (messages 8/9/11…) reste UNE publication — fusion dans l'enregistrement canonique.
-      const merged = await mergeIntoExistingArticle(post);
-      if (!merged) await upsertChannelPost(post);
+      // Déduplication par identité Telegram d'abord : une publication Studio déjà distribuée sur
+      // le canal (même chat_id + message_id) est UNE publication — la copie du canal complète la
+      // référence canonique (champs manquants, éditions), sans jamais créer de seconde ligne ni
+      // écraser l'origine 'studio'.
+      const existingByIdentity = (post.messageId && post.channelId)
+        ? await findPostByTelegramIdentity(post.channelId, post.messageId)
+        : null;
+      if (existingByIdentity) {
+        await mergeTelegramCopyIntoPost(existingByIdentity.id, post);
+      } else {
+        // Déduplication par URL d'article : un même article Telegraph publié plusieurs fois sur le
+        // canal (messages 8/9/11…) reste UNE publication — fusion dans l'enregistrement canonique.
+        const merged = await mergeIntoExistingArticle(post);
+        if (!merged) await upsertChannelPost(post);
+      }
       try {
         await telegram(token, 'editMessageReplyMarkup', { chat_id: channelPost.chat?.id || `@${CHANNEL_USERNAME}`, message_id: channelPost.message_id, reply_markup: supportMarkup() });
       } catch (error) {
@@ -144,6 +155,7 @@ function normalize(message) {
   return {
     id: `${message.chat?.id || 'channel'}_${id}`,
     source: 'telegram',
+    origin: 'telegram',
     channelId: message.chat?.id ?? null,
     channelUsername: message.chat?.username || CHANNEL_USERNAME,
     messageId: id,

@@ -1,8 +1,11 @@
-// Flux public des publications du canal (lecture seule, aucune authentification requise).
+// Flux public des publications canoniques de Pesce Studio (lecture seule, aucune
+// authentification requise) : Neon est l'état applicatif, le Mini App le consomme directement —
+// aucune visite du canal Telegram n'est nécessaire.
 // Chaque post média reçoit une URL signée vers /api/media (jeton HMAC, 12 h).
 import { listChannelPosts } from '../lib/db.js';
 import { signMedia } from '../lib/media-token.js';
 import { backfillTelegraphArticles } from '../lib/article-backfill.js';
+import { syncChannelOnce } from '../lib/channel-sync.js';
 import { CHANNEL_URL, CHANNEL_USERNAME } from '../lib/config.js';
 
 const CONTENT_TYPES = new Set(['text', 'photo', 'audio', 'video', 'document', 'other']);
@@ -11,10 +14,14 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Méthode non autorisée.' });
 
   try {
-    // Filet de sécurité de récupération (idempotent, non bloquant) : les articles Telegraph
-    // publiés sont réconciliés avec pesce_posts à la lecture du flux — le pipeline normal
+    // Filets de sécurité de récupération (idempotents, non bloquants) : le pipeline normal
     // (publication → écriture immédiate) n'en dépend jamais.
+    // 1) Articles Telegraph publiés référencés même si le webhook n'a pas été reçu.
     try { await backfillTelegraphArticles({ channelUsername: CHANNEL_USERNAME }); } catch (error) { console.error('telegraph backfill failed', error); }
+    // 2) Réconciliation du canal (suppressions uniquement, sans appel Telegram) : les messages
+    // TÉLÉGRAM-ORIGINÉS supprimés quittent le flux public sans exiger la visite du Studio —
+    // les publications Studio restent (Telegram = distribution). Un échec ne modifie RIEN.
+    try { await syncChannelOnce({ telegram: null }); } catch (error) { console.error('channel sync failed', error); }
     const requestedType = typeof req.query?.type === 'string' ? req.query.type : undefined;
     // Type inconnu ignoré (pas d'erreur) : un ancien client ne doit jamais casser le flux.
     const type = requestedType && CONTENT_TYPES.has(requestedType) ? requestedType : undefined;

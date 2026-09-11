@@ -179,8 +179,6 @@ document.addEventListener('click', (event) => {
   if (youtubeFrame) { openExternal(youtubeFrame.dataset.youtubeSrc); return; }
   const videoFrame = event.target.closest('.video-frame[data-video-src]');
   if (videoFrame) { playInlineVideo(videoFrame); return; }
-  const listenButton = event.target.closest('[data-listen]');
-  if (listenButton) { toggleListen(); return; }
   // La carte éditoriale entière ouvre le lecteur — sauf interaction avec un média ou un contrôle.
   if (!event.target.closest('video,audio,img,button,a,input,select,textarea')) {
     const card = event.target.closest('.editorial-card[data-post-id]');
@@ -590,8 +588,8 @@ ${standfirst ? `<p class="font-editorial-standfirst text-editorial-standfirst te
 <button class="px-space-md py-3 bg-on-surface text-surface font-kicker-label text-kicker-label uppercase tracking-wider inline-flex items-center gap-space-xs hover:bg-primary transition-colors" type="button" data-reader="${escapeAttribute(post.id)}">
 <span>Lire l'enquête complète</span><span class="material-symbols-outlined text-[16px]">east</span>
 </button>
-<button class="w-10 h-10 shrink-0 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors" type="button" data-bookmark title="Ajouter aux favoris" aria-label="Ajouter aux favoris">
-<span class="material-symbols-outlined text-[22px]">bookmark_border</span>
+<button class="w-10 h-10 shrink-0 flex items-center justify-center overflow-hidden text-on-surface-variant hover:text-on-surface transition-colors" type="button" data-bookmark title="Ajouter aux favoris" aria-label="Ajouter aux favoris">
+<span class="material-symbols-outlined text-[22px]${isBookmarked(post.id) ? ' text-primary' : ''}"${isBookmarked(post.id) ? ` style="font-variation-settings: 'FILL' 1;"` : ''}>${isBookmarked(post.id) ? 'bookmark' : 'bookmark_border'}</span>
 </button>
 </div>
 </article>`;
@@ -646,7 +644,7 @@ function renderDispatchAudioCard(post) {
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${escapeHtml(relativeTime(post.publishedAt))}${duration ? ` · ${duration} min` : ''}</span>
 </div>
 <div class="flex items-center gap-space-sm pt-1">
-<button class="audio-play-btn w-10 h-10 bg-on-surface text-surface flex items-center justify-center shrink-0 hover:bg-primary transition-colors" type="button" data-audio="${escapeAttribute(mediaUrlOf(post))}">
+<button class="audio-play-btn w-10 h-10 bg-on-surface text-surface flex items-center justify-center shrink-0 overflow-hidden hover:bg-primary transition-colors" type="button" data-audio="${escapeAttribute(mediaUrlOf(post))}">
 <span class="material-symbols-outlined text-[22px]">play_arrow</span>
 </button>
 <div class="flex flex-col flex-1 min-w-0">
@@ -656,7 +654,7 @@ function renderDispatchAudioCard(post) {
 </div>
 <div class="flex flex-wrap justify-between items-center gap-1 text-on-surface-variant font-meta-detail text-meta-detail pt-0.5">
 <span class="audio-timecode shrink-0">${duration ? `00:00 / ${duration}` : '00:00 / —:—'}</span>
-<button class="py-2 text-primary font-medium" type="button" data-post-link="${escapeAttribute(telegramUrl)}">Écouter sur Telegram WebApp</button>
+<button class="py-2 text-primary font-medium" type="button" data-post-link="${escapeAttribute(telegramUrl)}">Écouter aussi sur Telegram</button>
 </div>
 </article>`;
 }
@@ -914,7 +912,7 @@ function renderAudioModule(post) {
 <p class="font-body-sm text-body-sm text-on-surface-variant mt-1">${escapeHtml(standfirst || '')}</p>
 <div class="bg-surface-container-lowest p-space-sm mt-space-md flex flex-col gap-2" id="audio-player-box">
 <div class="flex items-center justify-between gap-space-sm">
-<button class="audio-play-btn w-10 h-10 bg-primary hover:bg-primary-container text-on-primary flex items-center justify-center shrink-0 transition-transform active:scale-95" type="button" data-audio="${escapeAttribute(mediaUrlOf(post))}">
+<button class="audio-play-btn w-10 h-10 bg-primary hover:bg-primary-container text-on-primary flex items-center justify-center shrink-0 overflow-hidden transition-transform active:scale-95" type="button" data-audio="${escapeAttribute(mediaUrlOf(post))}">
 <span class="material-symbols-outlined text-[24px]">play_arrow</span>
 </button>
 <div class="flex items-end gap-[3px] h-8 flex-1 overflow-hidden py-1" id="waveform-container">${waveformBars(WAVEFORM_REPORTAGE, true)}</div>
@@ -1052,7 +1050,7 @@ async function openReader(postId) {
   const content = document.getElementById('readerContent');
   if (!reader || !content) return;
   currentReaderPost = post;
-  bookmarkActive = false;
+  bookmarkActive = isBookmarked(post?.id || null);
   content.innerHTML = post
     ? renderReader(post)
     : `<article class="empty-card bg-surface-container-lowest p-space-md shadow-sm flex flex-col items-center gap-space-sm text-center">
@@ -1064,6 +1062,12 @@ async function openReader(postId) {
   reader.hidden = false;
   readerOpen = true;
   bindBackButton();
+  const bookmarkIcon = document.getElementById('bookmarkIcon');
+  if (bookmarkIcon && bookmarkActive) {
+    bookmarkIcon.textContent = 'bookmark_added';
+    bookmarkIcon.style.fontVariationSettings = "'FILL' 1";
+    bookmarkIcon.classList.add('text-primary');
+  }
   const scrollBox = document.getElementById('readerContent');
   if (scrollBox) scrollBox.scrollTop = 0;
   const progress = document.getElementById('readingProgress');
@@ -1116,26 +1120,12 @@ ${dateLine ? `<span class="font-meta-detail text-meta-detail text-secondary text
 </div>
 </div>
 <div class="flex items-center justify-between pt-space-xs">
-<div class="flex items-center gap-space-sm">
-<button class="flex items-center gap-1.5 px-3 py-3 rounded-lg bg-surface-container text-on-surface text-[12px] font-kicker-label tracking-wide active:scale-95 transition-all" type="button" data-listen>
-<span class="material-symbols-outlined text-[16px] text-primary" id="listenIcon" style="font-variation-settings: 'FILL' 1;">play_circle</span>
-<span id="listenLabel">Écouter (${readingTime(post.text)} min)</span>
-</button>
-<button class="w-10 h-10 shrink-0 rounded-lg bg-surface-container flex items-center justify-center text-on-surface-variant hover:text-primary transition-colors" type="button" data-bookmark aria-label="Ajouter aux favoris">
+<button class="w-10 h-10 shrink-0 rounded-lg bg-surface-container flex items-center justify-center overflow-hidden text-on-surface-variant hover:text-primary transition-colors" type="button" data-bookmark aria-label="Ajouter aux favoris">
 <span class="material-symbols-outlined text-[18px]" id="bookmarkIcon">bookmark</span>
 </button>
-</div>
 <button class="flex items-center gap-1 px-3 py-3 rounded-lg bg-surface-container text-on-surface text-[12px] font-kicker-label tracking-wide hover:bg-surface-container-high transition-colors" type="button" data-share>
 <span class="material-symbols-outlined text-[16px] text-primary-container">send</span><span>Partager</span>
 </button>
-</div>
-<div class="hidden bg-surface-container-highest rounded-lg p-space-sm flex-col gap-2 transition-all" id="inlinePlayer">
-<div class="flex items-center justify-between text-[11px] font-meta-detail text-on-surface-variant">
-<span class="flex items-center gap-1 font-semibold text-primary"><span class="material-symbols-outlined text-[14px]">graphic_eq</span> Lecture audio en cours</span>
-<span id="timecode">00:00 / —:—</span>
-</div>
-<div class="flex items-end gap-1 h-6 w-full px-1 py-0.5">${waveformBars(WAVEFORM_NOTE, false, true)}</div>
-</div>
 </div>
 ${media}
 <div class="bg-surface-container rounded-lg p-space-sm mb-space-lg flex items-start gap-space-sm">
@@ -1236,36 +1226,36 @@ function readerBody(text) {
   }).join('');
 }
 
-// Micro-interactions du lecteur (fidèles au design) : écoute, favori, partage.
-let listenActive = false;
+// Micro-interactions du lecteur : favori (persistant) et partage.
+// Les favoris sont conservés sur l'appareil (localStorage) : l'état survit au rechargement.
+function bookmarkStorage() {
+  try { return JSON.parse(localStorage.getItem('pesce.bookmarks') || '{}'); } catch { return {}; }
+}
 
-function toggleListen() {
-  const player = document.getElementById('inlinePlayer');
-  const icon = document.getElementById('listenIcon');
-  const label = document.getElementById('listenLabel');
-  if (!player || !icon || !label) return;
-  listenActive = !listenActive;
-  if (listenActive) {
-    player.classList.remove('hidden');
-    player.classList.add('flex');
-    icon.textContent = 'pause_circle';
-    label.textContent = 'Pause';
-    showToast('Lecture du dossier audio démarrée');
-  } else {
-    player.classList.add('hidden');
-    player.classList.remove('flex');
-    icon.textContent = 'play_circle';
-    const minutes = currentReaderPost ? readingTime(currentReaderPost.text) : 11;
-    label.textContent = `Écouter (${minutes} min)`;
-    showToast('Lecture en pause');
-  }
+function saveBookmarks(bookmarks) {
+  try { localStorage.setItem('pesce.bookmarks', JSON.stringify(bookmarks)); } catch { /* stockage indisponible */ }
+}
+
+function isBookmarked(postId) {
+  return Boolean(postId && bookmarkStorage()[postId]);
 }
 
 function toggleBookmark(button) {
-  bookmarkActive = !bookmarkActive;
+  const card = button?.closest('[data-post-id]');
+  const postId = (card ? postCache.get(card.dataset.postId) : currentReaderPost)?.id || null;
   const icon = button?.querySelector('.material-symbols-outlined') || document.getElementById('bookmarkIcon');
   if (!icon) return;
-  if (bookmarkActive) {
+  const bookmarks = bookmarkStorage();
+  let active;
+  if (postId) {
+    if (bookmarks[postId]) { delete bookmarks[postId]; active = false; }
+    else { bookmarks[postId] = 1; active = true; }
+    saveBookmarks(bookmarks);
+  } else {
+    bookmarkActive = !bookmarkActive;
+    active = bookmarkActive;
+  }
+  if (active) {
     icon.textContent = icon.id === 'bookmarkIcon' ? 'bookmark_added' : 'bookmark';
     icon.style.fontVariationSettings = "'FILL' 1";
     icon.classList.add('text-primary');

@@ -540,7 +540,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 </div>
 <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-space-sm pt-space-xs">
 <button class="w-full sm:flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface-container-lowest font-body-sm text-body-sm font-bold uppercase tracking-wider rounded-lg shadow-md hover:bg-primary-container transition-colors flex items-center justify-center gap-2" type="submit" id="publishSubmit">
-<span class="material-symbols-outlined text-[1.2rem]">send</span> Publier sur Telegram
+<span class="material-symbols-outlined text-[1.2rem]">send</span> Publier
 </button>
 <button class="w-full sm:w-auto py-3 px-space-md bg-surface-container-lowest text-tertiary hover:text-on-surface rounded-lg font-body-sm text-body-sm font-medium transition-colors flex items-center justify-center" type="button" id="draftButton">Enregistrer l'ébauche</button>
 </div>
@@ -612,6 +612,10 @@ ${ticket.topic ? `<span class="font-meta-detail text-meta-detail text-on-surface
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface font-semibold">${escapeHtml(ticket.username ? '@' + ticket.username : ticket.firstName || 'Lecteur')}</h3>
 <span class="self-start px-2 py-0.5 rounded ${ticket.status === 'replied' ? 'bg-surface-container-high text-on-surface-variant' : 'bg-primary-fixed text-on-primary-fixed'} font-kicker-label text-kicker-label uppercase">${ticket.status === 'replied' ? 'Répondue · en attente du lecteur' : 'En attente de réponse'}</span>
 <p class="font-body-md text-body-md text-on-surface-variant">${escapeHtml(ticket.message || '')}</p>
+${ticket.status === 'replied' && ticket.lastReply ? `<div class="bg-surface-container-low rounded p-space-sm flex flex-col gap-0.5">
+<span class="font-meta-detail text-meta-detail text-primary uppercase">Votre réponse enregistrée${ticket.lastReplyAt ? ` · ${formatDate(ticket.lastReplyAt)}` : ''}${ticket.lastReplyMessageId ? ` · message Telegram n° ${ticket.lastReplyMessageId}` : ''}</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml(ticket.lastReply)}</p>
+</div>` : ''}
 <textarea class="ticket-reply-input editorial-input" rows="2" maxlength="4000" placeholder="${ticket.status === 'replied' ? 'Répondre à nouveau dans Telegram…' : 'Répondre dans Telegram…'}"></textarea>
 <div class="ticket-actions flex gap-space-xs">
 <button class="ticket-reply flex-1 border border-outline-variant px-space-sm py-3 font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">${ticket.status === 'replied' ? 'Répondre à nouveau' : 'Répondre'}</button>
@@ -684,6 +688,14 @@ ${payment.refundedAt ? '' : `<button class="payment-refund border border-outline
   }
 
   // — Actions existantes (publication, brouillons, directs, Telegraph, soutiens, messages).
+  // Clé d'idempotence : le serveur persiste la publication canonique AVANT la diffusion
+  // Telegram — une reprise (même clé) retrouve la même publication, jamais de doublon.
+  let pendingPublishKey = null;
+  function nextPublishKey() {
+    if (!pendingPublishKey) pendingPublishKey = `mini:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
+    return pendingPublishKey;
+  }
+
   async function publishFromStudio(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -694,32 +706,25 @@ ${payment.refundedAt ? '' : `<button class="payment-refund border border-outline
     if (!text) return;
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const response = await studioAction({ action: title ? 'article_publish' : 'publish', text, ...(title ? { title } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
+      const response = await studioAction({ action: title ? 'article_publish' : 'publish', text, publishKey: nextPublishKey(), ...(title ? { title } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
       activeDraftId = null; // publication réussie : le brouillon a été retiré côté serveur
+      pendingPublishKey = null;
       form.reset();
-      status.textContent = title
-        ? 'Article publié sur Telegraph et envoyé sur le canal avec le bouton ⭐ Soutenir.'
-        : 'Publication envoyée sur le canal Telegram. Le bouton ⭐ Soutenir est ajouté automatiquement.';
+      status.textContent = data.distributed === false
+        ? 'PUBLICATION RÉUSSIE — la publication est disponible dans Pesce Studio. La diffusion Telegram a échoué (relançable depuis le Studio web).'
+        : (title
+          ? 'PUBLICATION RÉUSSIE — l’article est disponible dans Pesce Studio et le Mini App, et diffusé sur Telegram.'
+          : 'PUBLICATION RÉUSSIE — la publication est disponible dans Pesce Studio et le Mini App, et diffusée sur Telegram.');
       refreshBat();
       setTimeout(load, 700);
     } catch (error) {
-      // Échec ou réponse perdue : on vérifie la synchronisation pour ne jamais laisser « est-ce parti ou pas ? ».
-      const confirmed = await verifyPublish(text);
-      status.textContent = confirmed
-        ? 'Publication partie sur le canal (confirmation reçue via la synchronisation).'
-        : `Publication incertaine — vérifiez le canal Telegram avant de réessayer. (${error.message || 'erreur inconnue'})`;
-      if (confirmed) { form.reset(); refreshBat(); setTimeout(load, 700); }
+      // Persistance canonique d'abord : une erreur signifie que RIEN n'a été publié —
+      // la reprise (même clé) ne peut créer aucun doublon.
+      status.textContent = error.message || 'Publication impossible — réessayez.';
     }
-    finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
-  }
-
-  async function verifyPublish(text) {
-    try {
-      const overview = await fetchJson('./api/studio', { headers: { 'x-telegram-init-data': initData() }, cache: 'no-store' });
-      return (overview.recentPosts || []).some((post) => (post.text || '') === text);
-    } catch { return false; }
+    finally { button.disabled = false; button.textContent = 'Publier'; }
   }
 
   async function saveDraft() {

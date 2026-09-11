@@ -26,7 +26,7 @@ Le canal Telegram est le flux éditorial principal utilisé par Pesce Studio. Le
 - 📱 Telegram est le point d’entrée principal.
 - ⭐ Les Étoiles Telegram sont le mécanisme de soutien prioritaire.
 - 🎥 Les vidéos restent hébergées sur YouTube.
-- 📝 Telegram reste la source de vérité éditoriale pour les contenus publiés.
+- 📝 Pesce Studio écrit les publications canoniques dans Neon (le Mini App les sert directement) ; Telegram est un canal de distribution — une publication créée dans le Studio survit à la suppression de sa copie Telegram. Les contenus ingérés depuis Telegram suivent les règles de réconciliation existantes.
 - 🐘 PostgreSQL/Neon est la base de données unique de l’application ; les médias ne sont pas copiés dans une nouvelle bibliothèque.
 - 🤖 L’IA assiste Pesce mais ne remplace jamais son jugement journalistique.
 - 🔐 Les secrets Telegram, Neon et Telegraph ne sont jamais commités dans Git.
@@ -94,7 +94,7 @@ Accessible uniquement au compte Telegram configuré dans `PESCE_CREATOR_TELEGRAM
 - **planifier, modifier et annuler des directs** (titre, description, date/heure, lien externe, statut) affichés sur l’accueil public (« Prochain direct ») ;
 - consulter les indicateurs (contenus, vidéos, photos, audios, Étoiles), les soutiens et les demandes.
 
-Pour les photos, audios et vidéos, la publication directe depuis Telegram reste le chemin privilégié en V1 : le webhook synchronise ensuite le contenu dans la base sans dupliquer le média.
+Les publications créées depuis le Studio sont écrites canoniquement dans Neon avant leur diffusion Telegram (jamais l'inverse) : le Mini App les affiche sans dépendre du webhook ni d'aucune synchronisation. Les photos, audios et vidéos publiés directement sur le canal Telegram sont synchronisés par le webhook dans la base sans dupliquer le média.
 
 ## Articles Telegraph
 
@@ -220,7 +220,7 @@ Après un changement de projet Vercel, le webhook Telegram doit être reconfigur
 
 Neon (PostgreSQL managé, intégré à Vercel) est la base de données unique de l’application. Les tables reprennent le modèle des anciennes collections Firestore :
 
-- `pesce_posts` — publications Telegram synchronisées
+- `pesce_posts` — publications canoniques de l'application (créées depuis le Studio — `origin='studio'` — ou synchronisées depuis Telegram — `origin='telegram'`)
 - `pesce_payments` — paiements Stars confirmés
 - `pesce_support_sessions` — état temporaire d’une conversation de support
 - `pesce_support_tickets` — demandes de support

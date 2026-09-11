@@ -166,7 +166,7 @@ const ROUTES = [
       ['composeur de publication présent', `!!document.querySelector('#publishForm #publishText')`, true],
       ['champ titre Telegraph présent', `!!document.querySelector('#publishForm #articleTitle')`, true],
       ['aperçu BAT disponible', `!!document.getElementById('batPreview')`, true],
-      ['publication vers le canal', `document.getElementById('studioBody').textContent.includes('Publier sur Telegram')`, true],
+      ['action principale « Publier » (Pesce Studio, Telegram = diffusion)', `document.getElementById('studioBody').textContent.includes('Publier') && !document.getElementById('studioBody').textContent.includes('Publier sur Telegram')`, true],
       ['aucun faux « Programmer » de publication', `![...document.querySelectorAll('#studioBody button')].some((button) => button.textContent.trim() === 'Programmer')`, true],
     ],
   },

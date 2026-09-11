@@ -69,6 +69,10 @@ function num(value) {
 const mapPost = (row) => row && ({
   id: row.id,
   source: row.source,
+  origin: row.origin,
+  publishKey: row.publish_key,
+  distributedAt: row.distributed_at,
+  distributionError: row.distribution_error,
   channelId: num(row.channel_id),
   channelUsername: row.channel_username,
   messageId: num(row.message_id),
@@ -94,12 +98,20 @@ const mapPost = (row) => row && ({
 export async function upsertChannelPost(post) {
   await (await ensureDb()).query(
     `INSERT INTO pesce_posts (
-       id, source, channel_id, channel_username, message_id, content_type, text, telegram_url,
+       id, source, origin, publish_key, distributed_at, distribution_error,
+       channel_id, channel_username, message_id, content_type, text, telegram_url,
        media_file_id, media_mime_type, media_file_name, media_duration, media_width, media_height,
        media_thumbnail_file_id, article_url, article_image_url, published, published_at, received_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, now())
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, now())
      ON CONFLICT (id) DO UPDATE SET
-       source = EXCLUDED.source, channel_id = EXCLUDED.channel_id, channel_username = EXCLUDED.channel_username,
+       source = EXCLUDED.source,
+       -- Modèle d'origine : le premier enregistrement gagne. Une publication Studio (origin='studio')
+       -- reste Studio même si le webhook ou un sync la retouche ensuite — jamais d'écrasement.
+       origin = COALESCE(pesce_posts.origin, EXCLUDED.origin),
+       publish_key = COALESCE(pesce_posts.publish_key, EXCLUDED.publish_key),
+       distributed_at = COALESCE(EXCLUDED.distributed_at, pesce_posts.distributed_at),
+       distribution_error = COALESCE(EXCLUDED.distribution_error, pesce_posts.distribution_error),
+       channel_id = EXCLUDED.channel_id, channel_username = EXCLUDED.channel_username,
        message_id = EXCLUDED.message_id, content_type = EXCLUDED.content_type, text = EXCLUDED.text,
        telegram_url = EXCLUDED.telegram_url, media_file_id = EXCLUDED.media_file_id,
        media_mime_type = EXCLUDED.media_mime_type, media_file_name = EXCLUDED.media_file_name,
@@ -112,7 +124,8 @@ export async function upsertChannelPost(post) {
        article_url = COALESCE(NULLIF(EXCLUDED.article_url, ''), pesce_posts.article_url),
        article_image_url = COALESCE(NULLIF(EXCLUDED.article_image_url, ''), pesce_posts.article_image_url)`,
     [
-      post.id, post.source, post.channelId ?? null, post.channelUsername ?? null, post.messageId ?? null,
+      post.id, post.source, post.origin ?? null, post.publishKey ?? null, post.distributedAt ?? null, post.distributionError ?? null,
+      post.channelId ?? null, post.channelUsername ?? null, post.messageId ?? null,
       post.contentType ?? 'text', post.text || '', post.telegramUrl ?? null, post.mediaFileId ?? null,
       post.mediaMimeType ?? null, post.mediaFileName ?? null, post.mediaDuration ?? null,
       post.mediaWidth ?? null, post.mediaHeight ?? null, post.mediaThumbnailFileId ?? null,
@@ -261,6 +274,8 @@ const mapTicket = (row) => row && ({
   lastReply: row.last_reply,
   lastReplyAt: row.last_reply_at,
   lastReplyBy: row.last_reply_by,
+  lastReplyMessageId: num(row.last_reply_message_id),
+  replyCount: Number(row.reply_count) || 0,
 });
 
 export async function createSupportTicket(ticket) {
@@ -316,10 +331,15 @@ export async function mergeIntoExistingArticle(post) {
   return existing.id;
 }
 
-// Réconciliation avec le canal : lignes actives portant un message Telegram (candidates).
+// Réconciliation avec le canal : uniquement les lignes actives TÉLÉGRAM-ORIGINÉES portant un
+// message Telegram. Les publications Studio (origin='studio') ne sont JAMAIS candidates à la
+// suppression par réconciliation : Telegram n'est que leur copie de distribution.
 export async function listReconcilablePosts() {
   const result = await (await ensureDb()).query(
-    `SELECT * FROM pesce_posts WHERE published = true AND source_deleted_at IS NULL AND message_id IS NOT NULL ORDER BY message_id DESC LIMIT 200`
+    `SELECT * FROM pesce_posts
+     WHERE published = true AND source_deleted_at IS NULL AND message_id IS NOT NULL
+       AND COALESCE(origin, 'telegram') = 'telegram'
+     ORDER BY message_id DESC LIMIT 200`
   );
   return result.rows.map(mapPost);
 }
@@ -343,6 +363,169 @@ export async function findPostByArticleUrl(articleUrl) {
   return result.rows[0] ? mapPost(result.rows[0]) : null;
 }
 
+// Déduplication par identité Telegram : un même message du canal (chat_id + message_id) est
+// UNE publication — qu'elle ait été écrite par le Studio (distribution) ou par le webhook.
+export async function findPostByTelegramIdentity(chatId, messageId) {
+  if (!chatId || !messageId) return null;
+  const result = await (await ensureDb()).query(
+    `SELECT * FROM pesce_posts WHERE channel_id = $1 AND message_id = $2 LIMIT 1`,
+    [Number(chatId), Number(messageId)]
+  );
+  return result.rows[0] ? mapPost(result.rows[0]) : null;
+}
+
+// Recherche par identifiant de message du canal (unique dans le canal de l'application).
+export async function findPostByMessageId(messageId) {
+  if (!messageId) return null;
+  const result = await (await ensureDb()).query(
+    `SELECT * FROM pesce_posts WHERE message_id = $1 LIMIT 1`,
+    [Number(messageId)]
+  );
+  return result.rows[0] ? mapPost(result.rows[0]) : null;
+}
+
+// Idempotence de publication : clé stable fournie par le client (ou dérivée du brouillon) —
+// une reprise après échec retrouve la publication canonique au lieu d'en créer une seconde.
+export async function findPostByPublishKey(publishKey) {
+  if (!publishKey) return null;
+  const result = await (await ensureDb()).query(
+    `SELECT * FROM pesce_posts WHERE publish_key = $1 LIMIT 1`,
+    [String(publishKey)]
+  );
+  return result.rows[0] ? mapPost(result.rows[0]) : null;
+}
+
+export async function getPostById(postId) {
+  if (!postId) return null;
+  const result = await (await ensureDb()).query(
+    `SELECT * FROM pesce_posts WHERE id = $1 LIMIT 1`,
+    [String(postId)]
+  );
+  return result.rows[0] ? mapPost(result.rows[0]) : null;
+}
+
+// Mise à jour ciblée d'une publication (état de distribution, texte) — liste blanche stricte.
+export async function updatePost(postId, data) {
+  const columns = {
+    distributionError: 'distribution_error',
+    distributedAt: 'distributed_at',
+    text: 'text',
+  };
+  const sets = [];
+  const values = [String(postId)];
+  for (const [key, column] of Object.entries(columns)) {
+    if (data[key] !== undefined) {
+      values.push(data[key] ?? null);
+      sets.push(`${column} = $${values.length}`);
+    }
+  }
+  if (sets.length === 0) return String(postId);
+  await (await ensureDb()).query(
+    `UPDATE pesce_posts SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`,
+    values
+  );
+  return String(postId);
+}
+
+// Attache l'identité Telegram d'une distribution à la publication canonique du Studio — sans
+// jamais créer de seconde ligne publique. Course normale avec le webhook : si une ligne existe
+// déjà pour cette identité Telegram, c'est ELLE qui devient canonique (les métadonnées du Studio
+// y sont portées, la ligne provisoire du Studio est retirée). Renvoie l'id de la ligne canonique.
+export async function attachTelegramDistribution(postId, data) {
+  const { chatId, messageId, telegramUrl = null, distributedAt = new Date(), mediaFields = {} } = data;
+  const byIdentity = await findPostByTelegramIdentity(chatId, messageId);
+  if (byIdentity && byIdentity.id !== postId) {
+    const provisional = await getPostById(postId);
+    if (provisional) {
+      const sets = [];
+      const values = [];
+      const add = (column, value) => {
+        if (value === undefined || value === null) return;
+        values.push(value);
+        sets.push(`${column} = $${values.length}`);
+      };
+      add('origin', 'studio');
+      add('publish_key', provisional.publishKey);
+      add('article_url', provisional.articleUrl);
+      add('article_image_url', provisional.articleImageUrl);
+      add('content_type', provisional.contentType);
+      add('text', provisional.text);
+      add('telegram_url', telegramUrl);
+      add('distributed_at', distributedAt);
+      values.push(byIdentity.id);
+      sets.push('updated_at = now()');
+      await (await ensureDb()).query(`UPDATE pesce_posts SET ${sets.join(', ')} WHERE id = $${values.length}`, values);
+      await (await ensureDb()).query('DELETE FROM pesce_posts WHERE id = $1', [String(postId)]);
+    }
+    return byIdentity.id;
+  }
+  const sets = [
+    'channel_id = COALESCE($2, channel_id)',
+    'message_id = COALESCE($3, message_id)',
+    'telegram_url = COALESCE($4, telegram_url)',
+    'distributed_at = $5',
+  ];
+  const values = [String(postId), chatId ?? null, messageId ?? null, telegramUrl, distributedAt];
+  const mediaColumns = {
+    mediaFileId: 'media_file_id', mediaMimeType: 'media_mime_type', mediaFileName: 'media_file_name',
+    mediaDuration: 'media_duration', mediaWidth: 'media_width', mediaHeight: 'media_height',
+    mediaThumbnailFileId: 'media_thumbnail_file_id',
+  };
+  for (const [key, column] of Object.entries(mediaColumns)) {
+    if (mediaFields[key] !== undefined) {
+      values.push(mediaFields[key] ?? null);
+      sets.push(`${column} = COALESCE($${values.length}, ${column})`);
+    }
+  }
+  sets.push('updated_at = now()');
+  await (await ensureDb()).query(`UPDATE pesce_posts SET ${sets.join(', ')} WHERE id = $1`, values);
+  return String(postId);
+}
+
+// Complète une publication existante avec une copie Telegram (webhook/rejeu/édition) :
+// les champs manquants sont remplis, le texte édité se propage, l'origine est préservée.
+export async function mergeTelegramCopyIntoPost(postId, incoming) {
+  const sets = [];
+  const values = [];
+  const addIfMissing = (column, value) => {
+    if (value === undefined || value === null) return;
+    values.push(value);
+    sets.push(`${column} = COALESCE(${column}, $${values.length})`);
+  };
+  addIfMissing('telegram_url', incoming.telegramUrl);
+  addIfMissing('message_id', incoming.messageId);
+  addIfMissing('channel_id', incoming.channelId);
+  addIfMissing('channel_username', incoming.channelUsername);
+  addIfMissing('article_url', incoming.articleUrl);
+  addIfMissing('article_image_url', incoming.articleImageUrl);
+  addIfMissing('media_file_id', incoming.mediaFileId);
+  addIfMissing('media_mime_type', incoming.mediaMimeType);
+  addIfMissing('media_file_name', incoming.mediaFileName);
+  addIfMissing('media_duration', incoming.mediaDuration);
+  addIfMissing('media_width', incoming.mediaWidth);
+  addIfMissing('media_height', incoming.mediaHeight);
+  addIfMissing('media_thumbnail_file_id', incoming.mediaThumbnailFileId);
+  if (typeof incoming.text === 'string' && incoming.text.trim()) {
+    values.push(incoming.text);
+    sets.push(`text = $${values.length}`);
+  }
+  if (sets.length === 0) return String(postId);
+  values.push(String(postId));
+  sets.push('updated_at = now()');
+  await (await ensureDb()).query(`UPDATE pesce_posts SET ${sets.join(', ')} WHERE id = $${values.length}`, values);
+  return String(postId);
+}
+
+// Ticket unique par identifiant (la trace d'une réponse ne dépend jamais d'une liste tronquée).
+export async function getSupportTicket(ticketId) {
+  if (!ticketId) return null;
+  const result = await (await ensureDb()).query(
+    `SELECT * FROM pesce_support_tickets WHERE id = $1 LIMIT 1`,
+    [String(ticketId)]
+  );
+  return result.rows[0] ? mapTicket(result.rows[0]) : null;
+}
+
 export async function updateSupportTicket(ticketId, data) {
   const sets = [];
   const values = [String(ticketId)];
@@ -356,6 +539,11 @@ export async function updateSupportTicket(ticketId, data) {
   if (data.lastReply !== undefined) add('last_reply', data.lastReply);
   if (data.lastReplyAt !== undefined) add('last_reply_at', data.lastReplyAt);
   if (data.lastReplyBy !== undefined) add('last_reply_by', data.lastReplyBy);
+  if (data.lastReplyMessageId !== undefined) add('last_reply_message_id', data.lastReplyMessageId);
+  if (data.replyCount !== undefined) {
+    values.push(Number(data.replyCount) || 0);
+    sets.push(`reply_count = $${values.length}`);
+  }
   if (sets.length === 0) return String(ticketId);
   await (await ensureDb()).query(
     `UPDATE pesce_support_tickets SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`,

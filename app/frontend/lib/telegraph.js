@@ -4,9 +4,10 @@
 // (métadonnées/file_id dans Neon) peuvent être re-téléversées vers Telegraph à la demande.
 const TELEGRAPH_API = 'https://api.telegra.ph';
 
-// Limite pratique d'image pour un article : Telegraph accepte ≤ 5 Mo ; on borne à 4 Mo
-// (compatible avec la limite de corps JSON des fonctions serverless).
-export const MAX_TELEGRAPH_IMAGE_BYTES = 4 * 1024 * 1024;
+// Limite pratique d'image pour un article : Telegraph accepte ≤ 5 Mo, mais l'image transite en
+// base64 dans le corps JSON des fonctions serverless (limite Vercel ≈ 4,5 Mo) — 3 Mo d'image
+// donnent ~4 Mo de corps encodé : la borne garantit que la requête atteint bien le serveur.
+export const MAX_TELEGRAPH_IMAGE_BYTES = 3 * 1024 * 1024;
 
 export async function telegraphCall(method, params) {
   const response = await fetch(`${TELEGRAPH_API}/${method}`, {
@@ -46,24 +47,91 @@ export function nodesFromPlainText(text) {
 
 // — Images d'article hébergées par Telegraph.
 
-const IMAGE_MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
+export const TELEGRAPH_UPLOAD_URL = 'https://telegra.ph/upload';
 
-function mimeFromFilename(filename) {
-  const extension = String(filename || '').split('.').pop()?.toLowerCase();
-  return IMAGE_MIME[extension] || 'image/jpeg';
+const IMAGE_MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
+const FORMAT_MIME = { jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif' };
+const FORMAT_EXTENSION = { jpeg: 'jpg', png: 'png', gif: 'gif' };
+
+// Format réel de l'image d'après ses octets (signature magique), jamais d'après le nom de
+// fichier : Telegraph n'accepte que JPEG, PNG et GIF — le webp (et tout autre format) produit
+// un refus 400 silencieux côté Telegraph, incompréhensible pour la créatrice.
+export function detectImageFormat(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 8) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpeg';
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'png';
+  const gif = buffer.subarray(0, 6).toString('latin1');
+  if (gif === 'GIF87a' || gif === 'GIF89a') return 'gif';
+  return null;
+}
+
+// Corps multipart/form-data construit octet par octet (aucune dépendance à FormData/Blob,
+// comportement identique sur tous les runtimes) : une seule partie « file », sans access_token
+// (l'endpoint /upload de Telegraph n'en attend pas).
+export function buildTelegraphUploadBody({ buffer, filename, mimeType, boundary }) {
+  const head = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`,
+    'utf8'
+  );
+  const tail = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+  return Buffer.concat([head, buffer, tail]);
+}
+
+// Analyse de la réponse de /upload : succès = [{ src: "/file/…" }] (ou objet { src }).
+// Toute autre forme est un refus — le détail (sans secret) reste côté serveur.
+export function parseTelegraphUploadResponse(text, status) {
+  let data = null;
+  try { data = JSON.parse(String(text || '')); } catch { data = null; }
+  if (data === null) return { ok: false, error: `Réponse Telegraph illisible (${status || '?'}).` };
+  const list = Array.isArray(data) ? data : [data];
+  const item = list.find((entry) => entry && typeof entry === 'object' && typeof entry.src === 'string' && entry.src.trim());
+  if (item) return { ok: true, src: item.src.trim() };
+  const detail = list
+    .map((entry) => (entry && (entry.error || entry.message)) || '')
+    .filter(Boolean)
+    .join(' ; ')
+    .slice(0, 300);
+  return { ok: false, error: `Telegraph a refusé l'image (${status || '?'})${detail ? ` — ${detail}` : ''}.` };
 }
 
 // Téléverse une image vers Telegraph (hébergement natif des articles) et renvoie { src, url }.
-export async function uploadTelegraphImage({ accessToken, buffer, filename = 'image.jpg' }) {
-  const form = new FormData();
-  form.append('access_token', accessToken);
-  form.append('file', new Blob([buffer], { type: mimeFromFilename(filename) }), filename);
-  const response = await fetch('https://telegra.ph/upload', { method: 'POST', body: form });
-  const data = await response.json();
-  // Telegraph renvoie [{ src: "/file/xxxx.jpg" }] (ou un objet d'erreur).
-  const src = Array.isArray(data) ? data[0]?.src : data?.src;
-  if (!response.ok || !src) throw new Error(`Upload Telegraph impossible (${response.status}).`);
-  return { src, url: telegraphImageUrl(src) };
+// Les échecs lèvent une erreur en français, avec code stable pour la traduction éditoriale côté
+// API ; une seule nouvelle tentative sur indisponibilité (5xx/réseau), jamais sur refus (4xx).
+export async function uploadTelegraphImage({ accessToken, buffer, filename = 'image.jpg', now = Date.now, fetchImpl = fetch }) {
+  // accessToken conservé dans la signature pour la compatibilité des appelants : l'endpoint
+  // public /upload de Telegraph n'utilise pas de jeton.
+  const format = detectImageFormat(buffer);
+  if (!format) {
+    throw Object.assign(new Error('Ce format d’image n’est pas accepté par Telegraph : utilisez une image JPEG, PNG ou GIF.'), { code: 'telegraph_format' });
+  }
+  const boundary = `----pesce${now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  const safeFilename = filename && /^[\w.-]+$/.test(String(filename)) ? String(filename) : `pesce.${FORMAT_EXTENSION[format]}`;
+  const body = buildTelegraphUploadBody({ buffer, filename: safeFilename, mimeType: FORMAT_MIME[format], boundary });
+
+  const attempt = async () => {
+    let response;
+    try {
+      response = await fetchImpl(TELEGRAPH_UPLOAD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+        body,
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch (error) {
+      throw Object.assign(new Error('Telegraph est injoignable pour le moment.'), { code: 'telegraph_network', status: 0 });
+    }
+    const text = await response.text().catch(() => '');
+    const parsed = parseTelegraphUploadResponse(text, response.status);
+    if (!parsed.ok) throw Object.assign(new Error(parsed.error), { code: 'telegraph_upload', status: response.status });
+    return { src: parsed.src, url: telegraphImageUrl(parsed.src) };
+  };
+
+  try {
+    return await attempt();
+  } catch (error) {
+    if (error?.code !== 'telegraph_network' && !(error?.status >= 500)) throw error;
+    return attempt();
+  }
 }
 
 // Lit une page Telegraph (retour_complet) et en extrait la première image <figure><img> —
