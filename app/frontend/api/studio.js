@@ -4,7 +4,7 @@
 //     réservée aux adresses PESCE_WEB_ADMIN_EMAILS.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
-import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
+import { createDraft, createLiveSchedule, deleteDraft, findPostByArticleUrl, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, getTelegraphPage, listTelegraphPages, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, telegraphBackfillPost, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
@@ -55,54 +55,91 @@ export default async function handler(req, res) {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
     const action = String(body.action || '').trim();
 
+    // — Cycle de vie PUBLICATION : Telegram réussi → publication canonique dans Neon (même
+    // identité stable chatId_messageId que le webhook) → brouillon retiré. Si la persistance
+    // Neon échoue après l'envoi Telegram, on renvoie l'identité du message (sent) : le client
+    // réessaie avec resume — le ré-envoi Telegram est alors sauté (idempotence, aucun doublon).
+    async function completePublication(res, { sent, text, articleUrl = null, articleImageUrl = null, contentType = 'text', draftId = null }) {
+      const messageId = Number(sent?.result?.message_id);
+      const chatId = Number(sent?.result?.chat?.id);
+      const dateSeconds = Number(sent?.result?.date);
+      if (!messageId || !chatId) return res.status(502).json({ message: 'Réponse Telegram incomplète.' });
+      try {
+        await upsertChannelPost({
+          id: `${chatId}_${messageId}`,
+          source: 'studio',
+          channelId: chatId,
+          channelUsername: CHANNEL_USERNAME,
+          messageId,
+          contentType,
+          text,
+          telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`,
+          articleUrl,
+          articleImageUrl,
+          published: true,
+          publishedAt: new Date((dateSeconds || Math.floor(Date.now() / 1000)) * 1000),
+          receivedAt: new Date(),
+        });
+        if (draftId) await deleteDraft(draftId);
+        return res.status(200).json({ ok: true, messageId, draftRemoved: Boolean(draftId) });
+      } catch (error) {
+        console.error('publication persistence failed after Telegram success', error);
+        return res.status(502).json({
+          message: 'Publication envoyée sur Telegram mais la synchronisation Neon a échoué — réessayez pour terminer.',
+          sent: { chatId, messageId, date: dateSeconds, articleUrl, articleImageUrl },
+        });
+      }
+    }
+
+    // Identité d'une tentative précédente (reprise idempotente après échec de persistance).
+    const resume = (body.resume && Number(body.resume.chatId) && Number(body.resume.messageId)) ? body.resume : null;
+
     if (action === 'publish') {
       const text = String(body.text || '').trim().slice(0, 4096);
       if (!text) return res.status(400).json({ message: 'Le texte de la publication est vide.' });
-      const sent = await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text, disable_web_page_preview: false, reply_markup: supportMarkup() });
-      return res.status(200).json({ ok: true, messageId: sent.result?.message_id || null });
+      const draftId = String(body.draftId || '') || null;
+      const sent = resume
+        ? { result: { message_id: Number(resume.messageId), chat: { id: Number(resume.chatId) }, date: Number(resume.date) } }
+        : await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text, disable_web_page_preview: false, reply_markup: supportMarkup() });
+      return completePublication(res, { sent, text, draftId });
     }
 
     if (action === 'article_publish') {
       const title = String(body.title || '').trim().slice(0, 256);
       const text = String(body.text || '').trim().slice(0, 4096);
       if (!title || !text) return res.status(400).json({ message: 'Le titre et le texte sont requis pour un article.' });
-      // Images d'article : hébergées par Telegraph uniquement (liste blanche de chemins /file/…).
       const images = validateArticleImages(body.images);
       if (Array.isArray(body.images) && body.images.length > 0 && images.length === 0) {
         return res.status(400).json({ message: 'Images d’article invalides : seuls les chemins Telegraph (/file/…) sont acceptés.' });
+      }
+      // Règle éditoriale : tout article publié a une image de couverture (hébergée par Telegraph).
+      if (!images.some((image) => image.placement === 'cover')) {
+        return res.status(400).json({ message: 'Une image de couverture est requise pour publier un article — ajoutez un média dans le pupitre (le Studio web le permet).' });
+      }
+      const draftId = String(body.draftId || '') || null;
+      // Reprise idempotente : le client renvoie l'identité du message et la référence d'article
+      // de la tentative précédente — aucun nouvel envoi Telegram, aucune nouvelle page Telegraph.
+      if (resume) {
+        return completePublication(res, {
+          sent: { result: { message_id: Number(resume.messageId), chat: { id: Number(resume.chatId) }, date: Number(resume.date) } },
+          text: `${title}\n\n${resume.articleUrl || body.articleUrl || ''}`,
+          articleUrl: resume.articleUrl || body.articleUrl || null,
+          articleImageUrl: resume.articleImageUrl || body.articleImageUrl || null,
+          draftId,
+        });
       }
       const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
       if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré. Utilisez « Configurer Telegraph » dans le studio, puis enregistrez le jeton dans TELEGRAPH_ACCESS_TOKEN.' });
       const page = await createTelegraphPage({ accessToken, title, content: images.length ? nodesFromArticle({ text, images }) : nodesFromPlainText(text), authorName: CREATOR_NAME });
       const cover = images.find((image) => image.placement === 'cover');
       const sent = await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text: `${title}\n\n${page.url}`, disable_web_page_preview: false, reply_markup: supportMarkup() });
-      // Métadonnées d'article écrites immédiatement dans Neon (même table, même upsert que le
-      // webhook — identifiant identique chatId_messageId, donc aucun doublon) : l'article et sa
-      // couverture Telegraph sont visibles dans le Mini App sans dépendre du round-trip webhook.
-      try {
-        const messageId = Number(sent.result?.message_id);
-        const chatId = Number(sent.result?.chat?.id);
-        if (messageId && chatId) {
-          await upsertChannelPost({
-            id: `${chatId}_${messageId}`,
-            source: 'studio',
-            channelId: chatId,
-            channelUsername: CHANNEL_USERNAME,
-            messageId,
-            contentType: 'text',
-            text: `${title}\n\n${page.url}`,
-            telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`,
-            articleUrl: page.url,
-            articleImageUrl: cover ? cover.src : null,
-            published: true,
-            publishedAt: new Date((sent.result?.date || Math.floor(Date.now() / 1000)) * 1000),
-            receivedAt: new Date(),
-          });
-        }
-      } catch (error) {
-        console.error('article metadata pre-insert failed (le webhook synchronisera le texte)', error);
-      }
-      return res.status(200).json({ ok: true, url: page.url });
+      return completePublication(res, {
+        sent,
+        text: `${title}\n\n${page.url}`,
+        articleUrl: page.url,
+        articleImageUrl: cover ? cover.src : null,
+        draftId,
+      });
     }
 
     // Ressynchronisation d'un article déjà publié sur le canal (posté avant la synchronisation
@@ -166,8 +203,13 @@ export default async function handler(req, res) {
         await telegram(token, 'editMessageText', { chat_id: CHANNEL_HANDLE, message_id: messageId, text, disable_web_page_preview: false });
         return res.status(200).json({ ok: true });
       }
-      const sent = await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text, disable_web_page_preview: false, reply_markup: supportMarkup() });
-      return res.status(200).json({ ok: true, messageId: sent.result?.message_id || null });
+      const draftId = String(body.draftId || '') || null;
+      const sent = resume
+        ? { result: { message_id: Number(resume.messageId), chat: { id: Number(resume.chatId) }, date: Number(resume.date) } }
+        : await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text, disable_web_page_preview: false, reply_markup: supportMarkup() });
+      // La référence vidéo est persistée immédiatement (même identité stable que le webhook) :
+      // le Mini App la présente en carte vidéo YouTube sans dépendre du round-trip webhook.
+      return completePublication(res, { sent, text, contentType: 'video', draftId });
     }
 
     // Audio : le fichier est hébergé par Telegram (canon), Neon ne garde que la référence.
@@ -186,13 +228,23 @@ export default async function handler(req, res) {
       }
       const mimeType = match[1].replace(/;.*$/, '');
       const extension = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp3') ? 'mp3' : mimeType.includes('m4a') ? 'm4a' : mimeType.includes('mp4') ? 'm4a' : 'webm';
+      const draftId = String(body.draftId || '') || null;
+      if (resume) {
+        // Reprise idempotente : l'audio a déjà été envoyé — on ne persiste que la référence.
+        return completePublication(res, {
+          sent: { result: { message_id: Number(resume.messageId), chat: { id: Number(resume.chatId) }, date: Number(resume.date) } },
+          text: [title, description, author ? `— ${author}` : ''].filter(Boolean).join('\n\n'),
+          contentType: 'audio',
+          draftId,
+        });
+      }
       const form = new FormData();
       form.append('chat_id', CHANNEL_HANDLE);
       form.append('document', new Blob([buffer], { type: `audio/${mimeType}` }), `pesce-audio-${Date.now()}.${extension}`);
       form.append('caption', [title, description, author ? `— ${author}` : ''].filter(Boolean).join('\n\n'));
       form.append('reply_markup', JSON.stringify(supportMarkup()));
       const sent = await telegramMultipart('sendDocument', form);
-      return res.status(200).json({ ok: true, messageId: sent.result?.message_id || null });
+      return completePublication(res, { sent, text: [title, description, author ? `— ${author}` : ''].filter(Boolean).join('\n\n'), contentType: 'audio', draftId });
     }
 
     // Photo existante du canal (métadonnées/file_id dans Neon) → re-téléversée vers Telegraph.
@@ -313,7 +365,10 @@ export default async function handler(req, res) {
       const ticket = tickets.find((item) => item.id === ticketId);
       if (!ticket?.chatId) return res.status(404).json({ message: 'Ticket introuvable.' });
       await telegram(token, 'sendMessage', { chat_id: ticket.chatId, text: `Réponse de Pesce Studio\n\n${text}` });
-      await updateSupportTicket(ticketId, { status: 'open', lastReply: text, lastReplyAt: new Date(), lastReplyBy: actorId });
+      // État explicite : une demande répondue n'est plus « ouverte sans réponse » — elle passe
+      // à « replied » (répondue, en attente du lecteur) ; « open » reste réservé aux messages
+      // sans réponse. La résolution reste disponible à tout moment.
+      await updateSupportTicket(ticketId, { status: 'replied', lastReply: text, lastReplyAt: new Date(), lastReplyBy: actorId });
       return res.status(200).json({ ok: true });
     }
 
@@ -358,6 +413,9 @@ async function backfillTelegraphArticles() {
   for (const page of pages) {
     const post = telegraphBackfillPost(page);
     if (!post) continue;
+    // Déduplication : si l'article est déjà référencé (publication normale ou webhook), on ne
+    // crée pas de seconde ligne — le backfill est un mécanisme de récupération, pas un pipeline.
+    if (await findPostByArticleUrl(post.articleUrl)) continue;
     post.channelUsername = CHANNEL_USERNAME;
     await upsertChannelPost(post);
   }

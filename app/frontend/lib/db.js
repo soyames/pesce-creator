@@ -275,14 +275,25 @@ export async function createSupportTicket(ticket) {
 
 export async function listSupportTickets({ status, limit = 50 } = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const statuses = Array.isArray(status) ? status.filter(Boolean) : (status ? [status] : []);
   const result = await (await ensureDb()).query(
     `SELECT * FROM pesce_support_tickets
-     WHERE ($1::text IS NULL OR status = $1)
+     WHERE ($1::text[] IS NULL OR status = ANY($1))
      ORDER BY created_at DESC NULLS LAST, id DESC
      LIMIT $2`,
-    [status || null, safeLimit]
+    [statuses.length ? statuses : null, safeLimit]
   );
   return result.rows.map(mapTicket);
+}
+
+// Recherche d'une publication par son URL d'article (Telegraph) — déduplication du backfill.
+export async function findPostByArticleUrl(articleUrl) {
+  if (!articleUrl) return null;
+  const result = await (await ensureDb()).query(
+    `SELECT * FROM pesce_posts WHERE article_url = $1 LIMIT 1`,
+    [String(articleUrl)]
+  );
+  return result.rows[0] ? mapPost(result.rows[0]) : null;
 }
 
 export async function updateSupportTicket(ticketId, data) {
@@ -428,7 +439,8 @@ export async function getStudioOverview() {
     (await ensureDb()).query(`SELECT COUNT(*)::int AS open_tickets FROM pesce_support_tickets WHERE status = 'open'`),
     listChannelPosts({ limit: 10 }),
     listPayments({ limit: 10 }),
-    listSupportTickets({ status: 'open', limit: 10 }),
+    // Boîte de réception : messages sans réponse (open) ET répondues en attente du lecteur (replied).
+    listSupportTickets({ status: ['open', 'replied'], limit: 10 }),
     listDrafts({ limit: 20 }),
     listLiveSchedules({ limit: 20 }),
     getAudienceStats(),

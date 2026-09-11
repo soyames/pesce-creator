@@ -322,6 +322,73 @@ const ROUTES = [
     ],
   },
   {
+    name: 'studio-web-cycle', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, widths: [1280],
+    readyExpr: `(function () {
+      if (!window.__draftFlow) {
+        window.__draftFlow = 'started';
+        setTimeout(function () {
+          var tab = document.querySelector('[data-web-tab="brouillons"]');
+          if (tab) tab.click();
+          setTimeout(function () {
+            var load = document.querySelector('.draft-load[data-draft-id="draft_1"]');
+            if (load) load.click();
+            setTimeout(function () {
+              var add = document.getElementById('mediaAddButton');
+              if (add) add.click();
+              setTimeout(function () {
+                var pick = document.getElementById('mediaChannelPick');
+                if (pick) pick.click();
+                setTimeout(function () {
+                  var item = document.querySelector('.media-pick');
+                  if (item) item.click();
+                  setTimeout(function () {
+                    var title = document.getElementById('articleTitle');
+                    var publish = document.getElementById('publishSubmit');
+                    if (title) { title.value = 'Article du cycle de vie'; title.dispatchEvent(new Event('input', { bubbles: true })); }
+                    if (publish) publish.click();
+                  }, 500);
+                }, 400);
+              }, 400);
+            }, 400);
+          }, 400);
+        }, 500);
+        return false;
+      }
+      return window.__previewLastPublish && window.__previewLastPublish.action === 'article_publish' && window.__previewLastPublish.draftId === 'draft_1' && !document.getElementById('webStudioBody').textContent.includes('L’illusion technologique');
+    })()`,
+    asserts: [
+      ['cycle de vie : publication portée par le brouillon repris', `window.__previewLastPublish.draftId === 'draft_1'`, true],
+      ['cycle de vie : le brouillon publié a disparu de l’interface', `!document.getElementById('webStudioBody').textContent.includes('L’illusion technologique')`, true],
+      ['messages : état « répondue » explicite', `document.getElementById('webStudioBody').textContent.includes('Répondue · en attente du lecteur') && document.getElementById('webStudioBody').textContent.includes('Répondre à nouveau')`, true],
+      ['messages : état « en attente » conservé pour le message sans réponse', `document.getElementById('webStudioBody').textContent.includes('En attente de réponse')`, true],
+    ],
+  },
+  {
+    name: 'studio-web-article-sans-image', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, widths: [1280],
+    readyExpr: `(function () {
+      if (!window.__noCoverFlow) {
+        window.__noCoverFlow = 'started';
+        setTimeout(function () {
+          var tab = document.querySelector('[data-web-tab="rediger"]');
+          if (tab) tab.click();
+          setTimeout(function () {
+            var title = document.getElementById('articleTitle');
+            var text = document.getElementById('publishText');
+            if (title) { title.value = 'Article sans image'; title.dispatchEvent(new Event('input', { bubbles: true })); }
+            if (text) { text.value = 'Corps du tapuscrit.'; text.dispatchEvent(new Event('input', { bubbles: true })); }
+            var publish = document.getElementById('publishSubmit');
+            if (publish) publish.click();
+          }, 400);
+        }, 500);
+        return false;
+      }
+      return document.getElementById('publishStatus') && document.getElementById('publishStatus').textContent.includes('couverture');
+    })()`,
+    asserts: [
+      ['article sans image de couverture bloqué avec explication', `document.getElementById('publishStatus').textContent.includes('couverture')`, true],
+    ],
+  },
+  {
     name: 'studio-web-audio', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, widths: [1280],
     readyExpr: `(function () {
       if (!window.__audioFlow) {

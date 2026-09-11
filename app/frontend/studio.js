@@ -24,6 +24,7 @@
   let formatLabel = 'Grande Enquête';
   let editingLiveId = null;
   let currentLives = [];
+  let activeDraftId = null; // brouillon repris : retiré à la publication réussie
 
   function topicLabel(value) {
     const topic = PESCE.SUPPORT_TOPICS.find((item) => item.value === value);
@@ -258,7 +259,7 @@ ${excerpt ? `<p class="font-body-sm text-body-sm text-on-surface-variant line-cl
 <div class="pt-2 flex items-center justify-between">
 <span class="font-meta-detail text-[0.6875rem] text-on-surface-variant">${wordCount(draft.text).toLocaleString('fr-FR')} mots</span>
 <div class="flex gap-space-xs">
-<button class="draft-load border border-outline-variant px-space-sm py-3 font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-draft="${escapeAttribute(draft.text || '')}">Reprendre</button>
+<button class="draft-load border border-outline-variant px-space-sm py-3 font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-draft="${escapeAttribute(draft.text || '')}" data-draft-id="${escapeAttribute(draft.id)}">Reprendre</button>
 <button class="draft-delete border border-outline-variant px-space-sm py-3 font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-draft-id="${escapeAttribute(draft.id)}">Supprimer</button>
 </div>
 </div>
@@ -609,10 +610,11 @@ ${ticket.topic ? `<span class="font-meta-detail text-meta-detail text-on-surface
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(ticket.createdAt)}</span>
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface font-semibold">${escapeHtml(ticket.username ? '@' + ticket.username : ticket.firstName || 'Lecteur')}</h3>
+<span class="self-start px-2 py-0.5 rounded ${ticket.status === 'replied' ? 'bg-surface-container-high text-on-surface-variant' : 'bg-primary-fixed text-on-primary-fixed'} font-kicker-label text-kicker-label uppercase">${ticket.status === 'replied' ? 'Répondue · en attente du lecteur' : 'En attente de réponse'}</span>
 <p class="font-body-md text-body-md text-on-surface-variant">${escapeHtml(ticket.message || '')}</p>
-<textarea class="ticket-reply-input editorial-input" rows="2" maxlength="4000" placeholder="Répondre dans Telegram…"></textarea>
+<textarea class="ticket-reply-input editorial-input" rows="2" maxlength="4000" placeholder="${ticket.status === 'replied' ? 'Répondre à nouveau dans Telegram…' : 'Répondre dans Telegram…'}"></textarea>
 <div class="ticket-actions flex gap-space-xs">
-<button class="ticket-reply flex-1 border border-outline-variant px-space-sm py-3 font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Répondre</button>
+<button class="ticket-reply flex-1 border border-outline-variant px-space-sm py-3 font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">${ticket.status === 'replied' ? 'Répondre à nouveau' : 'Répondre'}</button>
 <button class="ticket-resolve flex-1 border border-outline-variant px-space-sm py-3 font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Résoudre</button>
 </div>
 </article>`).join('') : `<article class="bg-surface-container-lowest p-space-md shadow-sm flex flex-col items-center gap-space-sm text-center">
@@ -692,9 +694,10 @@ ${payment.refundedAt ? '' : `<button class="payment-refund border border-outline
     if (!text) return;
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const response = await studioAction({ action: title ? 'article_publish' : 'publish', text, ...(title ? { title } : {}) });
+      const response = await studioAction({ action: title ? 'article_publish' : 'publish', text, ...(title ? { title } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
+      activeDraftId = null; // publication réussie : le brouillon a été retiré côté serveur
       form.reset();
       status.textContent = title
         ? 'Article publié sur Telegraph et envoyé sur le canal avec le bouton ⭐ Soutenir.'
@@ -954,6 +957,7 @@ ${payment.refundedAt ? '' : `<button class="payment-refund border border-outline
     document.querySelectorAll('.payment-refund').forEach((button) => button.addEventListener('click', () => refundPayment(button)));
     document.querySelectorAll('.draft-delete').forEach((button) => button.addEventListener('click', () => deleteDraftRow(button)));
     document.querySelectorAll('.draft-load').forEach((button) => button.addEventListener('click', () => {
+      activeDraftId = button.dataset.draftId || null;
       const input = document.getElementById('publishText');
       const title = document.getElementById('articleTitle');
       if (title) title.value = '';

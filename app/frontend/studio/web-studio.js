@@ -16,6 +16,7 @@
   let editingLiveId = null;
   let sessionEmail = '';
   let articleImages = []; // images d'article (hébergées par Telegraph), état du pupitre
+  let activeDraftId = null; // brouillon repris dans le compositeur : retiré à la publication
 
   const FORMATS = [
     { label: 'Grande Enquête', placeholder: 'Inscrire un titre percutant…' },
@@ -138,7 +139,7 @@
       if (emailEl) emailEl.textContent = sessionEmail ? `Connecté : ${sessionEmail}` : '';
       body.innerHTML = TABS.map(renderTab).join('');
       bindEvents();
-      switchTab('bureau');
+      switchTab(currentTab); // on conserve l'espace de travail ouvert après une action
     } catch (error) {
       body.innerHTML = `<div class="p-space-lg flex flex-col items-center gap-space-sm text-center"><span class="material-symbols-outlined text-[28px] text-on-surface-variant">warning</span><p class="font-body-sm text-body-sm text-on-surface-variant">${escapeHtml(error.message)}</p></div>`;
     }
@@ -205,7 +206,7 @@
 ${renderStat('ecrits', 'auto_stories', String(textPosts.length), 'Écrits publiés', 'Articles et dépêches')}
 ${renderStat('brouillons', 'drafts', String(drafts.length), 'Brouillons', 'Ébauches en cours')}
 ${renderStat('directs', 'podium', nextLive ? liveShortDate(nextLive.scheduledAt) : 'Aucun', 'Direct programmé', 'Régie des directs')}
-${renderStat('messages', 'mark_email_unread', String(tickets), 'Messages ouverts', 'Demandes des lecteurs')}
+${renderStat('messages', 'mark_email_unread', String(tickets), 'Messages ouverts', 'Sans réponse')}
 ${renderStat('audience', 'send', Number(audience.last7Days || 0).toLocaleString('fr-FR'), 'Ouvertures', '7 derniers jours')}
 ${renderStat('audience', 'group', Number(audience.uniqueUsers || 0).toLocaleString('fr-FR'), 'Visiteurs uniques', 'Total cumulé')}
 ${renderStat('audience', 'star', Number(studioData?.stars || 0).toLocaleString('fr-FR'), 'Telegram Stars reçues', 'Soutiens des lecteurs')}
@@ -288,7 +289,7 @@ ${nextLive ? `<div class="p-space-md bg-on-secondary-fixed text-surface rounded-
 <div class="pt-1 flex items-center justify-between">
 <span class="font-meta-detail text-[0.6875rem] text-on-surface-variant">${metadata ? 'Métadonnées enregistrées' : `${wordCount(draft.text).toLocaleString('fr-FR')} mots`}</span>
 <div class="flex gap-space-xs">
-<button class="draft-load px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-draft="${escapeAttribute(draft.text || '')}">Reprendre</button>
+<button class="draft-load px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-draft="${escapeAttribute(draft.text || '')}" data-draft-id="${escapeAttribute(draft.id)}">Reprendre</button>
 <button class="draft-delete px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-draft-id="${escapeAttribute(draft.id)}">Supprimer</button>
 </div>
 </div>
@@ -679,15 +680,16 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
     if (!title || !youtubeIdOf(youtubeUrl)) { if (status) status.textContent = 'Le titre et un lien YouTube valide sont requis.'; return; }
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const response = await studioAction({ action: videoEditingMessageId ? 'video_update' : 'video_publish', title, description, youtubeUrl, ...(videoEditingMessageId ? { messageId: videoEditingMessageId } : {}) });
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 401) { showLogin(); return; }
+      const { response, data } = await studioActionOrRetry({ action: videoEditingMessageId ? 'video_update' : 'video_publish', title, description, youtubeUrl, ...(videoEditingMessageId ? { messageId: videoEditingMessageId } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
+      if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
       if (status) status.textContent = videoEditingMessageId ? 'Vidéo mise à jour sur le canal.' : 'Vidéo publiée sur le canal Telegram — le Mini App la présente en carte avec miniature et bouton ⭐ Soutenir.';
+      removeDraftLocally(activeDraftId);
+      activeDraftId = null;
       videoEditingMessageId = null;
       document.getElementById('videoForm')?.reset();
       document.getElementById('videoPreview')?.classList.add('hidden');
-      setTimeout(load, 900);
+      await load();
     } catch (error) { if (status) status.textContent = error.message || 'Publication impossible.'; }
     finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
   }
@@ -866,18 +868,19 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
     if (!title || !audioDataUrl) { if (status) status.textContent = 'Un enregistrement (ou un fichier importé) et un titre sont requis.'; return; }
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const response = await studioAction({ action: 'audio_publish', title, description, author, data: audioDataUrl, filename: audioFileName });
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 401) { showLogin(); return; }
+      const { response, data } = await studioActionOrRetry({ action: 'audio_publish', title, description, author, data: audioDataUrl, filename: audioFileName, ...(activeDraftId ? { draftId: activeDraftId } : {}) });
+      if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
       if (status) status.textContent = 'Audio publié sur le canal Telegram — le Mini App le présente avec lecteur intégré et bouton ⭐ Soutenir.';
+      removeDraftLocally(activeDraftId);
+      activeDraftId = null;
       audioDataUrl = null;
       const preview = document.getElementById('recordPreview');
       if (preview) { preview.src = ''; preview.classList.add('hidden'); }
       document.getElementById('audioTitle').value = '';
       document.getElementById('audioDescription').value = '';
       document.getElementById('audioAuthor').value = '';
-      setTimeout(load, 900);
+      await load();
     } catch (error) { if (status) status.textContent = error.message || 'Publication impossible.'; }
     finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
   }
@@ -940,27 +943,34 @@ ${live.description ? `<p class="font-body-sm text-body-sm text-on-surface-varian
   }
 
   // — MESSAGES & DEMANDES : tickets d'assistance existants.
+  // — MESSAGES & DEMANDES : machine à états explicite des tickets (open → replied → resolved).
+  // « open » = sans réponse ; « replied » = répondue, en attente du lecteur ; « resolved » = fermée.
   function renderMessages() {
     const tickets = studioData?.recentTickets || [];
+    const repliedCount = tickets.filter((ticket) => ticket.status === 'replied').length;
     return `
 <div class="flex items-center justify-between">
 <div><span class="font-kicker-label text-kicker-label text-primary uppercase">Messages des lecteurs</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Messages &amp; demandes</h1></div>
-<span class="px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed font-kicker-label text-kicker-label uppercase">${studioData?.openTickets || 0}</span>
+<span class="px-2 py-0.5 rounded bg-primary-fixed text-on-primary-fixed font-kicker-label text-kicker-label uppercase">${studioData?.openTickets || 0} en attente${repliedCount ? ` · ${repliedCount} répondue${repliedCount > 1 ? 's' : ''}` : ''}</span>
 </div>
 <p class="font-body-sm text-body-sm text-on-surface-variant -mt-space-sm">Les messages proviennent du formulaire d'assistance et du bot — vos réponses sont envoyées directement dans Telegram.</p>
-${tickets.length ? tickets.map((ticket) => `<article class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm" data-ticket="${escapeAttribute(ticket.id)}">
-<div class="flex items-center justify-between">
+${tickets.length ? tickets.map((ticket) => {
+  const replied = ticket.status === 'replied';
+  return `<article class="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-sm" data-ticket="${escapeAttribute(ticket.id)}">
+<div class="flex items-center justify-between flex-wrap gap-1">
 <span class="font-meta-detail text-[0.6875rem] font-bold uppercase text-primary">${escapeHtml(ticket.id)}</span>
+<span class="px-2 py-0.5 rounded ${replied ? 'bg-surface-container-high text-on-surface-variant' : 'bg-primary-fixed text-on-primary-fixed'} font-kicker-label text-kicker-label uppercase">${replied ? 'Répondue · en attente du lecteur' : 'En attente de réponse'}</span>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(ticket.createdAt)}${ticket.topic ? ` · ${escapeHtml(topicLabel(ticket.topic))}` : ''}</span>
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(ticket.username ? '@' + ticket.username : ticket.firstName || 'Lecteur')}</h3>
 <p class="font-body-md text-body-md text-on-surface-variant">${escapeHtml(ticket.message || '')}</p>
-<textarea class="ticket-reply-input editorial-input" rows="3" maxlength="4000" placeholder="Répondre dans Telegram…"></textarea>
+<textarea class="ticket-reply-input editorial-input" rows="3" maxlength="4000" placeholder="${replied ? 'Répondre à nouveau dans Telegram…' : 'Répondre dans Telegram…'}"></textarea>
 <div class="flex gap-space-sm">
-<button class="ticket-reply flex-1 py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Répondre</button>
+<button class="ticket-reply flex-1 py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">${replied ? 'Répondre à nouveau' : 'Répondre'}</button>
 <button class="ticket-resolve flex-1 py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Résoudre</button>
 </div>
-</article>`).join('') : `<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col items-center gap-space-sm text-center"><h3 class="font-headline-sm text-headline-sm text-on-surface">Aucun message pour le moment</h3><p class="font-body-sm text-body-sm text-on-surface-variant">Les demandes d'assistance apparaîtront ici.</p></div>`}`;
+</article>`;
+}).join('') : `<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col items-center gap-space-sm text-center"><h3 class="font-headline-sm text-headline-sm text-on-surface">Aucun message pour le moment</h3><p class="font-body-sm text-body-sm text-on-surface-variant">Les demandes d'assistance apparaîtront ici.</p></div>`}`;
   }
 
   // — AUDIENCE & STARS : indicateurs réels uniquement.
@@ -1032,6 +1042,26 @@ ${renderTelegraph()}
   }
 
   // — Actions (identiques au Studio Telegram : mêmes API, même base).
+  // Envoi d'une action avec reprise idempotente : si l'envoi Telegram a réussi mais que la
+  // persistance Neon a échoué (502 + sent), le serveur reprend avec l'identité du message —
+  // aucun doublon Telegram n'est possible.
+  async function studioActionOrRetry(payload) {
+    const response = await studioAction(payload);
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) { showLogin(); return { response, data }; }
+    if (response.status === 502 && data.sent?.chatId && data.sent?.messageId) {
+      const retry = await studioAction({ ...payload, resume: data.sent });
+      const retryData = await retry.json().catch(() => ({}));
+      return { response: retry, data: retryData, retried: true };
+    }
+    return { response, data };
+  }
+
+  function removeDraftLocally(draftId) {
+    if (!draftId || !studioData?.drafts) return;
+    studioData.drafts = studioData.drafts.filter((draft) => draft.id !== draftId);
+  }
+
   async function publishFromStudio() {
     const title = document.getElementById('articleTitle')?.value.trim() || '';
     const text = document.getElementById('publishText')?.value.trim() || '';
@@ -1043,26 +1073,31 @@ ${renderTelegraph()}
       if (status) status.textContent = 'Les images nécessitent un titre : ajoutez un titre pour publier un article Telegraph illustré.';
       return;
     }
+    if (title && !images.some((image) => image.placement === 'cover')) {
+      if (status) status.textContent = 'Une image de couverture est requise pour publier un article — utilisez « Ajouter un média ».';
+      return;
+    }
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const response = await studioAction({ action: title ? 'article_publish' : 'publish', text, ...(title ? { title, images } : {}) });
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 401) { showLogin(); return; }
+      const { response, data } = await studioActionOrRetry({ action: title ? 'article_publish' : 'publish', text, ...(title ? { title, images } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
+      if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
       status.textContent = title
         ? (images.length ? 'Article illustré publié sur Telegraph (images hébergées par Telegraph) et envoyé sur le canal avec le bouton ⭐ Soutenir.' : 'Article publié sur Telegraph et envoyé sur le canal avec le bouton ⭐ Soutenir.')
         : 'Publication envoyée sur le canal Telegram. Le bouton ⭐ Soutenir est ajouté automatiquement.';
+      removeDraftLocally(activeDraftId);
+      activeDraftId = null;
       articleImages = [];
       renderMediaList();
       document.getElementById('publishForm')?.reset();
       refreshBat();
-      setTimeout(load, 900);
+      await load();
     } catch (error) {
       const confirmed = await verifyPublish(text);
       status.textContent = confirmed
         ? 'Publication partie sur le canal (confirmation reçue via la synchronisation).'
         : `Publication incertaine — vérifiez le canal Telegram avant de réessayer. (${error.message || 'erreur inconnue'})`;
-      if (confirmed) { articleImages = []; renderMediaList(); document.getElementById('publishForm')?.reset(); setTimeout(load, 900); }
+      if (confirmed) { removeDraftLocally(activeDraftId); activeDraftId = null; articleImages = []; renderMediaList(); document.getElementById('publishForm')?.reset(); await load(); }
     }
     finally { button.disabled = false; button.textContent = 'Publier sur Telegram'; }
   }
@@ -1333,6 +1368,7 @@ ${renderTelegraph()}
     document.querySelectorAll('.draft-delete').forEach((button) => button.addEventListener('click', () => deleteDraftRow(button)));
     document.querySelectorAll('.draft-load').forEach((button) => button.addEventListener('click', () => {
       const text = button.dataset.draft || '';
+      activeDraftId = button.dataset.draftId || null; // publication → brouillon retiré
       const { kind, title } = draftKind(text);
       if (kind === 'Audio') {
         const audioTitle = document.getElementById('audioTitle');

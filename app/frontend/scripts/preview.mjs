@@ -113,6 +113,7 @@ function fixtureStudioOverview(isVisitor) {
     openTickets: 1,
     recentTickets: [
       { id: 'PS-20260911-00001', username: 'amadou_d', firstName: 'Amadou', message: 'Bonjour Pesce, j’ai des documents chiffrés sur le dossier portuaire. Comment vous les transmettre ?', topic: 'contenu', status: 'open', createdAt: iso(-5 * 3600e3) },
+      { id: 'PS-20260911-00002', username: 'etlazj', firstName: 'Etlazj', message: 'hello', topic: '', status: 'replied', createdAt: iso(-72 * 3600e3), lastReply: 'Bonjour et merci pour votre message.', lastReplyAt: iso(-24 * 3600e3) },
     ],
     recentPayments: [
       { id: 'pay_1', username: 'amadou_d', amount: 150, paidAt: iso(-24 * 3600e3), refundedAt: null },
@@ -236,6 +237,7 @@ window.__PESCE_WEB_PREVIEW__ = true;
   var DENIED = ${denied ? 'true' : 'false'};
   var realFetch = window.fetch.bind(window);
   var json = function (status, body) { return new Response(JSON.stringify(body), { status: status, headers: { 'Content-Type': 'application/json' } }); };
+  var OVERVIEW = ${overview};
   window.fetch = function (input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) || '';
     if (url.indexOf('/api/') === -1) return realFetch(input, init);
@@ -257,12 +259,14 @@ window.__PESCE_WEB_PREVIEW__ = true;
         try {
           var actionBody = JSON.parse(init.body || '{}');
           if (['article_publish', 'video_publish', 'video_update', 'audio_publish'].includes(actionBody.action)) window.__previewLastPublish = actionBody;
+          // Cycle de vie : une publication réussie retire le brouillon de la vue d'ensemble.
+          if (actionBody.draftId && OVERVIEW.drafts) OVERVIEW.drafts = OVERVIEW.drafts.filter(function (draft) { return draft.id !== actionBody.draftId; });
           if (actionBody.action === 'article_image_upload') return Promise.resolve(json(200, { ok: true, src: '/file/preview-image.jpg', url: 'https://telegra.ph/file/preview-image.jpg' }));
           if (actionBody.action === 'article_image_from_channel') return Promise.resolve(json(200, { ok: true, src: '/file/preview-canal.jpg', url: 'https://telegra.ph/file/preview-canal.jpg' }));
         } catch (error) { /* corps illisible : ok simple */ }
         return Promise.resolve(json(200, { ok: true }));
       }
-      return Promise.resolve(json(200, ${overview}));
+      return Promise.resolve(json(200, OVERVIEW));
     }
     if (url.indexOf('/api/content') !== -1) {
       var type = (url.match(/type=([a-z]+)/) || [])[1] || '';
