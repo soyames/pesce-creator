@@ -49,6 +49,7 @@ const ROUTES = [
       ['bouton bot → deep link startapp', `document.querySelector('#telegramGate .telegram-button').getAttribute('href')`, `${PESCE.BOT_URL}?startapp`],
       ['bouton primaire terracotta', `getComputedStyle(document.querySelector('#telegramGate .telegram-button')).backgroundColor`, RGB.primary],
       ['lien canal présent', `document.querySelector('#telegramGate [data-identity-href="channelUrl"]') !== null`, true],
+      ['lien « Connexion » discret vers /studio', `document.querySelector('#telegramGate a[href="/studio"]') !== null`, true],
     ],
   },
   {
@@ -65,6 +66,7 @@ const ROUTES = [
       ['nav « À la une » active en terracotta', `getComputedStyle(document.querySelector('.nav-button[data-section="a-la-une"]')).color`, RGB.primary],
       ['bannière direct visible', `!document.getElementById('homeLiveBanner').hidden`, true],
       ['aucune affordance Studio publique', `!document.querySelector('.nav-button[data-section="studio"]') && !document.querySelector('#telegramApp header').textContent.includes('Studio Privé')`, true],
+      ['lien « Connexion » discret dans le pied de page', `document.querySelector('#a-la-une footer a[href="/studio"]') !== null`, true],
       ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
     ],
   },
@@ -199,8 +201,11 @@ const ROUTES = [
     readyExpr: `getComputedStyle(document.getElementById('studioLogin')).display !== 'none'`,
     asserts: [
       ['écran de connexion seul visible', `getComputedStyle(document.getElementById('studioLogin')).display !== 'none' && getComputedStyle(document.getElementById('studioShell')).display === 'none'`, true],
+      ['titre éditorial « Bureau Pesce Studio »', `document.getElementById('studioLogin').textContent.includes('Bureau Pesce Studio')`, true],
+      ['copie d\'accueil éditoriale', `document.getElementById('studioLogin').textContent.includes("Accédez à l'espace privé de Pesce Studio")`, true],
       ['masthead du bureau privé', `document.getElementById('studioLogin').textContent.includes('Bureau Privé')`, true],
       ['aucune donnée privée affichée', `!document.getElementById('studioLogin').textContent.includes('Brouillon') && !document.getElementById('studioLogin').textContent.includes('Ticket')`, true],
+      ['aucun message de configuration visible', `!document.getElementById('studioLogin').textContent.includes('GOOGLE_OAUTH_CLIENT_ID') && !document.getElementById('studioLogin').textContent.includes('Vercel')`, true],
       ['retour au journal public', `!!document.querySelector('#studioLogin a[href="/"]')`, true],
       ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
     ],

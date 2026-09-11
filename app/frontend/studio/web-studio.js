@@ -73,19 +73,20 @@
     const hint = document.getElementById('loginHint');
     const config = await fetch('/api/studio-auth?action=config').then((response) => response.json()).catch(() => ({ clientId: null }));
     if (!config.clientId) {
-      if (hint) hint.textContent = 'La connexion Google n’est pas encore configurée : définissez GOOGLE_OAUTH_CLIENT_ID (Vercel), puis redéployez.';
+      // Incident de configuration : erreur technique discrète, jamais de détail d'infrastructure.
+      if (hint) hint.textContent = 'La connexion est momentanément indisponible — réessayez dans un instant.';
       return;
     }
     if (typeof google === 'undefined' || !google?.accounts) {
       if (attempt < 6) { setTimeout(() => initGoogleButton(attempt + 1), 1200); return; }
-      if (hint) hint.textContent = 'Le bouton Google est indisponible pour le moment — vérifiez la connexion et réessayez.';
+      if (hint) hint.textContent = 'La connexion est momentanément indisponible — réessayez dans un instant.';
       return;
     }
     try {
-      google.accounts.id.initialize({ client_id: config.clientId, callback: (response) => handleGoogleCredential(response?.credential) });
+      google.accounts.id.initialize({ client_id: config.clientId, locale: 'fr', callback: (response) => handleGoogleCredential(response?.credential) });
       google.accounts.id.renderButton(document.getElementById('gsiContainer'), { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', width: 280 });
     } catch {
-      if (hint) hint.textContent = 'Le bouton Google est indisponible pour le moment — réessayez dans un instant.';
+      if (hint) hint.textContent = 'La connexion est momentanément indisponible — réessayez dans un instant.';
     }
   }
 

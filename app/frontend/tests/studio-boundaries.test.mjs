@@ -27,6 +27,12 @@ test('la navigation publique conserve les parcours publics', () => {
   }
 });
 
+test('l’accès « Connexion » est un simple lien discret, jamais un onglet Studio public', () => {
+  assert.ok(production['index.html'].includes('href="/studio"'), 'lien Connexion absent');
+  assert.ok(production['index.html'].includes('>Connexion<'), 'libellé Connexion absent');
+  assert.ok(!/data-section="studio"/.test(production['index.html']), 'aucun onglet Studio ajouté');
+});
+
 test('le Studio reste une surcouche privée, ouverte par le mécanisme créatrice existant', () => {
   assert.ok(production['index.html'].includes('id="studioScreen"'), 'surcouche studio dans la coquille');
   assert.ok(production['index.html'].includes('Bureau Privé'), 'badge privé du studio');
