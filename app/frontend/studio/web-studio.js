@@ -889,7 +889,7 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
   function renderTelegraph() {
     if (studioData?.telegraphConfigured) {
       return `
-<div><span class="font-kicker-label text-kicker-label text-primary uppercase">Instant View</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Articles Telegraph</h1></div>
+<div><span class="font-kicker-label text-kicker-label text-primary uppercase">Configuration</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Telegraph — hébergement des articles</h1></div>
 <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
 <div class="flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-[22px]">article</span><h2 class="font-headline-sm text-headline-sm text-on-surface">Compte configuré</h2></div>
 <p class="font-body-md text-body-md text-on-surface-variant">Créez et publiez vos articles depuis « Rédiger » : un titre transforme votre texte en article Telegraph (telegra.ph), lu en Instant View et publié sur le canal avec le bouton ⭐ Soutenir.</p>
@@ -897,7 +897,7 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
 </div>`;
     }
     return `
-<div><span class="font-kicker-label text-kicker-label text-primary uppercase">Instant View</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Articles Telegraph</h1></div>
+<div><span class="font-kicker-label text-kicker-label text-primary uppercase">Configuration</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Telegraph — hébergement des articles</h1></div>
 <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
 <div class="flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-[22px]">article</span><h2 class="font-headline-sm text-headline-sm text-on-surface">Telegraph n'est pas encore configuré</h2></div>
 <p class="font-body-md text-body-md text-on-surface-variant">Créez le compte, puis sauvegardez le jeton reçu dans la variable d'environnement <strong>TELEGRAPH_ACCESS_TOKEN</strong> (Vercel) et redéployez.</p>
