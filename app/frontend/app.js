@@ -586,11 +586,11 @@ ${standfirst ? `<p class="font-editorial-standfirst text-editorial-standfirst te
 <span>${escapeHtml(relativeTime(post.publishedAt))}</span><span>·</span>
 <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">schedule</span>${readingLabel(post.text)}</span>
 </div>
-<div class="pt-space-xs flex items-center justify-between">
+<div class="pt-space-xs flex flex-wrap items-center justify-between gap-space-xs">
 <button class="px-space-md py-3 bg-on-surface text-surface font-kicker-label text-kicker-label uppercase tracking-wider inline-flex items-center gap-space-xs hover:bg-primary transition-colors" type="button" data-reader="${escapeAttribute(post.id)}">
 <span>Lire l'enquête complète</span><span class="material-symbols-outlined text-[16px]">east</span>
 </button>
-<button class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors" type="button" data-bookmark title="Ajouter aux favoris" aria-label="Ajouter aux favoris">
+<button class="w-10 h-10 shrink-0 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors" type="button" data-bookmark title="Ajouter aux favoris" aria-label="Ajouter aux favoris">
 <span class="material-symbols-outlined text-[22px]">bookmark_border</span>
 </button>
 </div>
@@ -693,12 +693,12 @@ function renderLiveBanner(live) {
 ${when ? `<span class="font-meta-detail text-meta-detail text-on-surface-variant">${escapeHtml(when)}</span>` : ''}
 </div>
 <p class="font-body-sm text-body-sm text-on-surface font-medium leading-tight">${escapeHtml(live.title)}${live.description ? ` — ${escapeHtml(live.description)}` : ''}</p>
-<div class="flex items-center justify-between pt-1">
-<div class="flex items-center gap-space-xs text-on-surface-variant font-meta-detail text-meta-detail">
-<span class="material-symbols-outlined text-[16px]">notifications_active</span>
+<div class="flex flex-wrap items-center justify-between gap-1 pt-1">
+<div class="flex items-center gap-space-xs text-on-surface-variant font-meta-detail text-meta-detail min-w-0">
+<span class="material-symbols-outlined text-[16px] shrink-0">notifications_active</span>
 <span>${isLive ? 'En cours sur Telegram & YouTube' : 'Diffusion sur Telegram & YouTube'}</span>
 </div>
-<button class="inline-flex items-center gap-1 py-2 font-kicker-label text-kicker-label uppercase text-primary font-bold hover:underline" type="button" data-live-link="${escapeAttribute(live.link || '')}">Rejoindre le salon <span class="material-symbols-outlined text-[14px]">arrow_forward</span></button>
+<button class="inline-flex items-center gap-1 py-2 shrink-0 font-kicker-label text-kicker-label uppercase text-primary font-bold hover:underline" type="button" data-live-link="${escapeAttribute(live.link || '')}">Rejoindre le salon <span class="material-symbols-outlined text-[14px]">arrow_forward</span></button>
 </div>
 </div>`;
 }

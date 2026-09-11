@@ -991,6 +991,13 @@ ${tickets.length ? tickets.map((ticket) => {
     const payments = studioData?.recentPayments || [];
     return `
 <div><span class="font-kicker-label text-kicker-label text-primary uppercase">Audience &amp; Soutiens</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Audience &amp; Stars</h1></div>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Statistiques Telegram</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Les statistiques de diffusion du canal (abonnés, vues, partages, réactions) sont fournies par Telegram — distinctes des indicateurs Pesce Studio ci-dessous. Elles sont chargées à la demande et ne sont jamais inventées.</p>
+<button id="telegramStatsButton" class="self-start px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Charger les statistiques Telegram</button>
+<div id="telegramStatsBox" class="hidden grid grid-cols-2 md:grid-cols-4 gap-space-sm"></div>
+<p id="telegramStatsStatus" class="form-status" aria-live="polite"></p>
+</section>
 <div class="grid grid-cols-2 xl:grid-cols-4 gap-space-md">
 ${renderKpi('send', Number(audience.opens || 0).toLocaleString('fr-FR'), `Ouvertures (+${Number(audience.last7Days || 0).toLocaleString('fr-FR')} sur 7 jours)`)}
 ${renderKpi('group', Number(audience.uniqueUsers || 0).toLocaleString('fr-FR'), 'Visiteurs uniques')}
@@ -1365,6 +1372,28 @@ ${renderTelegraph()}
       if (rtmpCopy) {
         navigator.clipboard?.writeText(rtmpCopy.dataset.copy || '').then(() => { rtmpCopy.textContent = 'Copié'; }).catch(() => {});
       }
+    });
+    document.getElementById('telegramStatsButton')?.addEventListener('click', async () => {
+      const button = document.getElementById('telegramStatsButton');
+      const box = document.getElementById('telegramStatsBox');
+      const status = document.getElementById('telegramStatsStatus');
+      button.disabled = true; button.textContent = 'Chargement…';
+      try {
+        const response = await studioAction({ action: 'telegram_stats' });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) { showLogin(); return; }
+        if (!response.ok) throw new Error(data.message || 'Statistiques Telegram indisponibles.');
+        box.innerHTML = `
+${renderKpi('group', Number(data.followers || 0).toLocaleString('fr-FR'), 'Abonnés')}
+${renderKpi('visibility', Number(data.views || 0).toLocaleString('fr-FR'), 'Vues')}
+${renderKpi('send', Number(data.shares || 0).toLocaleString('fr-FR'), 'Partages')}
+${renderKpi('favorite', Number(data.reactions || 0).toLocaleString('fr-FR'), 'Réactions')}`;
+        box.classList.remove('hidden');
+        box.classList.add('grid');
+      } catch (error) {
+        if (status) status.textContent = error.message || 'Statistiques Telegram indisponibles — cette capacité nécessite la configuration MTProto du canal.';
+      }
+      finally { button.disabled = false; button.textContent = 'Charger les statistiques Telegram'; }
     });
     document.getElementById('backfillSupportButton')?.addEventListener('click', backfillSupport);
     document.getElementById('reconcileButton')?.addEventListener('click', async () => {

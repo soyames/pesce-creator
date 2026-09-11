@@ -7,7 +7,7 @@
 import { createDraft, createLiveSchedule, deleteDraft, findPostByArticleUrl, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listReconcilablePosts, listSupportTickets, markPaymentRefunded, markPostSourceDeleted, mergeIntoExistingArticle, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
 import { backfillTelegraphArticles } from '../lib/article-backfill.js';
 import { computeRemovedMessageIds, extractMessageIdsFromPreview, fetchChannelPreview } from '../lib/channel-reconcile.js';
-import { getChannelLiveState, getChannelRtmp } from '../lib/mtproto.js';
+import { channelMessageExists, getChannelBroadcastStats, getChannelLiveState, getChannelRtmp, mtProtoConfigured } from '../lib/mtproto.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
@@ -164,6 +164,25 @@ export default async function handler(req, res) {
       }
     }
 
+    // — Statistiques Telegram (MTProto, où Telegram les autorise) : jamais de chiffres inventés.
+    if (action === 'telegram_stats') {
+      try {
+        const stats = await getChannelBroadcastStats({ channelUsername: CHANNEL_USERNAME });
+        const counters = stats?.counters || {};
+        return res.status(200).json({
+          ok: true,
+          followers: counters.followers || 0,
+          views: counters.views || 0,
+          shares: counters.shares || 0,
+          reactions: counters.reactions || 0,
+          notifications: counters.notifications || 0,
+        });
+      } catch (error) {
+        console.error('telegram stats failed', error.message);
+        return res.status(503).json({ message: error.message || 'Statistiques Telegram indisponibles.' });
+      }
+    }
+
     // — Synchronisation d'état avec l'appel Telegram réel (MTProto) : autoritaire quand configuré.
     if (action === 'live_status_sync') {
       const liveId = String(body.liveId || '').trim();
@@ -188,7 +207,24 @@ export default async function handler(req, res) {
         if (fetchedIds.length === 0) return res.status(200).json({ ok: true, fetched: 0, removed: 0, ingested: 0, message: 'Aperçu vide — aucune modification (règle de sécurité).' });
         const rows = await listReconcilablePosts();
         const removedIds = computeRemovedMessageIds(rows, fetchedIds);
-        for (const rowId of removedIds) await markPostSourceDeleted(rowId);
+        // Même garde MTProto que la réconciliation automatique : un message encore présent
+        // (ou une erreur de vérification) n'est jamais marqué supprimé.
+        const useMtProto = mtProtoConfigured();
+        let actuallyRemoved = 0;
+        for (const rowId of removedIds) {
+          const row = rows.find((item) => item.id === rowId);
+          if (useMtProto && row?.messageId) {
+            try {
+              const exists = await channelMessageExists({ channelUsername: CHANNEL_USERNAME, messageId: row.messageId });
+              if (exists) continue;
+            } catch (error) {
+              console.error('mtproto existence check failed', error.message);
+              continue;
+            }
+          }
+          await markPostSourceDeleted(rowId);
+          actuallyRemoved += 1;
+        }
         // Ingestion : même logique que la réconciliation automatique.
         const links = telegraphLinksFromPreview(html);
         let ingested = 0;
@@ -210,7 +246,7 @@ export default async function handler(req, res) {
           });
           ingested += 1;
         }
-        return res.status(200).json({ ok: true, fetched: fetchedIds.length, removed: removedIds.length, ingested });
+        return res.status(200).json({ ok: true, fetched: fetchedIds.length, removed: actuallyRemoved, ingested });
       } catch (error) {
         console.error('channel reconcile failed', error);
         return res.status(502).json({ message: 'Réconciliation impossible : lecture du canal échouée — aucune modification appliquée.' });
@@ -512,7 +548,20 @@ async function reconcileChannel() {
   if (fetchedIds.length === 0) return; // sécurité : un aperçu vide ne veut PAS dire « tout est supprimé »
   const rows = await listReconcilablePosts();
   let removed = 0;
+  // Vérification autoritaire MTProto quand la session est configurée : un message encore
+  // présent n'est JAMAIS marqué (aperçu périmé) ; une erreur MTProto ne supprime RIEN non plus.
+  const useMtProto = mtProtoConfigured();
   for (const rowId of computeRemovedMessageIds(rows, fetchedIds)) {
+    const row = rows.find((item) => item.id === rowId);
+    if (useMtProto && row?.messageId) {
+      try {
+        const exists = await channelMessageExists({ channelUsername: CHANNEL_USERNAME, messageId: row.messageId });
+        if (exists) continue;
+      } catch (error) {
+        console.error('mtproto existence check failed', error.message);
+        continue; // règle de sécurité absolue : un échec ne supprime rien
+      }
+    }
     await markPostSourceDeleted(rowId);
     removed += 1;
   }
