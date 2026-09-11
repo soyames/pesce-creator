@@ -115,8 +115,15 @@ export function telegraphBackfillPost(page) {
 }
 
 // Récupère une page Telegraph publiée (retour du contenu) pour resynchronisation.
-export function getTelegraphPage({ accessToken, path, returnContent = true }) {
-  return telegraphCall('getPage', { access_token: accessToken, path, return_content: returnContent });
+// Les pages publiques se lisent SANS jeton d'accès : on le tente d'abord, puis avec le jeton
+// configuré — la resynchronisation fonctionne même si le compte propriétaire a changé.
+export async function getTelegraphPage({ accessToken, path, returnContent = true }) {
+  try {
+    return await telegraphCall('getPage', { path, return_content: returnContent });
+  } catch (error) {
+    if (!accessToken) throw error;
+    return telegraphCall('getPage', { access_token: accessToken, path, return_content: returnContent });
+  }
 }
 
 // Chemin /file/… → URL absolue telegra.ph.

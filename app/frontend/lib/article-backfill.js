@@ -15,14 +15,21 @@ export async function backfillTelegraphArticles({ channelUsername = null, now = 
   if (!accessToken) return;
   if (now() - lastArticleBackfill < 5 * 60 * 1000) return; // au plus toutes les 5 minutes par instance
   lastArticleBackfill = now();
-  const pages = await listTelegraphPages(accessToken, { limit: 20 });
-  for (const page of pages) {
-    const post = telegraphBackfillPost(page);
-    if (!post) continue;
-    // Déduplication : si l'article est déjà référencé (publication normale ou webhook), on ne
-    // crée pas de seconde ligne.
-    if (await findPostByArticleUrl(post.articleUrl)) continue;
-    post.channelUsername = channelUsername;
-    await upsertChannelPost(post);
+  try {
+    const pages = await listTelegraphPages(accessToken, { limit: 20 });
+    console.log(`telegraph backfill: ${pages.length} page(s) listée(s)`); // diagnostic sans secret
+    for (const page of pages) {
+      const post = telegraphBackfillPost(page);
+      if (!post) continue;
+      // Déduplication : si l'article est déjà référencé (publication normale ou webhook), on ne
+      // crée pas de seconde ligne.
+      if (await findPostByArticleUrl(post.articleUrl)) continue;
+      post.channelUsername = channelUsername;
+      await upsertChannelPost(post);
+      console.log(`telegraph backfill: article référencé (${post.id})`);
+    }
+  } catch (error) {
+    console.error('telegraph backfill failed', error);
+    throw error; // l'appelant journalise/ignore — on ne cache pas l'échec
   }
 }

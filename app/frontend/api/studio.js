@@ -147,12 +147,12 @@ export default async function handler(req, res) {
     // des métadonnées) : récupère la page Telegraph et met à jour Neon par le mécanisme normal.
     if (action === 'resync_message') {
       const messageId = Number(body.messageId);
-      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
       if (!messageId) return res.status(400).json({ message: 'Identifiant du message requis.' });
-      if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré : TELEGRAPH_ACCESS_TOKEN est requis.' });
       const path = (String(body.telegraphUrl || '').match(/telegra\.ph\/([\w\-./]+)/i) || [])[1] || '';
       if (!path) return res.status(400).json({ message: 'Lien Telegraph de l’article requis.' });
-      const page = await getTelegraphPage({ accessToken, path });
+      // Lecture publique de la page (sans jeton) : la resynchronisation fonctionne même si le
+      // compte Telegraph propriétaire ne correspond plus au jeton configuré.
+      const page = await getTelegraphPage({ accessToken: process.env.TELEGRAPH_ACCESS_TOKEN, path });
       if (!page?.title) return res.status(404).json({ message: 'Article Telegraph introuvable.' });
       const chat = await telegram(token, 'getChat', { chat_id: CHANNEL_HANDLE });
       const chatId = Number(chat.result?.id);
