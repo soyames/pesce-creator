@@ -7,7 +7,8 @@
   const PREVIEW = Boolean(window.__PESCE_WEB_PREVIEW__);
   const PESCE = window.PESCE;
 
-  const TABS = ['bureau', 'rediger', 'brouillons', 'ecrits', 'videos', 'audios', 'photos', 'telegraph', 'directs', 'messages', 'audience', 'parametres'];
+  // Telegraph est une technologie de publication SOUS « Écrits » — pas un espace de navigation.
+  const TABS = ['bureau', 'rediger', 'brouillons', 'ecrits', 'videos', 'audios', 'photos', 'directs', 'messages', 'audience', 'parametres'];
   let currentTab = 'bureau';
   let studioData = null;
   let posts = [];           // publications du canal (réelles, /api/content)
@@ -155,7 +156,6 @@
     videos: renderVideos,
     audios: renderAudios,
     photos: () => renderPostList('photo', 'Photos'),
-    telegraph: renderTelegraph,
     directs: renderDirects,
     messages: renderMessages,
     audience: renderAudience,
@@ -177,14 +177,23 @@
     window.scrollTo({ top: 0, behavior: 'auto' });
   }
 
-  // — BUREAU : vue d'ensemble réelle, « Rédiger » en action principale.
+  // — BUREAU : raccourcis opérationnels vers les espaces de travail. Chaque carte est cliquable
+  // et son chiffre provient des MÊMES enregistrements que la page de destination :
+  //   Écrits publiés  → posts (texte/document) du flux /api/content, identique à l'onglet Écrits
+  //   Brouillons      → studioData.drafts (pesce_drafts)
+  //   Direct programmé→ studioData.liveSchedules (statut live/scheduled)
+  //   Messages ouverts→ studioData.openTickets (pesce_support_tickets, statut open)
+  //   Ouvertures      → studioData.audience.last7Days (pesce_audience_events, 7 derniers jours)
+  //   Visiteurs uniques→ studioData.audience.uniqueUsers (total cumulé)
+  //   Telegram Stars  → studioData.stars (pesce_payments, somme)
+  //   Total éditorial → drafts + publications du même flux (brouillons · publiés)
   function renderBureau() {
-    const totals = studioData?.totals || {};
     const audience = studioData?.audience || {};
     const drafts = studioData?.drafts || [];
     const tickets = studioData?.openTickets || 0;
     const upcoming = (studioData?.liveSchedules || []).filter((live) => live.status === 'live' || live.status === 'scheduled');
     const nextLive = upcoming[0] || null;
+    const textPosts = posts.filter((post) => ['text', 'document', 'other'].includes(post.contentType));
     return `
 <div class="bg-surface-container-low rounded-xl p-space-lg flex flex-col gap-1">
 <span class="font-kicker-label text-kicker-label text-primary uppercase">Carnet de bord</span>
@@ -193,14 +202,14 @@
 <button class="self-start mt-space-sm inline-flex items-center gap-2 px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-wider hover:bg-primary transition-colors rounded-lg" type="button" data-web-tab-goto="rediger"><span class="material-symbols-outlined text-[20px]">edit_square</span> Rédiger une publication</button>
 </div>
 <div class="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
-${renderKpi('auto_stories', Number(totals.total || 0).toLocaleString('fr-FR'), 'Publications au canal')}
-${renderKpi('drafts', String(drafts.length), 'Brouillon' + (drafts.length > 1 ? 's' : ''))}
-${renderKpi('podium', nextLive ? liveShortDate(nextLive.scheduledAt) : 'Aucun', 'Direct programmé')}
-${renderKpi('mark_email_unread', String(tickets), 'Message' + (tickets > 1 ? 's' : '') + ' ouvert' + (tickets > 1 ? 's' : ''))}
-${renderKpi('send', Number(audience.opens || 0).toLocaleString('fr-FR'), 'Ouvertures Pesce Studio')}
-${renderKpi('group', Number(audience.uniqueUsers || 0).toLocaleString('fr-FR'), 'Visiteurs uniques')}
-${renderKpi('star', Number(studioData?.stars || 0).toLocaleString('fr-FR'), 'Telegram Stars reçues')}
-${renderKpi('history_edu', String(drafts.length + Number(totals.total || 0)), 'Ébauches & publications')}
+${renderStat('ecrits', 'auto_stories', String(textPosts.length), 'Écrits publiés', 'Articles et dépêches')}
+${renderStat('brouillons', 'drafts', String(drafts.length), 'Brouillons', 'Ébauches en cours')}
+${renderStat('directs', 'podium', nextLive ? liveShortDate(nextLive.scheduledAt) : 'Aucun', 'Direct programmé', 'Régie des directs')}
+${renderStat('messages', 'mark_email_unread', String(tickets), 'Messages ouverts', 'Demandes des lecteurs')}
+${renderStat('audience', 'send', Number(audience.last7Days || 0).toLocaleString('fr-FR'), 'Ouvertures', '7 derniers jours')}
+${renderStat('audience', 'group', Number(audience.uniqueUsers || 0).toLocaleString('fr-FR'), 'Visiteurs uniques', 'Total cumulé')}
+${renderStat('audience', 'star', Number(studioData?.stars || 0).toLocaleString('fr-FR'), 'Telegram Stars reçues', 'Soutiens des lecteurs')}
+${renderStat('ecrits', 'history_edu', String(drafts.length + posts.length), 'Total éditorial', `${drafts.length} brouillons · ${posts.length} publiés`)}
 </div>
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-space-lg">
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
@@ -227,6 +236,17 @@ ${nextLive ? `<div class="p-space-md bg-on-secondary-fixed text-surface rounded-
 `;
   }
 
+  function renderStat(workspace, icon, value, label, sub) {
+    return `<button class="group w-full text-left p-space-md bg-surface-container-lowest rounded-xl shadow-sm hover:bg-surface-container transition-colors cursor-pointer flex items-center gap-space-sm" type="button" data-workspace="${workspace}" aria-label="${escapeAttribute(label)} — ouvrir l'espace de travail">
+<span class="material-symbols-outlined text-[22px] text-primary shrink-0 group-hover:scale-110 transition-transform">${icon}</span>
+<div class="flex flex-col min-w-0">
+<span class="font-headline-sm text-[1.1rem] leading-none text-on-surface">${escapeHtml(value)}</span>
+<span class="font-meta-detail text-meta-detail text-on-surface truncate mt-1">${escapeHtml(label)}</span>
+<span class="font-meta-detail text-[0.6875rem] text-on-surface-variant truncate">${escapeHtml(sub)}</span>
+</div>
+</button>`;
+  }
+
   function renderKpi(icon, value, label) {
     return `<div class="p-space-md bg-surface-container-lowest rounded-xl shadow-sm flex items-center gap-space-sm">
 <span class="material-symbols-outlined text-[22px] text-primary">${icon}</span>
@@ -249,17 +269,24 @@ ${nextLive ? `<div class="p-space-md bg-on-secondary-fixed text-surface rounded-
     return `${date.toLocaleString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} · ${String(date.getHours()).padStart(2, '0')}h${String(date.getMinutes()).padStart(2, '0')} GMT`;
   }
 
+  function draftKind(text) {
+    const lines = String(text || '').split('\n').map((line) => line.trim()).filter(Boolean);
+    const first = lines[0] || '';
+    if (first.startsWith('[Audio]')) return { kind: 'Audio', title: lines[1] || 'Note vocale sans titre', metadata: true };
+    if (first.startsWith('[Vidéo]')) return { kind: 'Vidéo', title: lines[1] || 'Vidéo sans titre', metadata: true };
+    return { kind: 'Texte', title: first || 'Brouillon sans titre', metadata: false };
+  }
+
   function renderDraftCard(draft) {
-    const lines = String(draft.text || '').split('\n').map((line) => line.trim()).filter(Boolean);
-    const title = lines[0]?.slice(0, 90) || 'Brouillon sans titre';
+    const { kind, title, metadata } = draftKind(draft.text);
     return `<article class="p-space-md bg-surface-container-low rounded-lg flex flex-col gap-space-xs">
 <div class="flex items-center justify-between">
-<span class="font-kicker-label text-[0.6875rem] text-primary uppercase">Brouillon</span>
+<span class="font-kicker-label text-[0.6875rem] text-primary uppercase">${escapeHtml(kind)} · Brouillon</span>
 <span class="font-meta-detail text-[0.6875rem] text-on-surface-variant">${formatDate(draft.updatedAt || draft.createdAt)}</span>
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(title)}</h3>
 <div class="pt-1 flex items-center justify-between">
-<span class="font-meta-detail text-[0.6875rem] text-on-surface-variant">${wordCount(draft.text).toLocaleString('fr-FR')} mots</span>
+<span class="font-meta-detail text-[0.6875rem] text-on-surface-variant">${metadata ? 'Métadonnées enregistrées' : `${wordCount(draft.text).toLocaleString('fr-FR')} mots`}</span>
 <div class="flex gap-space-xs">
 <button class="draft-load px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-draft="${escapeAttribute(draft.text || '')}">Reprendre</button>
 <button class="draft-delete px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-draft-id="${escapeAttribute(draft.id)}">Supprimer</button>
@@ -974,6 +1001,9 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
 <p class="font-body-md text-body-md text-on-surface-variant">Connecté en tant que <strong class="text-on-surface">${escapeHtml(sessionEmail || 'compte Google autorisé')}</strong>. La session expire automatiquement après 7 jours et reste validée par le serveur à chaque requête.</p>
 <button id="paramLogout" class="self-start px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Se déconnecter</button>
 </section>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm xl:col-span-2">
+${renderTelegraph()}
+</section>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
 <h2 class="font-headline-sm text-headline-sm text-on-surface">Bouton de soutien du canal</h2>
 <p class="font-body-md text-body-md text-on-surface-variant">Les nouvelles publications reçoivent automatiquement le bouton « ⭐ Soutenir le travail de Pesce ». Utilisez ceci une fois pour les publications déjà présentes.</p>
@@ -1302,12 +1332,33 @@ ${payment.refundedAt ? '' : `<button class="payment-refund px-space-md py-3 bord
     document.querySelectorAll('.payment-refund').forEach((button) => button.addEventListener('click', () => refundPayment(button)));
     document.querySelectorAll('.draft-delete').forEach((button) => button.addEventListener('click', () => deleteDraftRow(button)));
     document.querySelectorAll('.draft-load').forEach((button) => button.addEventListener('click', () => {
+      const text = button.dataset.draft || '';
+      const { kind, title } = draftKind(text);
+      if (kind === 'Audio') {
+        const audioTitle = document.getElementById('audioTitle');
+        const audioDescription = document.getElementById('audioDescription');
+        if (audioTitle) audioTitle.value = title === 'Note vocale sans titre' ? '' : title;
+        if (audioDescription) audioDescription.value = text.split('\n').slice(2).join(' ').trim().slice(0, 4000);
+        switchTab('audios');
+        return;
+      }
+      if (kind === 'Vidéo') {
+        const videoTitle = document.getElementById('videoTitle');
+        const videoDescription = document.getElementById('videoDescription');
+        const videoUrl = document.getElementById('videoUrl');
+        if (videoTitle) videoTitle.value = title === 'Vidéo sans titre' ? '' : title;
+        if (videoDescription) videoDescription.value = text.split('\n').slice(2).filter((line) => !line.includes('youtu')).join(' ').trim().slice(0, 4000);
+        if (videoUrl) { videoUrl.value = (text.match(/(https?:\/\/(?:www\.)?youtu[^\s]+)/) || [])[1] || ''; videoUrl.dispatchEvent(new Event('input', { bubbles: true })); }
+        switchTab('videos');
+        return;
+      }
       const input = document.getElementById('publishText');
-      const title = document.getElementById('articleTitle');
-      if (title) title.value = '';
-      if (input) input.value = button.dataset.draft || '';
+      const articleTitle = document.getElementById('articleTitle');
+      if (articleTitle) articleTitle.value = '';
+      if (input) input.value = text;
       switchTab('rediger');
     }));
+    document.querySelectorAll('[data-workspace]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.workspace)));
     document.querySelectorAll('.ticket-reply').forEach((button) => button.addEventListener('click', () => replyTicket(button)));
     document.querySelectorAll('.ticket-resolve').forEach((button) => button.addEventListener('click', () => resolveTicket(button)));
     document.getElementById('publishText')?.addEventListener('input', () => {

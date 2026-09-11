@@ -2,7 +2,7 @@
 // et images d'article (hébergement Telegraph : chemins /file/…, couverture, insertion, légende/crédit).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { articleCoverFromPage, articleExcerptFromPage, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, telegraphImageUrl, validateArticleImages } from '../lib/telegraph.js';
+import { articleCoverFromPage, articleExcerptFromPage, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, telegraphBackfillPost, telegraphImageUrl, validateArticleImages } from '../lib/telegraph.js';
 
 test('nodesFromPlainText : un paragraphe par bloc séparé par une ligne vide', () => {
   const nodes = nodesFromPlainText('Premier paragraphe.\n\nDeuxième paragraphe.\n\nTroisième.');
@@ -76,6 +76,27 @@ test('nodesFromArticle : couverture en tête, images insérées après le paragr
   assert.equal(nodes[paragraphIndex + 1].tag, 'figure', 'image insérée au mauvais endroit');
   assert.equal(nodes[paragraphIndex + 1].children[0].attrs.src, 'https://telegra.ph/file/dans.jpg');
   assert.deepEqual(nodes[paragraphIndex + 1].children[1].children, ['Dans l\'article']);
+});
+
+test('telegraphBackfillPost : référence stable et complète pour la synchronisation automatique', () => {
+  const page = {
+    path: 'Le-numerique-africain-09-11-2',
+    url: 'https://telegra.ph/Le-numerique-africain-09-11-2',
+    title: 'Le numérique africain a besoin de confiance',
+    description: 'Chapeau de l’article.',
+    image_url: '/file/cover-123.jpg',
+  };
+  const post = telegraphBackfillPost(page);
+  assert.equal(post.id, 'telegraph_Le-numerique-africain-09-11-2');
+  assert.equal(post.source, 'studio');
+  assert.equal(post.contentType, 'text');
+  assert.equal(post.articleUrl, page.url);
+  assert.equal(post.articleImageUrl, 'https://telegra.ph/file/cover-123.jpg');
+  assert.ok(post.text.includes('Le numérique africain a besoin de confiance'));
+  assert.ok(post.text.includes(page.url));
+  assert.equal(post.mediaFileId, undefined, 'aucun binaire : la couverture est une référence Telegraph');
+  assert.equal(telegraphBackfillPost(null), null);
+  assert.equal(telegraphBackfillPost({ path: 'x' }), null, 'page sans URL refusée');
 });
 
 test('articleCoverFromPage / articleExcerptFromPage : couverture et chapeau d’une page Telegraph', () => {

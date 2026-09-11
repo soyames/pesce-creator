@@ -154,14 +154,26 @@ const AUDIT_EXPRESSION = `(async () => {
     report.headerOverlap = first.top < header.getBoundingClientRect().bottom - 2;
   }
   if (nav && contentRoot) {
-    // Le contenu est-il recouvert par la barre de navigation ? On compare l'espace restant
-    // sous la racine de contenu (marges/paddings du conteneur défilant) à la hauteur de la barre.
-    // Si le contenu tient dans le viewport (pas de défilement), il n'y a jamais de recouvrement.
+    // Le contenu est-il recouvert par la barre de navigation ? On mesure l'espace restant
+    // sous le DERNIER élément de contenu (padding du conteneur défilant) et on le compare à
+    // la hauteur de la barre. Contenu sans défilement → jamais de recouvrement.
     const navHeight = Math.round(nav.getBoundingClientRect().height);
     const scrollBox = contentRoot.closest('.overflow-y-auto') || document.documentElement;
-    const below = Math.round(scrollBox.scrollHeight - contentRoot.getBoundingClientRect().bottom);
+    let clearance;
+    if (scrollBox === document.documentElement) {
+      // Défilement fenêtre : la racine de contenu inclut déjà son padding bas (pb-20).
+      clearance = Math.round(scrollBox.scrollHeight - contentRoot.getBoundingClientRect().bottom);
+    } else {
+      // Conteneur défilant interne : on mesure le bas du DERNIER ÉLÉMENT DE CONTENU (le padding
+      // du volet lui-même est précisément la marge de sécurité) en coordonnées de défilement.
+      let lastEl = contentRoot.lastElementChild || contentRoot;
+      while (lastEl.lastElementChild) lastEl = lastEl.lastElementChild;
+      const rect = scrollBox.getBoundingClientRect();
+      const lastInScroll = lastEl.getBoundingClientRect().bottom - rect.top + scrollBox.scrollTop;
+      clearance = Math.round(scrollBox.scrollHeight - lastInScroll);
+    }
     report.lastContentBottom = Math.round(contentRoot.getBoundingClientRect().bottom);
-    report.navOverlap = scrollBox.scrollHeight > scrollBox.clientHeight && below < navHeight - 2;
+    report.navOverlap = scrollBox.scrollHeight > scrollBox.clientHeight && clearance < navHeight - 2;
   }
   report.viewport = vw;
   return report;

@@ -108,6 +108,7 @@ function fixtureStudioOverview(isVisitor) {
     drafts: [
       { id: 'draft_1', text: 'L’illusion technologique dans l’éducation rurale\n\nAnalyse de terrain dans les collèges de la vallée de l’Ouémé face aux déploiements d’écrans sans manuels scolaires fondamentaux.', status: 'draft', createdAt: iso(-26 * 3600e3), updatedAt: iso(-2 * 3600e3) },
       { id: 'draft_2', text: 'Rencontre avec le doyen M. Kpohazounde\n\nNote vocale d’archive #042 — audio brut (44 min). Retranscription en cours.', status: 'draft', createdAt: iso(-50 * 3600e3), updatedAt: iso(-26 * 3600e3) },
+      { id: 'draft_3', text: '[Audio]\nNote de terrain Dantokpa\n\nAmbiance du marché au petit matin — enregistrement à re-téléverser avant publication.', status: 'draft', createdAt: iso(-70 * 3600e3), updatedAt: iso(-30 * 3600e3) },
     ],
     openTickets: 1,
     recentTickets: [

@@ -7,7 +7,7 @@
 import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
-import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
+import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, getTelegraphPage, listTelegraphPages, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, telegraphBackfillPost, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
 import { normalizeYouTubeUrl } from '../lib/youtube.js';
@@ -44,6 +44,10 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const overview = await getStudioOverview();
+      // Synchronisation automatique des articles Telegraph (idempotente, non bloquante) :
+      // tout article publié sur Telegraph est référencé dans pesce_posts même si le webhook
+      // n'a pas été reçu — la couverture vient de Telegraph, jamais d'un binaire local.
+      try { await backfillTelegraphArticles(); } catch (error) { console.error('telegraph backfill failed', error); }
       return res.status(200).json({ ...serialize(overview), telegraphConfigured: Boolean(process.env.TELEGRAPH_ACCESS_TOKEN) });
     }
     if (req.method !== 'POST') return res.status(405).json({ message: 'Méthode non autorisée.' });
@@ -341,6 +345,22 @@ async function telegram(token, method, payload) {
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(`Telegram ${method} a échoué: ${data.description || response.status}`);
   return data;
+}
+
+let lastArticleBackfill = 0;
+
+async function backfillTelegraphArticles() {
+  const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
+  if (!accessToken) return;
+  if (Date.now() - lastArticleBackfill < 5 * 60 * 1000) return; // au plus toutes les 5 minutes par instance
+  lastArticleBackfill = Date.now();
+  const pages = await listTelegraphPages(accessToken, { limit: 20 });
+  for (const page of pages) {
+    const post = telegraphBackfillPost(page);
+    if (!post) continue;
+    post.channelUsername = CHANNEL_USERNAME;
+    await upsertChannelPost(post);
+  }
 }
 
 // Envoi multipart (audio enregistré, etc.) — le corps est un FormData, pas du JSON.

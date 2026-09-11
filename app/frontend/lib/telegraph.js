@@ -89,6 +89,31 @@ export function articleExcerptFromPage(page) {
   return '';
 }
 
+// Liste les pages Telegraph publiées par le compte (synchronisation automatique des articles).
+export function listTelegraphPages(accessToken, { limit = 20 } = {}) {
+  return telegraphCall('getPageList', { access_token: accessToken, limit });
+}
+
+// Construit la ligne pesce_posts correspondant à une page Telegraph listée : identifiant stable
+// (telegraph_<path>), référence d'article + couverture hébergée par Telegraph, aucun binaire.
+export function telegraphBackfillPost(page) {
+  if (!page || !page.path || !page.url) return null;
+  return {
+    id: `telegraph_${page.path}`,
+    source: 'studio',
+    channelUsername: null,
+    messageId: null,
+    contentType: 'text',
+    text: `${page.title || 'Article'}\n\n${page.description || ''}\n\n${page.url}`,
+    telegramUrl: null,
+    articleUrl: page.url,
+    articleImageUrl: normalizeTelegraphImage(page.image_url || ''),
+    published: true,
+    publishedAt: new Date(),
+    receivedAt: new Date(),
+  };
+}
+
 // Récupère une page Telegraph publiée (retour du contenu) pour resynchronisation.
 export function getTelegraphPage({ accessToken, path, returnContent = true }) {
   return telegraphCall('getPage', { access_token: accessToken, path, return_content: returnContent });
