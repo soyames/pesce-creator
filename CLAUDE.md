@@ -7,10 +7,13 @@
 - **Telegram** est la source de vérité éditoriale : le canal alimente `pesce_posts` via le webhook (`api/telegram-pesce-studio.webhook.js` → `channel_post`). Les médias restent hébergés par Telegram ; Neon ne stocke que des métadonnées/références. **Ne jamais dupliquer les médias dans Neon.**
 - **YouTube** héberge les vidéos ; le Mini App ne fait que référencer/ouvrir des liens. Aucun upload YouTube n'existe — ne pas en créer sans demande explicite.
 - **Deux expériences dans un seul Mini App** : l'espace public (défaut) et le studio créatrice **masqué** (bouton réservé à la créatrice via `GET /api/me`, deep link `?startapp=studio`, commande `/studio` ; `studio.js`/`studio.css` chargés à la demande). L'autorisation est **toujours** validée côté serveur (`/api/studio` : initData 401 + allowlist créatrice 403) — le masquage client est de l'UX, pas de la sécurité.
+- **Studio créatrice web `/studio`** (portail de bureau, `app/frontend/studio/index.html`) : authentification Google Sign-In (jeton d'identité vérifié côté serveur — signature JWKS, audience, expiration — via `api/studio-auth.js`), session HttpOnly/Secure/SameSite adossée à Neon (`pesce_web_sessions`, `lib/web-session.js`), allowlist stricte (`PESCE_WEB_ADMIN_EMAILS`, défaut : l'administrateur du Studio). `/api/studio` accepte **soit** la session web autorisée, **soit** l'initData Telegram — même base, mêmes actions, aucune couche de synchronisation. Variables requises (noms uniquement) : `GOOGLE_OAUTH_CLIENT_ID` (identifiant OAuth public, audience du jeton — aucun secret client nécessaire) et `PESCE_WEB_ADMIN_EMAILS`.
 - Les directs (`pesce_live_schedules`, `api/live.js`, actions `live_*` du studio) ne stockent que la programmation ; le direct reste sur sa plateforme externe.
 - Constantes partagées : `app/frontend/constants.js` (`globalThis.PESCE`) + vue ESM `lib/config.js`. Un test garde-fou interdit de réécrire ces identifiants en dur.
 
 ## Sécurité — règle permanente (ne jamais enfreindre)
+
+Authentification : la vérification d'identité est **toujours** serveur. Le Studio web (`/studio`) ne rend **aucune** donnée privée avant l'authentification (l'écran de connexion est la seule surface visible), refuse tout compte Google hors allowlist (403), et la session (cookie HttpOnly/Secure/SameSite) expire après 7 jours. Aucune vérification par localStorage, paramètre d'URL ou condition JavaScript côté client.
 
 Ne jamais imprimer, exposer, journaliser, committer ni révéler un secret : credential, token, clé privée, mot de passe, URL de base de données, secret de webhook, token de bot Telegram ou clé API.
 

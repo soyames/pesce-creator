@@ -1,0 +1,27 @@
+/* Base du Studio créatrice web (/studio) — le système visuel (couleurs, typographies,
+   espacements) vient de la config Tailwind de studio/index.html (mêmes tokens que le Mini App). */
+html, body { width: 100vw; margin: 0; padding: 0; background-color: #fbf9f5; }
+body { overscroll-behavior: none; }
+* { -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+button:focus-visible, a:focus-visible { outline: 2px solid #972a0a; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* Wordmark Pesce Studio (masthead éditorial). */
+.masthead-title { font-family: 'Newsreader', Georgia, serif; font-size: 26px; font-weight: 700; fill: #121316; letter-spacing: -0.5px; }
+.masthead-sub { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif; font-size: 8.5px; font-weight: 600; fill: #b84221; letter-spacing: 2px; text-transform: uppercase; }
+.masthead-rule { stroke: #b84221; stroke-width: 1.5; }
+
+/* Champs de formulaire du pupitre. */
+.editorial-input { width: 100%; border: 1px solid #e0bfb7; border-radius: 0.5rem; background: #ffffff; color: #1b1c1a; padding: 12px; line-height: 1.5; box-sizing: border-box; font-family: inherit; font-size: 0.875rem; resize: vertical; }
+.editorial-input:focus { outline: 2px solid #972a0a; outline-offset: 0; border-color: transparent; }
+select.editorial-input { resize: none; }
+.form-status { min-height: 20px; color: #b84221; font-size: 12px; font-weight: 500; }
+
+/* Onglet actif de la navigation du studio web. */
+.web-nav.web-active { color: #972a0a; background: #f5f3ef; font-weight: 600; }

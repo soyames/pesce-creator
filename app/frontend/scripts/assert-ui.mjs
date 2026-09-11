@@ -195,6 +195,42 @@ const ROUTES = [
     ],
   },
   {
+    name: 'studio-web-connexion', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio&login=1`, widths: [390, 1280],
+    readyExpr: `getComputedStyle(document.getElementById('studioLogin')).display !== 'none'`,
+    asserts: [
+      ['écran de connexion seul visible', `getComputedStyle(document.getElementById('studioLogin')).display !== 'none' && getComputedStyle(document.getElementById('studioShell')).display === 'none'`, true],
+      ['masthead du bureau privé', `document.getElementById('studioLogin').textContent.includes('Bureau Privé')`, true],
+      ['aucune donnée privée affichée', `!document.getElementById('studioLogin').textContent.includes('Brouillon') && !document.getElementById('studioLogin').textContent.includes('Ticket')`, true],
+      ['retour au journal public', `!!document.querySelector('#studioLogin a[href="/"]')`, true],
+      ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
+    ],
+  },
+  {
+    name: 'studio-web-refusé', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio&denied=1`, widths: [390],
+    readyExpr: `getComputedStyle(document.getElementById('studioLogin')).display !== 'none' && !!document.querySelector('#studioLogin button') && (setTimeout(function(){ window.PesceWebStudio.handleGoogleCredential('preview-credential'); }, 300), true)`,
+    asserts: [
+      ['état « accès refusé » affiché', `!document.getElementById('loginError').hidden && document.getElementById('loginErrorText').textContent.includes('pas autorisé')`, true],
+      ['la coquille reste fermée', `getComputedStyle(document.getElementById('studioShell')).display === 'none'`, true],
+    ],
+  },
+  {
+    name: 'studio-web', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, widths: [390, 1280],
+    readyExpr: `getComputedStyle(document.getElementById('studioShell')).display !== 'none' && document.getElementById('webStudioBody').textContent.includes('Bonjour, Pesce')`,
+    asserts: [
+      ['bureau visible, connexion masquée', `getComputedStyle(document.getElementById('studioLogin')).display === 'none' && getComputedStyle(document.getElementById('studioShell')).display !== 'none'`, true],
+      ['les onglets du portail sont présents', `document.querySelectorAll('[data-web-tab]').length >= 12`, true],
+      ['« Rédiger » en action principale', `document.getElementById('webStudioBody').textContent.includes('Rédiger une publication')`, true],
+      ['composeur présent', `!!document.querySelector('#publishForm #publishText')`, true],
+      ['brouillons réels affichés', `document.getElementById('webStudioBody').textContent.includes("Chantiers d'écriture")`, true],
+      ['directs réels affichés', `document.getElementById('webStudioBody').textContent.includes('Planifier un direct')`, true],
+      ['messages réels affichés', `document.getElementById('webStudioBody').textContent.includes('Messages & demandes')`, true],
+      ['audience réelle affichée', `document.getElementById('webStudioBody').textContent.includes('Telegram Stars')`, true],
+      ['session affichée', `document.getElementById('webSessionEmail').textContent.includes('pescestudio8@gmail.com')`, true],
+      ['déconnexion présente', `!!document.getElementById('webLogout')`, true],
+      ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
+    ],
+  },
+  {
     name: 'a-la-une-vide', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=empty`, widths: [390],
     readyExpr: `document.getElementById('homeLead').children.length > 0`,
     asserts: [
@@ -327,6 +363,10 @@ async function main() {
         if (message.sessionId !== attached.sessionId) return;
         if (message.method === 'Runtime.exceptionThrown') {
           const detail = message.params?.exceptionDetails?.exception?.description || message.params?.exceptionDetails?.text || 'exception';
+          // Bruit interne du navigateur headless (Edge injecte des scripts de télémétrie qui
+          // messagent un auditeur absent) — ne se produit pas sur about:blank et n'a aucun
+          // rapport avec le code de l'application. Ignoré pour ne signaler que les vraies erreurs.
+          if (String(detail).includes('tabs:outgoing.message.ready')) return;
           consoleErrors.push(`exception: ${String(detail).slice(0, 160)}`);
         }
         if (message.method === 'Runtime.consoleAPICalled' && message.params?.type === 'error') {

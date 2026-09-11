@@ -1,21 +1,40 @@
-// Studio créatrice (privé). Toute action exige une initData valide ET l'identifiant créatrice configuré.
+// Studio créatrice (privé). Toute action exige UNE des deux preuves d'identité côté serveur :
+//   - une initData Telegram valide ET l'identifiant créatrice configuré (Mini App Telegram), ou
+//   - une session web valide (cookie HttpOnly → Neon) issue de la connexion Google /studio,
+//     réservée aux adresses PESCE_WEB_ADMIN_EMAILS.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
 import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket } from '../lib/db.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { createTelegraphAccount, createTelegraphPage, nodesFromPlainText } from '../lib/telegraph.js';
+import { webSessionEmailFromRequest } from '../lib/web-session.js';
+import { isWebAdminEmail } from '../lib/google-auth.js';
 import { CHANNEL_HANDLE, CREATOR_NAME, SUPPORT_URL } from '../lib/config.js';
 
 export default async function handler(req, res) {
+  // Le jeton du bot reste nécessaire aux actions de publication, quel que soit le flux d'authentification.
   const token = process.env.TELEGRAM_PESCE_BOT_TOKEN;
-  if (!token) return res.status(503).json({ message: 'Bot Telegram non configuré.' });
 
-  const initData = typeof req.headers['x-telegram-init-data'] === 'string' ? req.headers['x-telegram-init-data'] : (typeof req.body?.initData === 'string' ? req.body.initData : '');
-  if (!validateTelegramInitData(initData, token)) return res.status(401).json({ message: 'Session Telegram invalide ou expirée.' });
+  // 1) Session web (Studio /studio) : la requête porte le cookie de session autorisé ?
+  //    En cas de base indisponible, la session est refusée (fail-closed) et le flux Telegram reste.
+  let webEmail = null;
+  try { webEmail = await webSessionEmailFromRequest(req); } catch (error) { console.error('web session check failed', error); }
+  const webAuthorized = Boolean(webEmail && isWebAdminEmail(webEmail));
 
-  const user = telegramUserFromInitData(initData);
-  if (!user?.id || !isCreatorTelegramUser(user.id)) return res.status(403).json({ message: 'Accès réservé au studio de Pesce.' });
+  let actorId = null;
+  if (!webAuthorized) {
+    // 2) Flux Telegram (Mini App) : inchangé.
+    if (!token) return res.status(503).json({ message: 'Bot Telegram non configuré.' });
+    const initData = typeof req.headers['x-telegram-init-data'] === 'string' ? req.headers['x-telegram-init-data'] : (typeof req.body?.initData === 'string' ? req.body.initData : '');
+    if (!validateTelegramInitData(initData, token)) return res.status(401).json({ message: 'Session Telegram invalide ou expirée.' });
+    const user = telegramUserFromInitData(initData);
+    if (!user?.id || !isCreatorTelegramUser(user.id)) return res.status(403).json({ message: 'Accès réservé au studio de Pesce.' });
+    actorId = String(user.id);
+  } else {
+    // Identité web pour les colonnes d'audit (texte libre) : préfixe « web: » + adresse.
+    actorId = `web:${webEmail}`;
+  }
 
   try {
     if (req.method === 'GET') {
@@ -49,7 +68,7 @@ export default async function handler(req, res) {
       const text = String(body.text || '').trim().slice(0, 4096);
       if (!text) return res.status(400).json({ message: 'Le brouillon est vide.' });
       const id = newDraftId();
-      await createDraft({ id, text, status: 'draft', authorTelegramUserId: String(user.id) });
+      await createDraft({ id, text, status: 'draft', authorTelegramUserId: actorId });
       return res.status(200).json({ ok: true, draftId: id });
     }
 
@@ -133,7 +152,7 @@ export default async function handler(req, res) {
     if (!ticketId) return res.status(400).json({ message: 'Ticket manquant.' });
 
     if (action === 'resolve') {
-      await updateSupportTicket(ticketId, { status: 'resolved', resolvedAt: new Date(), resolvedBy: String(user.id) });
+      await updateSupportTicket(ticketId, { status: 'resolved', resolvedAt: new Date(), resolvedBy: actorId });
       return res.status(200).json({ ok: true });
     }
 
@@ -144,7 +163,7 @@ export default async function handler(req, res) {
       const ticket = tickets.find((item) => item.id === ticketId);
       if (!ticket?.chatId) return res.status(404).json({ message: 'Ticket introuvable.' });
       await telegram(token, 'sendMessage', { chat_id: ticket.chatId, text: `Réponse de Pesce Studio\n\n${text}` });
-      await updateSupportTicket(ticketId, { status: 'open', lastReply: text, lastReplyAt: new Date(), lastReplyBy: String(user.id) });
+      await updateSupportTicket(ticketId, { status: 'open', lastReply: text, lastReplyAt: new Date(), lastReplyBy: actorId });
       return res.status(200).json({ ok: true });
     }
 

@@ -8,6 +8,7 @@ import {
   listPayments, listSupportTickets, markPaymentRefunded, markUpdateProcessed, pruneWebhookUpdates,
   setSupportSession, trackAudienceEvent, updateLiveSchedule, updateSupportTicket, upsertChannelPost, upsertPayment, db,
 } from '../lib/db.js';
+import { createWebSession, destroyWebSession, webSessionEmailFromRequest, WEB_SESSION_COOKIE } from '../lib/web-session.js';
 
 const POST_ID = `smoke_post_${Date.now()}`;
 const CHARGE_ID = `smoke_charge_${Date.now()}`;
@@ -184,6 +185,22 @@ await run('audience : événements, statistiques, drapeau de remboursement', asy
   assert.ok(after.refundedAt instanceof Date, 'refundedAt non enregistré');
   await db().query('DELETE FROM pesce_payments WHERE id = $1', [CHARGE_ID]);
   await db().query('DELETE FROM pesce_audience_events WHERE user_id = $1', [userId]);
+});
+
+await run('sessions web : création, validation, expiration, destruction', async () => {
+  const { token } = await createWebSession('smoke-admin@example.com', { ttlMs: 5000 });
+  const request = { headers: { cookie: `${WEB_SESSION_COOKIE}=${token}` } };
+  assert.equal(await webSessionEmailFromRequest(request), 'smoke-admin@example.com', 'session valide refusée');
+  assert.equal(await webSessionEmailFromRequest({ headers: {} }), null, 'session absente acceptée');
+  assert.equal(await webSessionEmailFromRequest({ headers: { cookie: `${WEB_SESSION_COOKIE}=jeton-inexistant` } }), null, 'session inconnue acceptée');
+  await db().query(`UPDATE pesce_web_sessions SET expires_at = now() - interval '1 hour' WHERE email = 'smoke-admin@example.com'`);
+  assert.equal(await webSessionEmailFromRequest(request), null, 'session expirée acceptée');
+  await destroyWebSession({ headers: { cookie: `${WEB_SESSION_COOKIE}=jeton-inexistant` } }); // sans effet
+  await db().query(`DELETE FROM pesce_web_sessions WHERE email = 'smoke-admin@example.com'`);
+  const { token: second } = await createWebSession('smoke-admin@example.com', { ttlMs: 5000 });
+  assert.equal(await webSessionEmailFromRequest({ headers: { cookie: `${WEB_SESSION_COOKIE}=${second}` } }), 'smoke-admin@example.com');
+  await destroyWebSession({ headers: { cookie: `${WEB_SESSION_COOKIE}=${second}` } });
+  assert.equal(await webSessionEmailFromRequest({ headers: { cookie: `${WEB_SESSION_COOKIE}=${second}` } }), null, 'session détruite encore valide');
 });
 
 await run('vue d’ensemble du studio', async () => {

@@ -122,4 +122,18 @@ CREATE TABLE IF NOT EXISTS pesce_audience_events (
 CREATE INDEX IF NOT EXISTS pesce_audience_events_at_idx ON pesce_audience_events (created_at DESC);
 `,
   },
+  {
+    // Sessions web (Google OAuth) du Studio créatrice : jeton aléatoire haché (SHA-256) côté
+    // serveur, cookie HttpOnly chez le client. Aucun secret stocké en clair.
+    name: '005_web_sessions.sql',
+    sql: `
+CREATE TABLE IF NOT EXISTS pesce_web_sessions (
+  token_hash TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS pesce_web_sessions_expires_idx ON pesce_web_sessions (expires_at);
+`,
+  },
 ];

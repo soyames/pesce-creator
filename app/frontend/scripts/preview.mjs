@@ -205,6 +205,59 @@ window.__PESCE_PREVIEW__ = true;
 </script>`;
 }
 
+// — Stub du Studio web (/studio) : session Google simulée côté API, jamais de vraie connexion.
+//   ?preview=webstudio          → session valide, le bureau s'ouvre
+//   ?preview=webstudio&login=1  → pas de session : écran de connexion
+//   ?preview=webstudio&denied=1 → connexion refusée : état « accès refusé » après clic démo
+function previewWebStudioStub(searchParams) {
+  const loginOnly = searchParams.get('preview') === 'webstudio' && searchParams.get('login') === '1';
+  const denied = searchParams.get('denied') === '1';
+  const overview = JSON.stringify(fixtureStudioOverview(false)).replace(/</g, '\\u003c');
+  const postsJson = JSON.stringify(FIXTURE_POSTS.map((post) => ({ ...post })));
+  return `<script>
+window.__PESCE_WEB_PREVIEW__ = true;
+(function () {
+  var LOGIN_ONLY = ${loginOnly ? 'true' : 'false'};
+  var DENIED = ${denied ? 'true' : 'false'};
+  var realFetch = window.fetch.bind(window);
+  var json = function (status, body) { return new Response(JSON.stringify(body), { status: status, headers: { 'Content-Type': 'application/json' } }); };
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.indexOf('/api/') === -1) return realFetch(input, init);
+    if (url.indexOf('/api/studio-auth/session') !== -1) {
+      return Promise.resolve(LOGIN_ONLY || DENIED ? json(401, { authenticated: false }) : json(200, { authenticated: true, email: 'pescestudio8@gmail.com' }));
+    }
+    if (url.indexOf('/api/studio-auth/config') !== -1) return Promise.resolve(json(200, { clientId: 'preview-client.apps.googleusercontent.com' }));
+    if (url.indexOf('/api/studio-auth/login') !== -1) return Promise.resolve(DENIED ? json(403, { message: 'Compte non autorisé.' }) : json(200, { ok: true }));
+    if (url.indexOf('/api/studio-auth/logout') !== -1) return Promise.resolve(json(200, { ok: true }));
+    if (url.indexOf('/api/studio') !== -1) {
+      if (init && init.method === 'POST') return Promise.resolve(json(200, { ok: true }));
+      return Promise.resolve(json(200, ${overview}));
+    }
+    if (url.indexOf('/api/content') !== -1) {
+      var type = (url.match(/type=([a-z]+)/) || [])[1] || '';
+      var limit = Number((url.match(/limit=(\\d+)/) || [])[1] || 30);
+      var list = type ? ${postsJson}.filter(function (p) { return p.contentType === type; }) : ${postsJson};
+      return Promise.resolve(json(200, { channel: { username: '${CHANNEL_USERNAME}', url: '${CHANNEL_URL}' }, posts: list.slice(0, limit) }));
+    }
+    if (url.indexOf('/api/live') !== -1) return Promise.resolve(json(200, { lives: [] }));
+    return realFetch(input, init);
+  };
+  if (DENIED) {
+    document.addEventListener('DOMContentLoaded', function () {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Tester la connexion (démonstration)';
+      button.className = 'mt-space-md px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label uppercase tracking-widest rounded-lg';
+      button.addEventListener('click', function () { window.PesceWebStudio.handleGoogleCredential('preview-credential'); });
+      var card = document.querySelector('#studioLogin > div');
+      if (card) card.insertBefore(button, card.querySelector('#loginError'));
+    });
+  }
+})();
+</script>`;
+}
+
 // — Serveur HTTP.
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
@@ -238,15 +291,26 @@ const server = createServer((req, res) => {
 
   let filePath = normalize(join(ROOT, pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')));
   if (pathname === '/privacy' || pathname.startsWith('/privacy/')) filePath = join(ROOT, 'privacy', 'index.html');
+  if (pathname === '/studio' || pathname === '/studio/') filePath = join(ROOT, 'studio', 'index.html');
   if (!filePath.startsWith(ROOT) || !existsSync(filePath) || !statSync(filePath).isFile()) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('404 — introuvable');
     return;
   }
 
-  const isIndex = filePath.endsWith('index.html') && pathname !== '/privacy';
+  const isStudio = pathname === '/studio' || pathname === '/studio/';
+  const isIndex = filePath.endsWith('index.html') && !isStudio && pathname !== '/privacy';
   let content = readFileSync(filePath);
-  if (isIndex && url.searchParams.has('preview')) {
+  if (isStudio && url.searchParams.has('preview')) {
+    // Mode preview du Studio web : session serveur simulée (authentifié, refusée ou écran de
+    // connexion), mêmes fixtures que le Mini App, bouton de démonstration pour l'état « refusé ».
+    const html = content.toString('utf8');
+    const injected = html.replace(
+      '  <script src="/constants.js"></script>',
+      `${previewWebStudioStub(url.searchParams)}\n  <script src="/constants.js"></script>`
+    );
+    content = Buffer.from(injected, 'utf8');
+  } else if (isIndex && url.searchParams.has('preview')) {
     const html = content.toString('utf8');
     // En mode preview : le vrai SDK Telegram écraserait le WebApp simulé — on le retire
     // et on injecte le stub à la place.

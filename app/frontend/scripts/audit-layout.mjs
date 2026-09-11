@@ -40,6 +40,8 @@ const ROUTES = [
   ['directs', `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#directs`, `document.getElementById('directFeed').children.length > 0 && document.getElementById('directFeed').dataset.loading !== 'true'`, [390, 320]],
   ['photos', `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#photos`, `document.getElementById('photoFeed').children.length > 0`, [390, 320]],
   ['support', `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#support`, `document.getElementById('supportTopic').options.length > 0`, [390, 320]],
+  ['studio web connexion', `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio&login=1`, `!document.getElementById('studioLogin').hidden`, [390, 1280]],
+  ['studio web bureau', `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, `!document.getElementById('studioShell').hidden && document.getElementById('webStudioBody').textContent.includes('Bonjour, Pesce')`, [390, 1280]],
 ];
 
 // — L'expression d'audit s'exécute dans la page et renvoie un rapport JSON (async : chargement des polices).
@@ -71,7 +73,7 @@ const AUDIT_EXPRESSION = `(async () => {
   //   - boutons réels (fond/bordure) et icônes seules : ≥ 40 px ;
   //   - liens textuels et puces éditoriales (filtres, rubriques, formats, paliers, onglets) : ≥ 32 px.
   // Les cases à cocher sont ignorées : le libellé qui les enveloppe est la cible réelle.
-  const isChipLike = (el) => el.closest('.filter-btn, .rubric-btn, .format-pill, .media-filter, .star-option, .desk-mode');
+  const isChipLike = (el) => el.closest('.filter-btn, .rubric-btn, .format-pill, .media-filter, .star-option, .desk-mode, .web-nav');
   document.querySelectorAll('button, a[href], input:not([type="checkbox"]), select, textarea').forEach((el) => {
     const rect = el.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
