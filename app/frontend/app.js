@@ -654,8 +654,8 @@ function renderDispatchAudioCard(post) {
 <div class="flex items-center gap-[2px] h-6 py-1">${waveformBars(WAVEFORM_NOTE)}</div>
 </div>
 </div>
-<div class="flex justify-between items-center text-on-surface-variant font-meta-detail text-meta-detail pt-0.5">
-<span class="audio-timecode">${duration ? `00:00 / ${duration}` : '00:00 / —:—'}</span>
+<div class="flex flex-wrap justify-between items-center gap-1 text-on-surface-variant font-meta-detail text-meta-detail pt-0.5">
+<span class="audio-timecode shrink-0">${duration ? `00:00 / ${duration}` : '00:00 / —:—'}</span>
 <button class="py-2 text-primary font-medium" type="button" data-post-link="${escapeAttribute(telegramUrl)}">Écouter sur Telegram WebApp</button>
 </div>
 </article>`;
