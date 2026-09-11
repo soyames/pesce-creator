@@ -4,7 +4,7 @@
 //     réservée aux adresses PESCE_WEB_ADMIN_EMAILS.
 // Actions : publish (texte), article_publish (article Telegraph), draft, backfill_support, telegraph_setup,
 // tickets, resolve, reply. Le GET renvoie la vue d'ensemble + l'état de la configuration Telegraph.
-import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
+import { createDraft, createLiveSchedule, deleteDraft, getPayment, getStudioOverview, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, mergeIntoExistingArticle, updateLiveSchedule, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
 import { backfillTelegraphArticles } from '../lib/article-backfill.js';
 import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
@@ -158,7 +158,7 @@ export default async function handler(req, res) {
       const chatId = Number(chat.result?.id);
       if (!chatId) return res.status(502).json({ message: 'Canal Telegram introuvable.' });
       const cover = articleCoverFromPage(page);
-      await upsertChannelPost({
+      const post = {
         id: `${chatId}_${messageId}`,
         source: 'studio',
         channelId: chatId,
@@ -172,8 +172,12 @@ export default async function handler(req, res) {
         published: true,
         publishedAt: new Date(),
         receivedAt: new Date(),
-      });
-      return res.status(200).json({ ok: true, cover });
+      };
+      // Même déduplication que le webhook : si l'article est déjà référencé (backfill ou autre
+      // message), on complète la référence canonique au lieu de créer une seconde publication.
+      const mergedId = await mergeIntoExistingArticle(post);
+      if (!mergedId) await upsertChannelPost(post);
+      return res.status(200).json({ ok: true, cover, id: mergedId || post.id });
     }
 
     // Image neuve → hébergée par Telegraph (stockage natif des articles, aucun binaire dans Neon).

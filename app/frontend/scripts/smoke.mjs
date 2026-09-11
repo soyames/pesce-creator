@@ -9,6 +9,7 @@ import {
   setSupportSession, trackAudienceEvent, updateLiveSchedule, updateSupportTicket, upsertChannelPost, upsertPayment, db,
 } from '../lib/db.js';
 import { createWebSession, destroyWebSession, webSessionEmailFromRequest, WEB_SESSION_COOKIE } from '../lib/web-session.js';
+import { mergeIntoExistingArticle } from '../lib/db.js';
 
 const POST_ID = `smoke_post_${Date.now()}`;
 const CHARGE_ID = `smoke_charge_${Date.now()}`;
@@ -57,6 +58,28 @@ await run('publications : upsert (insert + merge) puis lecture exacte', async ()
   assert.ok(row.published_at instanceof Date);
   assert.ok(row.updated_at instanceof Date);
   await db().query('DELETE FROM pesce_posts WHERE id = $1', [POST_ID]);
+});
+
+await run('articles : les messages 8/9/11 d’un même article Telegraph restent UNE publication', async () => {
+  // Scénario réel : le même article a été publié trois fois sur le canal (messages 8, 9, 11).
+  // Le webhook fusionne par article_url : une seule ligne canonique, identité Telegram complétée
+  // sans être écrasée, aucune seconde publication publique.
+  const base = (messageId) => ({
+    id: `-1000000000001_${messageId}`, source: 'telegram', channelId: -1000000000001, channelUsername: 'smoke_channel',
+    messageId, contentType: 'text', text: 'Article smoke\n\nhttps://telegra.ph/Smoke-Dedup',
+    telegramUrl: `https://t.me/smoke_channel/${messageId}`, mediaFileId: null, mediaMimeType: null, mediaFileName: null,
+    mediaDuration: null, mediaWidth: null, mediaHeight: null, articleUrl: 'https://telegra.ph/Smoke-Dedup',
+    articleImageUrl: 'https://telegra.ph/file/smoke-cover.jpg', published: true, publishedAt: new Date(), receivedAt: new Date(),
+  });
+  await upsertChannelPost(base(8));
+  assert.equal(await mergeIntoExistingArticle(base(9)), '-1000000000001_8', 'message 9 non fusionné');
+  assert.equal(await mergeIntoExistingArticle(base(11)), '-1000000000001_8', 'message 11 non fusionné');
+  const rows = (await db().query(`SELECT * FROM pesce_posts WHERE article_url = 'https://telegra.ph/Smoke-Dedup'`)).rows;
+  assert.equal(rows.length, 1, 'plusieurs publications publiques pour le même article');
+  assert.equal(rows[0].id, '-1000000000001_8', 'identité canonique non préservée');
+  assert.equal(rows[0].message_id, 8, 'identité Telegram non préservée');
+  assert.equal(rows[0].article_image_url, 'https://telegra.ph/file/smoke-cover.jpg', 'couverture perdue lors de la fusion');
+  await db().query(`DELETE FROM pesce_posts WHERE article_url = 'https://telegra.ph/Smoke-Dedup'`);
 });
 
 await run('publications : idempotence — le rejeu webhook ne duplique ni n’écrase la couverture d’article', async () => {

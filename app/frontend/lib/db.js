@@ -286,6 +286,35 @@ export async function listSupportTickets({ status, limit = 50 } = {}) {
   return result.rows.map(mapTicket);
 }
 
+// Fusion par URL d'article (Telegraph) : si un message du canal contient une URL d'article déjà
+// référencée (retentatives accidentelles, messages 8/9/11…), on NE crée PAS de seconde ligne —
+// on complète la référence canonique (identité Telegram si elle manquait) et on laisse la
+// première identité gagner. Renvoie l'id canonique si une fusion a eu lieu, sinon null.
+export async function mergeIntoExistingArticle(post) {
+  const articleUrl = post?.articleUrl;
+  if (!articleUrl) return null;
+  const existing = await findPostByArticleUrl(articleUrl);
+  if (!existing) return null;
+  const sets = [];
+  const values = [];
+  const add = (column, value) => {
+    values.push(value);
+    sets.push(`${column} = $${values.length}`);
+  };
+  // Identité Telegram canonique : complétée uniquement si elle manquait — jamais écrasée.
+  if (!existing.telegramUrl && post.telegramUrl) add('telegram_url', post.telegramUrl);
+  if (!existing.messageId && post.messageId) add('message_id', post.messageId);
+  if (!existing.channelId && post.channelId) add('channel_id', post.channelId);
+  if (!existing.articleImageUrl && post.articleImageUrl) add('article_image_url', post.articleImageUrl);
+  values.push(existing.id);
+  sets.push('updated_at = now()');
+  await (await ensureDb()).query(
+    `UPDATE pesce_posts SET ${sets.join(', ')} WHERE id = $${values.length}`,
+    values
+  );
+  return existing.id;
+}
+
 // Recherche d'une publication par son URL d'article (Telegraph) — déduplication du backfill.
 export async function findPostByArticleUrl(articleUrl) {
   if (!articleUrl) return null;
