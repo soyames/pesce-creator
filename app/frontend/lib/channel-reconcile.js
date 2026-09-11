@@ -11,13 +11,22 @@
 // Idempotent par construction.
 
 // Extrait les identifiants de messages visibles dans une page d'aperçu (t.me/s).
-export function extractMessageIdsFromPreview(html) {
+// `username` optionnel : seuls les messages du canal visé comptent — une page parasite (mur de
+// connexion, page d'erreur avec d'autres chaînes) ne peut pas former une fenêtre de couverture.
+export function extractMessageIdsFromPreview(html, { username = null } = {}) {
+  const pattern = username
+    ? new RegExp(`data-post="${escapeRegExp(username)}/(\\d+)"`, 'g')
+    : /data-post="[^"]+\/(\d+)"/g;
   const ids = [];
-  for (const match of String(html || '').matchAll(/data-post="[^"]+\/(\d+)"/g)) {
+  for (const match of String(html || '').matchAll(pattern)) {
     const id = Number(match[1]);
     if (Number.isFinite(id) && id > 0 && !ids.includes(id)) ids.push(id);
   }
   return ids;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // Décision pure (testable) : parmi les lignes candidates, quels messages sont couverts par la
@@ -62,14 +71,15 @@ export function isReconcilableSourceRow(row) {
 // Fenêtre paginée d'identifiants : lit l'aperçu jusqu'à couvrir `untilMessageId` (messages plus
 // anciens compris), bornée à `maxPages`. Les lignes hors fenêtre restent intouchées (règle de
 // sécurité : on ne peut rien affirmer sur ce qu'on n'a pas lu). `startFrom` évite de relire la
-// première page déjà consommée.
+// première page déjà consommée. Seuls les messages du canal visé comptent (page parasite → page
+// vide → aucune modification).
 export async function fetchPreviewWindow(username, { startFrom = null, untilMessageId = null, maxPages = 30, fetchImpl = fetch, log = null } = {}) {
   const allIds = [];
   let before = startFrom;
   let covered = untilMessageId === null;
   for (let page = 0; page < maxPages; page += 1) {
     const html = await fetchChannelPreview(username, { before, fetchImpl });
-    const ids = extractMessageIdsFromPreview(html);
+    const ids = extractMessageIdsFromPreview(html, { username });
     if (ids.length === 0) break;
     for (const id of ids) if (!allIds.includes(id)) allIds.push(id);
     const minId = Math.min(...ids);

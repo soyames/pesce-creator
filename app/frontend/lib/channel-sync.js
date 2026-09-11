@@ -50,8 +50,10 @@ export async function syncChannelOnce({ telegram = null, force = false, now = Da
 
   // Page la plus récente : ingestion des articles visibles + première fenêtre d'identifiants.
   // Échec de lecture → exception → l'appelant journalise et RIEN n'est modifié.
+  // Garde d'identité : seuls les messages portant le nom du canal visé comptent — une page
+  // parasite (mur de connexion, autre chaîne) équivaut à un aperçu vide : rien n'est modifié.
   const html = await fetchChannelPreview(CHANNEL_USERNAME);
-  const firstPageIds = extractMessageIdsFromPreview(html);
+  const firstPageIds = extractMessageIdsFromPreview(html, { username: CHANNEL_USERNAME });
   if (firstPageIds.length === 0) return { skipped: true, reason: 'empty' };
 
   const rows = (await listReconcilablePosts()).filter(isReconcilableSourceRow);

@@ -13,6 +13,17 @@ test('extractMessageIdsFromPreview : data-post du canal, dédupliqués', () => {
   assert.deepEqual(extractMessageIdsFromPreview('rien'), []);
 });
 
+test('extractMessageIdsFromPreview : garde d’identité — une page parasite ne forme pas de fenêtre', () => {
+  // Sans filtre d'identité, une page d'une AUTRE chaîne (mur de connexion, recommandations)
+  // fournirait des identifiants qui pourraient couvrir — et donc marquer — nos lignes.
+  const foreign = '<div data-post="AutreChaine/3">…</div><div data-post="AutreChaine/4">…</div>';
+  assert.deepEqual(extractMessageIdsFromPreview(foreign, { username: 'PesceHounyoOfficiel' }), [], 'page parasite comptée comme fenêtre');
+  const mixed = '<div data-post="AutreChaine/3">…</div><div data-post="PesceHounyoOfficiel/8">…</div>';
+  assert.deepEqual(extractMessageIdsFromPreview(mixed, { username: 'PesceHounyoOfficiel' }), [8], 'filtrage par canal absent');
+  // Sans nom de canal fourni, l'ancien comportement (compatibilité des appels hérités) demeure.
+  assert.deepEqual(extractMessageIdsFromPreview(foreign), [3, 4]);
+});
+
 test('computeRemovedMessageIds : seuls les messages couverts et absents sont supprimés', () => {
   const fetched = [6, 8, 9, 10, 11];
   // 3,4,5 sont HORS fenêtre [6,11] : intouchés (on ne peut rien affirmer hors fenêtre).
