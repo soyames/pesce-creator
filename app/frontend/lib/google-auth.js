@@ -42,18 +42,20 @@ async function googlePublicKeys() {
   return cachedCerts;
 }
 
-function x509ToPublicKeyPem(certificate) {
-  const der = Buffer.from(certificate, 'base64').toString('base64');
-  return `-----BEGIN PUBLIC KEY-----\n${der.match(/.{1,64}/g).join('\n')}\n-----END PUBLIC KEY-----`;
+// Construit la clé publique RSA à partir du JWK (n, e) de la clé correspondant au kid.
+// Le certificat x5c n'est PAS utilisable directement comme clé publique : on passe par n/e.
+function jwkToPublicKey(jwk) {
+  return crypto.createPublicKey({ key: { kty: 'RSA', n: jwk.n, e: jwk.e }, format: 'jwk' });
 }
 
 // Vérifie la signature du jeton avec la clé Google correspondant à son kid.
-async function verifySignature(parsed) {
-  const certs = await googlePublicKeys();
-  const certificate = certs[parsed.header?.kid];
-  if (!certificate) return false;
-  const key = crypto.createPublicKey(x509ToPublicKeyPem(certificate));
-  return crypto.verify('RSA-SHA256', Buffer.from(parsed.signingInput), key, parsed.signature);
+// `certs` (map kid → JWK) peut être injecté pour les tests ; sinon on utilise les JWKS de Google.
+async function verifySignature(parsed, { certs } = {}) {
+  const keys = certs || (await googlePublicKeys());
+  const jwk = keys[parsed.header?.kid];
+  if (!jwk || (!jwk.n || !jwk.e)) return false;
+  const key = jwkToPublicKey(jwk);
+  return crypto.verify('sha256', Buffer.from(parsed.signingInput), key, parsed.signature);
 }
 
 // Revendications exigées pour un jeton d'identité Google destiné à ce Studio.
@@ -71,13 +73,15 @@ export function validateGoogleClaims(payload, { clientId, now = Date.now() } = {
 }
 
 // Point d'entrée : renvoie l'adresse vérifiée, ou null si le jeton est invalide/expiré.
-export async function verifyGoogleIdToken(token, { clientId } = {}) {
+// `certs` (map kid → JWK) est injectable pour les tests ; en production, les JWKS de Google.
+export async function verifyGoogleIdToken(token, { clientId, certs } = {}) {
   const parsed = parseJwt(token);
   if (!parsed) return null;
   if (parsed.header?.alg !== 'RS256') return null;
   try {
-    if (!(await verifySignature(parsed))) return null;
-  } catch {
+    if (!(await verifySignature(parsed, { certs }))) return null;
+  } catch (error) {
+    console.error('google id token verification failed', error);
     return null; // clés Google injoignables : refus par défaut (fail-closed)
   }
   return validateGoogleClaims(parsed.payload, { clientId });

@@ -3,6 +3,7 @@
 // la liste d'autorisation est stricte, et l'endpoint /api/studio reste fail-closed.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import studioAuthHandler from '../api/studio-auth.js';
@@ -84,6 +85,43 @@ test('verifyGoogleIdToken : rejets sans accès réseau (jetons malformés ou mau
   assert.equal(await verifyGoogleIdToken('a.b', {}), null);
   assert.equal(await verifyGoogleIdToken('a.b.c', {}), null); // en-tête indéchiffrable
   assert.equal(await verifyGoogleIdToken(`eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(claims())).toString('base64url')}.c2ln`, { clientId: 'x' }), null, 'algorithme non RS256 accepté');
+});
+
+// — Régression du flux production : un jeton RS256 réellement signé (clé RSA locale, JWK n/e)
+// devait passer la vérification — c'est le chemin qui échouait car le certificat x5c était
+// utilisé à tort comme clé publique. C'est l'équivalent exact d'un jeton Google valide.
+test('verifyGoogleIdToken : signature RS256 réelle vérifiée, altérations refusées', async () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: 'jwk' });
+  const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const signingInput = `${b64({ alg: 'RS256', kid: 'test-kid', typ: 'JWT' })}.${b64(claims())}`;
+  const signature = crypto.sign('sha256', Buffer.from(signingInput), privateKey).toString('base64url');
+  const token = `${signingInput}.${signature}`;
+  const clientId = 'client-test.apps.googleusercontent.com';
+
+  assert.equal(
+    await verifyGoogleIdToken(token, { clientId, certs: { 'test-kid': jwk } }),
+    'pescestudio8@gmail.com',
+    'jeton Google valide refusé (régression du flux de connexion)'
+  );
+  // Signature altérée → refus.
+  assert.equal(
+    await verifyGoogleIdToken(`${signingInput}.${Buffer.from('deadbeef').toString('base64url')}`, { clientId, certs: { 'test-kid': jwk } }),
+    null,
+    'signature altérée acceptée'
+  );
+  // kid inconnu des clés servies → refus.
+  assert.equal(
+    await verifyGoogleIdToken(token, { clientId, certs: { 'autre-kid': jwk } }),
+    null,
+    'clé inconnue acceptée'
+  );
+  // Audience différente du client OAuth → refus.
+  assert.equal(
+    await verifyGoogleIdToken(token, { clientId: 'autre-client', certs: { 'test-kid': jwk } }),
+    null,
+    'audience étrangère acceptée'
+  );
 });
 
 // — Liste d'autorisation
