@@ -39,6 +39,8 @@ réservée au propriétaire du canal (documentée dans `scripts/mtproto-setup.mj
 
 Sans configuration, toute opération MTProto échoue proprement (503 explicite) : la clé de
 stream ne transite QUE par l'API authentifiée du Studio — jamais par une route publique.
+Le compte de la session MTProto doit être **administrateur du canal** (sinon Telegram répond
+`CHAT_ADMIN_REQUIRED` — traduit en message éditorial français dans le Studio, jamais exposé brut).
 
 ## Commandes utiles
 

@@ -300,7 +300,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, url: rtmp.url, key: rtmp.key });
       } catch (error) {
         console.error('live rtmp failed', error.message);
-        return res.status(503).json({ message: error.message || 'Flux RTMP indisponible pour le moment.' });
+        return res.status(503).json({ message: mtProtoEditorialError(error) });
       }
     }
 
@@ -319,7 +319,7 @@ export default async function handler(req, res) {
         });
       } catch (error) {
         console.error('telegram stats failed', error.message);
-        return res.status(503).json({ message: error.message || 'Statistiques Telegram indisponibles.' });
+        return res.status(503).json({ message: mtProtoEditorialError(error) });
       }
     }
 
@@ -334,7 +334,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, live: state.active, title: state.title });
       } catch (error) {
         console.error('live status sync failed', error.message);
-        return res.status(503).json({ message: error.message || 'État du direct indisponible pour le moment.' });
+        return res.status(503).json({ message: mtProtoEditorialError(error) });
       }
     }
 
@@ -755,6 +755,17 @@ export default async function handler(req, res) {
     console.error(error);
     return res.status(500).json({ message: 'Le studio ne peut pas traiter cette action pour le moment. Réessayez dans un instant.' });
   }
+}
+
+// Traduction des erreurs MTProto en messages éditoriaux français — les détails techniques
+// (code, classe d'API) restent dans les journaux serveur, jamais dans l'interface.
+export function mtProtoEditorialError(error) {
+  const raw = String(error?.message || '');
+  if (/CHAT_ADMIN_REQUIRED/i.test(raw)) {
+    return 'Cette opération nécessite une session MTProto d’un administrateur du canal. La session configurée n’a pas les droits d’administration sur le canal — régénérez-la avec un compte administrateur (procédure scripts/mtproto-setup.mjs), puis redéployez.';
+  }
+  if (/MTProto non configuré/i.test(raw)) return raw;
+  return 'Telegram a refusé cette opération pour le moment. Réessayez dans un instant.';
 }
 
 // Message éditorial français pour tout échec d'image de couverture — les détails techniques
