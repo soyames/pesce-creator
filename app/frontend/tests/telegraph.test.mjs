@@ -115,6 +115,32 @@ test('articleCoverFromPage / articleExcerptFromPage : couverture et chapeau d’
   assert.equal(articleExcerptFromPage(null), '');
 });
 
+test('articleCoverFromPage : couverture externe acceptée uniquement si URL attendue exacte', () => {
+  const signedCover = 'https://pesce-creator-nine.vercel.app/api/media?file_id=cover&token=signe';
+  const page = {
+    title: 'Titre',
+    content: [
+      { tag: 'figure', children: [{ tag: 'img', attrs: { src: signedCover } }] },
+      { tag: 'p', children: ['Chapeau.'] },
+    ],
+  };
+  assert.equal(articleCoverFromPage(page, { allowedSrc: signedCover }), signedCover, 'couverture hébergée refusée');
+  assert.equal(articleCoverFromPage(page), null, 'URL externe acceptée sans liste blanche');
+  assert.equal(articleCoverFromPage(page, { allowedSrc: 'https://pesce-creator-nine.vercel.app/api/media?file_id=autre&token=signe' }), null, 'URL externe différente acceptée');
+});
+
+test('validateArticleImages / nodesFromArticle : normaliseur injectable (hébergement Pesce Studio)', () => {
+  const signedCover = 'https://pesce-creator-nine.vercel.app/api/media?file_id=cover&token=signe';
+  const acceptSigned = (src) => (src === signedCover ? src : src === '/file/natif.jpg' ? 'https://telegra.ph/file/natif.jpg' : null);
+  const images = validateArticleImages([{ src: signedCover, placement: 'cover' }, { src: '/file/natif.jpg', placement: 'inline', afterParagraph: 1 }], { normalize: acceptSigned });
+  assert.equal(images.length, 2, 'normaliseur injectable ignoré');
+  assert.equal(images[0].src, signedCover);
+  assert.equal(images[1].src, 'https://telegra.ph/file/natif.jpg');
+  const nodes = nodesFromArticle({ text: 'Paragraphe.', images: [{ src: signedCover, placement: 'cover' }], normalize: acceptSigned });
+  assert.equal(nodes[0].tag, 'figure');
+  assert.equal(nodes[0].children[0].attrs.src, signedCover, 'couverture hébergée absente des nœuds');
+});
+
 test('nodesFromArticle : image au-delà du dernier paragraphe → ajoutée en fin ; sans image = texte seul', () => {
   const nodes = nodesFromArticle({
     text: 'Seul paragraphe.',

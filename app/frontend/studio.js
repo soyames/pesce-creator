@@ -381,6 +381,7 @@ ${items.length ? `<div class="flex flex-col gap-space-sm mb-space-md">${items.ma
 
   function renderMediaItem(post) {
     const dateLabel = formatDate(post.publishedAt);
+    const recall = `<button class="recall-post self-start px-space-sm py-3 border border-outline-variant rounded font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-recall="${escapeAttribute(post.id)}">Retirer</button>`;
     if (post.contentType === 'photo') {
       return `<article class="bg-surface-container-low rounded-lg p-space-sm flex gap-space-sm items-start shadow-sm">
 <div class="w-20 h-20 rounded bg-surface-container-high flex-shrink-0 overflow-hidden">
@@ -390,6 +391,7 @@ ${post.mediaUrl ? `<img class="w-full h-full object-cover" src="${escapeAttribut
 <span class="font-kicker-label text-[0.625rem] text-primary uppercase font-bold tracking-wider">Photo de terrain</span>
 <h4 class="font-headline-sm text-[1rem] text-on-surface font-semibold truncate leading-tight">${escapeHtml(mediaCaption(post))}</h4>
 <p class="font-meta-detail text-[0.75rem] text-on-surface-variant mt-0.5">${escapeHtml(dateLabel)}${post.telegramUrl ? ' · <button class="inline-block py-2 text-primary font-bold hover:underline" type="button" data-studio-link="' + escapeAttribute(post.telegramUrl) + '">Voir sur Telegram</button>' : ''}</p>
+${recall}
 </div>
 </article>`;
     }
@@ -402,6 +404,7 @@ ${post.mediaUrl ? `<img class="w-full h-full object-cover" src="${escapeAttribut
 <h4 class="font-headline-sm text-[1rem] text-on-surface font-semibold leading-tight">${escapeHtml(mediaCaption(post))}</h4>
 ${post.mediaUrl ? `<video class="w-full rounded bg-inverse-surface" controls preload="metadata" src="${escapeAttribute(post.mediaUrl)}"${post.mediaThumbnailUrl ? ` poster="${escapeAttribute(post.mediaThumbnailUrl)}"` : ''}></video>` : ''}
 <p class="font-body-sm text-body-sm text-on-surface-variant text-[0.75rem]">Hébergée sur la chaîne YouTube officielle — référencée ici pour la régie.</p>
+${recall}
 </article>`;
     }
     if (post.contentType === 'audio') {
@@ -412,6 +415,7 @@ ${post.mediaUrl ? `<video class="w-full rounded bg-inverse-surface" controls pre
 </div>
 <h4 class="font-headline-sm text-[1rem] text-on-surface font-semibold leading-tight">${escapeHtml(mediaCaption(post))}</h4>
 ${post.mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribute(post.mediaUrl)}"></audio>` : ''}
+${recall}
 </article>`;
     }
     return `<article class="bg-surface-container-low rounded-lg p-space-sm flex items-start gap-space-sm shadow-sm">
@@ -420,6 +424,7 @@ ${post.mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAt
 <span class="font-kicker-label text-[0.625rem] text-on-surface-variant uppercase font-bold tracking-wider">Document</span>
 <h4 class="font-headline-sm text-[1rem] text-on-surface font-semibold truncate leading-tight">${escapeHtml(mediaCaption(post))}</h4>
 <p class="font-meta-detail text-[0.75rem] text-on-surface-variant mt-0.5">${escapeHtml(dateLabel)}${post.telegramUrl ? ' · <button class="inline-block py-2 text-primary font-bold hover:underline" type="button" data-studio-link="' + escapeAttribute(post.telegramUrl) + '">Ouvrir sur Telegram</button>' : ''}</p>
+${recall}
 </div>
 </article>`;
   }
@@ -911,6 +916,30 @@ ${payment.refundedAt ? '' : `<button class="payment-refund border border-outline
     finally { button.disabled = false; button.textContent = 'Rembourser'; }
   }
 
+  // Retrait (rappel) d'une publication depuis la médiathèque : deux étapes pour éviter tout
+  // retrait accidentel — la publication quitte le Mini App et la médiathèque immédiatement.
+  async function recallFromMediatheque(button) {
+    const postId = button.dataset.recall;
+    if (!postId) return;
+    if (!button.dataset.armed) {
+      button.dataset.armed = '1';
+      button.textContent = 'Confirmer le retrait';
+      setTimeout(() => {
+        if (button.dataset.armed) { delete button.dataset.armed; button.textContent = 'Retirer'; }
+      }, 6000);
+      return;
+    }
+    delete button.dataset.armed;
+    button.disabled = true; button.textContent = 'Retrait…';
+    try {
+      const response = await studioAction({ action: 'recall_post', postId });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Retrait impossible.');
+      await load();
+    } catch (error) { popup('Retrait impossible', error.message || 'Réessayez dans un instant.'); }
+    finally { button.disabled = false; button.textContent = 'Retirer'; }
+  }
+
   // — Liaison des événements (identifiants et actions identiques à l'existant).
   // La médiathèque est déléguée sur #studioBody : ses filtres survivent aux re-rendus sans double liaison.
   function bindStudioEvents() {
@@ -927,6 +956,8 @@ ${payment.refundedAt ? '' : `<button class="payment-refund border border-outline
         }
         const studioLink = event.target.closest('[data-studio-link]');
         if (studioLink) { openExternal(studioLink.dataset.studioLink); return; }
+        const recallButton = event.target.closest('.recall-post');
+        if (recallButton) { recallFromMediatheque(recallButton); return; }
       });
     }
     document.querySelectorAll('[data-studio-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.studioTab)));

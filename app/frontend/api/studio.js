@@ -11,21 +11,75 @@
 //   à la synchronisation ou à la réouverture du Studio pour qu'une publication devienne publique.
 //   Clé d'idempotence (publish_key) : une reprise après échec retrouve la même publication —
 //   aucun doublon Telegraph ni Telegram.
-import { attachTelegramDistribution, createDraft, createLiveSchedule, deleteDraft, findPostByMessageId, findPostByPublishKey, getPayment, getPostById, getStudioOverview, getSupportTicket, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, mergeIntoExistingArticle, updateLiveSchedule, updatePost, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
+import { attachTelegramDistribution, createDraft, createLiveSchedule, deleteDraft, findPostByMessageId, findPostByPublishKey, getPayment, getPostById, getStudioOverview, getSupportTicket, LIVE_STATUSES, listChannelPosts, listSupportTickets, markPaymentRefunded, mergeIntoExistingArticle, recallPost, updateLiveSchedule, updatePost, updateSupportTicket, upsertChannelPost } from '../lib/db.js';
 import { backfillTelegraphArticles } from '../lib/article-backfill.js';
 import { syncChannelOnce } from '../lib/channel-sync.js';
 import { getChannelBroadcastStats, getChannelLiveState, getChannelRtmp } from '../lib/mtproto.js';
-import { isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
+import { creatorTelegramUserIds, isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
-import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
+import { signMedia, verifyMediaToken } from '../lib/media-token.js';
+import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, detectImageFormat, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
 import { normalizeYouTubeUrl } from '../lib/youtube.js';
-import { CHANNEL_HANDLE, CHANNEL_USERNAME, CREATOR_NAME, SUPPORT_URL } from '../lib/config.js';
+import { CHANNEL_HANDLE, CHANNEL_USERNAME, CREATOR_NAME, MINI_APP_URL, SUPPORT_URL } from '../lib/config.js';
 
 // Audio enregistré/importer depuis le navigateur : limite du corps JSON serverless (~4,5 Mo),
 // soit ~3,3 Mo de données audio — plusieurs minutes de note vocale en Opus.
 const MAX_STUDIO_AUDIO_BYTES = 3 * 1024 * 1024;
+
+// Couvertures d'article hébergées par Pesce Studio (repli Telegram) : jeton média signé
+// longue durée (1 an) — la couverture doit rester visible bien après sa publication.
+const COVER_MEDIA_TTL_SECONDS = 365 * 24 * 3600;
+
+function mediaSecret() {
+  return process.env.PESCE_MEDIA_SIGNING_SECRET || process.env.TELEGRAM_PESCE_BOT_TOKEN;
+}
+
+// Source d'image d'article acceptée : chemin Telegraph natif (/file/… ou URL telegra.ph) OU
+// URL signée de notre propre proxy média (/api/media) — liste blanche stricte, rien d'autre.
+export function allowedArticleImageSrc(src, { secret = null, miniAppUrl = MINI_APP_URL } = {}) {
+  const telegraph = normalizeTelegraphImage(src);
+  if (telegraph) return telegraph;
+  try {
+    const url = new URL(String(src || ''));
+    const appUrl = new URL(miniAppUrl);
+    if (url.origin !== appUrl.origin || url.pathname !== '/api/media') return null;
+    const fileId = url.searchParams.get('file_id') || '';
+    const token = url.searchParams.get('token') || '';
+    if (!fileId || !verifyMediaToken(fileId, token, { secret: secret || '' })) return null;
+    return url.toString();
+  } catch { return null; }
+}
+
+// Repli d'hébergement de couverture : l'endpoint non officiel telegra.ph/upload peut être
+// indisponible (refus 400 « Unknown error »). La photo est alors hébergée par Telegram via le
+// bot, dans la discussion privée de la créatrice — aucun binaire dans Neon, référence signée
+// seulement. Renvoie { src, url, hosting, fileId }.
+async function hostCoverOnTelegram(token, buffer) {
+  const chatId = creatorTelegramUserIds()[0];
+  if (!token || !chatId) {
+    throw Object.assign(new Error('Aucun destinataire privé disponible pour héberger la couverture.'), { code: 'telegram_host' });
+  }
+  const format = detectImageFormat(buffer);
+  if (!format) throw Object.assign(new Error('Format de couverture invalide.'), { code: 'telegram_host' });
+  const extension = { jpeg: 'jpg', png: 'png', gif: 'gif' }[format];
+  const mime = { jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif' }[format];
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  form.append('photo', new Blob([buffer], { type: mime }), `pesce-couverture-${Date.now()}.${extension}`);
+  form.append('caption', 'Couverture d’article Pesce Studio (hébergement privé).');
+  const sent = await telegramMultipart('sendPhoto', form);
+  const fileId = sent?.result?.photo?.slice(-1)[0]?.file_id;
+  if (!fileId) throw Object.assign(new Error('Telegram n’a pas confirmé l’hébergement de la couverture.'), { code: 'telegram_host' });
+  const secret = mediaSecret();
+  if (!secret) throw Object.assign(new Error('Secret de signature média manquant.'), { code: 'telegram_host' });
+  const mediaToken = signMedia(fileId, { secret, ttlSeconds: COVER_MEDIA_TTL_SECONDS });
+  const url = new URL('./api/media', MINI_APP_URL);
+  url.searchParams.set('file_id', fileId);
+  url.searchParams.set('token', mediaToken);
+  return { src: url.toString(), url: url.toString(), hosting: 'telegram', fileId };
+}
 
 // Identifiant stable d'une publication canonique créée dans le Studio (l'identité Telegram
 // chat_id_message_id lui est attachée après distribution, sans changer d'identifiant canonique).
@@ -168,9 +222,12 @@ export default async function handler(req, res) {
       const title = String(body.title || '').trim().slice(0, 256);
       const text = String(body.text || '').trim().slice(0, 4096);
       if (!title || !text) return res.status(400).json({ message: 'Le titre et le texte sont requis pour un article.' });
-      const images = validateArticleImages(body.images);
+      // Sources d'image acceptées : chemins Telegraph natifs OU références signées de notre
+      // propre proxy média (couvertures hébergées par Telegram en repli). Rien d'autre.
+      const imageNormalizer = (src) => allowedArticleImageSrc(src, { secret: mediaSecret() });
+      const images = validateArticleImages(body.images, { normalize: imageNormalizer });
       if (Array.isArray(body.images) && body.images.length > 0 && images.length === 0) {
-        return res.status(400).json({ message: 'Images d’article invalides : seuls les chemins Telegraph (/file/…) sont acceptés.' });
+        return res.status(400).json({ message: 'Images d’article invalides : seuls les chemins Telegraph (/file/…) et les images hébergées par Pesce Studio sont acceptés.' });
       }
       // Règle éditoriale : tout article publié a une image de couverture (hébergée par Telegraph).
       const cover = images.find((image) => image.placement === 'cover');
@@ -185,7 +242,7 @@ export default async function handler(req, res) {
         if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré. Utilisez « Configurer Telegraph » dans le studio, puis enregistrez le jeton dans TELEGRAPH_ACCESS_TOKEN.' });
         let page;
         try {
-          page = await createTelegraphPage({ accessToken, title, content: nodesFromArticle({ text, images }), authorName: CREATOR_NAME });
+          page = await createTelegraphPage({ accessToken, title, content: nodesFromArticle({ text, images, normalize: imageNormalizer }), authorName: CREATOR_NAME });
         } catch (error) {
           console.error('telegraph page creation failed', error.message);
           return res.status(502).json({ message: 'Impossible de créer l’article Telegraph pour le moment. L’article n’a pas été publié — réessayez dans un instant.' });
@@ -199,7 +256,8 @@ export default async function handler(req, res) {
         let pageCover = null;
         try {
           const pageWithContent = await getTelegraphPage({ accessToken, path: page.path });
-          pageCover = articleCoverFromPage(pageWithContent);
+          // La couverture peut être un chemin /file/ natif OU notre URL signée exacte.
+          pageCover = articleCoverFromPage(pageWithContent, { allowedSrc: cover.src });
         } catch (error) {
           console.error('telegraph page verification failed', page.path, error.message);
         }
@@ -334,12 +392,12 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, cover, id: mergedId || post.id });
     }
 
-    // Image neuve → hébergée par Telegraph (stockage natif des articles, aucun binaire dans Neon).
-    // Un échec renvoie un message éditorial français ; les détails techniques restent dans les
-    // journaux serveur. Aucun article n'est publié tant que la couverture n'est pas hébergée.
+    // Image neuve → hébergée par Telegraph (stockage natif des articles) avec REPLI automatique
+    // vers l'hébergement Telegram (photo envoyée par le bot à la créatrice, référence signée) :
+    // l'endpoint non officiel telegra.ph/upload peut être indisponible sans préavis. Un échec des
+    // DEUX hébergeurs renvoie un message éditorial français ; les détails techniques restent dans
+    // les journaux serveur. Aucun article n'est publié tant que la couverture n'est pas hébergée.
     if (action === 'article_image_upload') {
-      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
-      if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré : TELEGRAPH_ACCESS_TOKEN est requis.' });
       const data = String(body.data || '');
       const match = data.match(/^data:image\/(jpe?g|png|gif|webp);base64,(.+)$/i);
       if (!match) return res.status(400).json({ message: 'Image encodée invalide : choisissez une image JPEG, PNG ou GIF.' });
@@ -347,36 +405,45 @@ export default async function handler(req, res) {
       if (buffer.length === 0 || buffer.length > MAX_TELEGRAPH_IMAGE_BYTES) {
         return res.status(400).json({ message: 'Image trop volumineuse (3 Mo maximum).' });
       }
+      // Format réel (signature magique) vérifié avant tout hébergeur : un webp/heic refusé
+      // ici évite un échec incompréhensible plus loin.
+      if (!detectImageFormat(buffer)) {
+        return res.status(400).json({ message: 'Ce format d’image n’est pas accepté : utilisez une image JPEG, PNG ou GIF. L’article n’a pas été publié.' });
+      }
+      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
+      if (accessToken) {
+        try {
+          const uploaded = await uploadTelegraphImage({ accessToken, buffer });
+          return res.status(200).json({ ok: true, hosting: 'telegraph', ...uploaded });
+        } catch (error) {
+          console.error('telegraph image upload failed — repli hébergement Telegram', error.code || error.message);
+        }
+      }
       try {
-        const uploaded = await uploadTelegraphImage({ accessToken, buffer });
-        return res.status(200).json({ ok: true, ...uploaded });
+        const hosted = await hostCoverOnTelegram(token, buffer);
+        return res.status(200).json({ ok: true, ...hosted });
       } catch (error) {
-        console.error('article image upload failed', error.code || error.message);
+        console.error('cover hosting failed (telegraph + telegram)', error.code || error.message);
         return res.status(502).json({ message: editorialImageUploadError(error) });
       }
     }
 
-    // Photo existante du canal (métadonnées/file_id dans Neon) → re-téléversée vers Telegraph.
+    // Photo existante du canal : elle est DÉJÀ hébergée par Telegram (file_id dans Neon) —
+    // référence signée longue durée, aucun re-téléversement, aucune dépendance à Telegraph.
     if (action === 'article_image_from_channel') {
       const fileId = String(body.fileId || '').trim().slice(0, 512);
       if (!fileId) return res.status(400).json({ message: 'Photo du canal manquante.' });
-      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
-      if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré : TELEGRAPH_ACCESS_TOKEN est requis.' });
       try {
-        const file = await telegram(token, 'getFile', { file_id: fileId });
-        const filePath = file.result?.file_path;
-        if (!filePath) return res.status(404).json({ message: 'Photo Telegram introuvable.' });
-        const fileResponse = await fetch(`https://api.telegram.org/file/bot${token}/${filePath}`);
-        if (!fileResponse.ok) return res.status(502).json({ message: 'Photo Telegram indisponible pour le moment.' });
-        const buffer = Buffer.from(await fileResponse.arrayBuffer());
-        if (buffer.length === 0 || buffer.length > MAX_TELEGRAPH_IMAGE_BYTES) {
-          return res.status(400).json({ message: 'Photo trop volumineuse (3 Mo maximum).' });
-        }
-        const uploaded = await uploadTelegraphImage({ accessToken, buffer });
-        return res.status(200).json({ ok: true, ...uploaded });
+        const secret = mediaSecret();
+        if (!secret) return res.status(503).json({ message: 'Hébergement des images indisponible pour le moment : le secret de signature média est manquant.' });
+        const mediaToken = signMedia(fileId, { secret, ttlSeconds: COVER_MEDIA_TTL_SECONDS });
+        const url = new URL('./api/media', MINI_APP_URL);
+        url.searchParams.set('file_id', fileId);
+        url.searchParams.set('token', mediaToken);
+        return res.status(200).json({ ok: true, src: url.toString(), url: url.toString(), hosting: 'telegram', fileId });
       } catch (error) {
-        console.error('article image from channel failed', error.code || error.message);
-        return res.status(502).json({ message: editorialImageUploadError(error) });
+        console.error('article image from channel failed', error.message);
+        return res.status(502).json({ message: 'Impossible de référencer la photo du canal pour le moment. L’article n’a pas été publié.' });
       }
     }
 
@@ -541,6 +608,28 @@ export default async function handler(req, res) {
       });
     }
 
+    // Retrait (rappel) d'une publication : elle quitte immédiatement le Mini App, Écrits et les
+    // compteurs (ligne conservée pour l'audit). La copie Telegram est supprimée quand l'identité
+    // du message est connue (meilleur effort — le retrait de l'application ne dépend JAMAIS de
+    // Telegram). Action créatrice authentifiée uniquement.
+    if (action === 'recall_post') {
+      const postId = String(body.postId || '').trim();
+      if (!postId) return res.status(400).json({ message: 'Publication manquante.' });
+      const post = await getPostById(postId);
+      if (!post) return res.status(404).json({ message: 'Publication introuvable.' });
+      let telegramDeleted = false;
+      if (post.messageId && token) {
+        try {
+          await telegram(token, 'deleteMessage', { chat_id: post.channelId || CHANNEL_HANDLE, message_id: Number(post.messageId) });
+          telegramDeleted = true;
+        } catch (error) {
+          console.error('recall telegram delete failed', post.id, error.message);
+        }
+      }
+      await recallPost(postId);
+      return res.status(200).json({ ok: true, recalled: true, telegramDeleted });
+    }
+
     if (action === 'backfill_support') {
       const posts = await listChannelPosts({ limit: 50 });
       let updated = 0;
@@ -672,12 +761,12 @@ export default async function handler(req, res) {
 // (statut HTTP, corps de réponse) restent dans les journaux serveur.
 function editorialImageUploadError(error) {
   if (error?.code === 'telegraph_format') {
-    return 'Ce format d’image n’est pas accepté par Telegraph : utilisez une image JPEG, PNG ou GIF. L’article n’a pas été publié.';
+    return 'Ce format d’image n’est pas accepté : utilisez une image JPEG, PNG ou GIF. L’article n’a pas été publié.';
   }
-  if (error?.code === 'telegraph_network') {
-    return 'Impossible d’ajouter l’image de couverture : Telegraph est injoignable pour le moment. L’article n’a pas été publié — réessayez dans un instant.';
+  if (error?.code === 'telegram_host') {
+    return 'Impossible d’héberger l’image de couverture pour le moment (Telegraph et Telegram ont échoué). L’article n’a pas été publié — réessayez dans un instant.';
   }
-  return 'Impossible d’ajouter l’image de couverture. Le téléversement vers Telegraph a échoué. L’article n’a pas été publié.';
+  return 'Impossible d’héberger l’image de couverture pour le moment. L’article n’a pas été publié — réessayez dans un instant.';
 }
 
 function supportMarkup() {

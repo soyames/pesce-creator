@@ -404,6 +404,16 @@ export async function getPostById(postId) {
   return result.rows[0] ? mapPost(result.rows[0]) : null;
 }
 
+// Retrait d'une publication (rappel) : la ligne reste pour l'audit, elle quitte les flux
+// publics (Mini App, Écrits, compteurs). Renvoie true si la ligne existait.
+export async function recallPost(postId) {
+  const result = await (await ensureDb()).query(
+    `UPDATE pesce_posts SET published = false, updated_at = now() WHERE id = $1`,
+    [String(postId)]
+  );
+  return result.rowCount > 0;
+}
+
 // Mise à jour ciblée d'une publication (état de distribution, texte) — liste blanche stricte.
 export async function updatePost(postId, data) {
   const columns = {

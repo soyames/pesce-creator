@@ -135,13 +135,16 @@ export async function uploadTelegraphImage({ accessToken, buffer, filename = 'im
 }
 
 // Lit une page Telegraph (retour_complet) et en extrait la première image <figure><img> —
-// c'est la couverture de l'article. Renvoie l'URL absolue, ou null.
-export function articleCoverFromPage(page) {
+// c'est la couverture de l'article. Renvoie l'URL absolue, ou null. `allowedSrc` : une URL
+// externe acceptée telle quelle (couverture hébergée par Pesce Studio via Telegram) — la
+// vérification de publication reste stricte, mais jamais limitée aux seuls chemins /file/.
+export function articleCoverFromPage(page, { allowedSrc = null } = {}) {
   if (!page || !Array.isArray(page.content)) return null;
   for (const node of page.content) {
     if (node?.tag === 'figure') {
       const image = (node.children || []).find((child) => child?.tag === 'img');
-      const url = normalizeTelegraphImage(image?.attrs?.src);
+      const src = image?.attrs?.src;
+      const url = normalizeTelegraphImage(src) || (allowedSrc && src === allowedSrc ? allowedSrc : null);
       if (url) return url;
     }
   }
@@ -212,13 +215,14 @@ export function normalizeTelegraphImage(src) {
   return null;
 }
 
-// Normalise la liste d'images d'un article : uniquement des chemins Telegraph valides,
-// légende ≤ 1000 caractères, crédit ≤ 300, 8 images au plus, couverture unique.
-export function validateArticleImages(images) {
+// Normalise la liste d'images d'un article : chemins Telegraph valides (ou URL acceptée par le
+// normaliseur injecté — ex. couverture hébergée par Pesce Studio via Telegram), légende ≤ 1000
+// caractères, crédit ≤ 300, 8 images au plus, couverture unique.
+export function validateArticleImages(images, { normalize = normalizeTelegraphImage } = {}) {
   if (!Array.isArray(images)) return [];
   const result = [];
   for (const image of images.slice(0, 8)) {
-    const url = normalizeTelegraphImage(image?.src);
+    const url = normalize(image?.src);
     if (!url) continue;
     result.push({
       src: url,
@@ -242,14 +246,16 @@ function figureNode(image) {
 // Nœuds d'article avec images : paragraphes du texte + figures Telegraph.
 // La couverture (placement cover) vient en tête ; les images « dans l'article » s'insèrent
 // après le paragraphe choisi (afterParagraph, 1 = après le premier paragraphe).
-export function nodesFromArticle({ text, images = [] } = {}) {
+// `normalize` injectable : mêmes règles d'acceptation que validateArticleImages.
+export function nodesFromArticle({ text, images = [], normalize } = {}) {
   const paragraphs = String(text || '')
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean);
   const nodes = paragraphs.map((block) => ({ tag: 'p', children: [block.replace(/\n/g, ' ')] }));
-  const cover = validateArticleImages(images).find((image) => image.placement === 'cover');
-  const inline = validateArticleImages(images).filter((image) => image.placement !== 'cover');
+  const validated = validateArticleImages(images, { normalize });
+  const cover = validated.find((image) => image.placement === 'cover');
+  const inline = validated.filter((image) => image.placement !== 'cover');
   const inlineByAfter = new Map();
   for (const image of inline) {
     const after = Math.max(1, Math.min(Number(image.afterParagraph) || 1, Math.max(nodes.length, 1)));

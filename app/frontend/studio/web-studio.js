@@ -336,7 +336,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <input id="mediaFileInput" class="hidden" type="file" accept="image/jpeg,image/png,image/gif">
 </div>
 <div id="mediaPickerGrid" class="hidden grid grid-cols-3 md:grid-cols-4 gap-space-sm"></div>
-<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Les images sont hébergées par Telegraph et apparaissent dans l'article publié (couverture en tête, images insérées après le paragraphe choisi).</p>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Les images sont hébergées par Telegraph — ou, à défaut, par Pesce Studio via Telegram — et apparaissent dans l'article publié (couverture en tête, images insérées après le paragraphe choisi).</p>
 </div>
 </div>
 <div class="flex flex-col gap-space-xs">
@@ -531,7 +531,7 @@ ${image.placement !== 'cover' ? `<span class="flex items-center gap-1 font-meta-
         if (!response.ok) throw new Error(data.message || 'Impossible d’ajouter l’image de couverture. L’article n’a pas été publié.');
         articleImages.push({ id: String(Date.now()) + '-' + articleImages.length, src: data.src, url: data.url, caption: '', credit: '', placement: articleImages.length === 0 ? 'cover' : 'inline', afterParagraph: 1 });
         renderMediaList(); refreshBat();
-        if (status) status.textContent = 'Image téléversée vers Telegraph — elle servira de couverture à l’article.';
+        if (status) status.textContent = data.hosting === 'telegram' ? 'Image hébergée par Pesce Studio (Telegram) — elle servira de couverture à l’article.' : 'Image téléversée vers Telegraph — elle servira de couverture à l’article.';
       } catch (error) { if (status) status.textContent = error.message || 'Impossible d’ajouter l’image de couverture. L’article n’a pas été publié.'; }
     };
     reader.readAsDataURL(file);
@@ -595,6 +595,7 @@ ${mediaUrl ? `<img class="w-full aspect-square object-cover" src="${escapeAttrib
 <p class="font-body-sm text-body-sm text-on-surface line-clamp-2">${escapeHtml(headline)}</p>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
 ${post.mediaFileId ? `<button class="photo-insert self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-photo-insert="${escapeAttribute(post.mediaFileId)}" data-photo-caption="${escapeAttribute(headline.slice(0, 120))}">Insérer dans un article</button>` : ''}
+${renderRecallButton(post)}
 </div>
 </article>`;
     }
@@ -613,6 +614,7 @@ ${frame}
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
 ${post.messageId ? `<button class="video-edit self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-video-edit="${escapeAttribute(post.id)}">Modifier</button>` : ''}
 ${renderDistributionRetry(post)}
+${renderRecallButton(post)}
 </div>
 </article>`;
     }
@@ -622,6 +624,7 @@ ${renderDistributionRetry(post)}
 <p class="font-body-sm text-body-sm text-on-surface">${escapeHtml(headline)}</p>
 ${mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribute(mediaUrl)}"></audio>` : ''}
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
+${renderRecallButton(post)}
 </article>`;
     }
     return `<article class="bg-surface-container-lowest rounded-xl shadow-sm p-space-md flex flex-col gap-space-xs">
@@ -633,6 +636,7 @@ ${mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribu
 <p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml((post.text || '').split('\n').slice(1).join(' ').trim().slice(0, 200))}</p>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.telegramUrl ? `<a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Diffusion Telegram en attente'}</span>
 ${renderDistributionRetry(post)}
+${renderRecallButton(post)}
 </article>`;
   }
 
@@ -650,6 +654,35 @@ ${renderDistributionRetry(post)}
 <button class="distribution-retry px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-distribution-retry="${escapeAttribute(post.id)}">Relancer la diffusion Telegram</button>
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[0.6875rem]">Diffusion en attente</p>
 </div>`;
+  }
+
+  // Retrait (rappel) d'une publication : deux étapes pour éviter tout retrait accidentel
+  // (le premier clic arme le bouton, le second retire la publication du Mini App et d'Écrits).
+  function renderRecallButton(post) {
+    return `<button class="recall-post self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-recall="${escapeAttribute(post.id)}">Retirer</button>`;
+  }
+
+  async function recallPostFromStudio(button) {
+    const postId = button.dataset.recall;
+    if (!postId) return;
+    if (!button.dataset.armed) {
+      button.dataset.armed = '1';
+      button.textContent = 'Confirmer le retrait';
+      setTimeout(() => {
+        if (button.dataset.armed) { delete button.dataset.armed; button.textContent = 'Retirer'; }
+      }, 6000);
+      return;
+    }
+    delete button.dataset.armed;
+    button.disabled = true; button.textContent = 'Retrait…';
+    try {
+      const response = await studioAction({ action: 'recall_post', postId });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { showLogin(); return; }
+      if (!response.ok) throw new Error(data.message || 'Retrait impossible.');
+      await load();
+    } catch (error) { alert(error.message || 'Retrait impossible.'); }
+    finally { button.disabled = false; button.textContent = 'Retirer'; }
   }
 
   async function retryDistribution(button) {
@@ -1419,6 +1452,8 @@ ${renderTelegraph()}
       }
       const distributionRetry = event.target.closest('.distribution-retry');
       if (distributionRetry) { retryDistribution(distributionRetry); return; }
+      const recallButton = event.target.closest('.recall-post');
+      if (recallButton) { recallPostFromStudio(recallButton); return; }
       const rtmpCopy = event.target.closest('.rtmp-copy');
       if (rtmpCopy) {
         navigator.clipboard?.writeText(rtmpCopy.dataset.copy || '').then(() => { rtmpCopy.textContent = 'Copié'; }).catch(() => {});
