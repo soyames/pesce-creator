@@ -160,6 +160,18 @@ export function articleExcerptFromPage(page) {
   return '';
 }
 
+// Corps d'article en texte brut (paragraphes séparés par des lignes vides) reconstruit depuis
+// une page Telegraph : uniquement les nœuds <p> écrits par nodesFromArticle — les figures/images
+// restent externes. Aucune invention : renvoie '' si la page n'a pas de contenu lisible.
+export function articleBodyFromPage(page) {
+  if (!page || !Array.isArray(page.content)) return '';
+  return page.content
+    .filter((node) => node?.tag === 'p')
+    .map((node) => String(Array.isArray(node.children) ? node.children.join('') : node.children || '').trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 // Liste les pages Telegraph publiées par le compte (synchronisation automatique des articles).
 export function listTelegraphPages(accessToken, { limit = 20 } = {}) {
   return telegraphCall('getPageList', { access_token: accessToken, limit });

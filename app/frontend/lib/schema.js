@@ -156,6 +156,16 @@ CREATE INDEX IF NOT EXISTS pesce_web_sessions_expires_idx ON pesce_web_sessions 
 `,
   },
   {
+    // Corps d'article canonique : le texte intégral d'une publication du Studio est conservé
+    // dans Neon — la lecture dans le Mini App ne dépend JAMAIS de la page Telegraph (hébergement
+    // externe secondaire, qui peut disparaître). Absent (NULL) pour les anciens articles dont le
+    // corps n'existait que sur Telegraph : le lecteur conserve alors un état externe honnête.
+    name: '009_article_body.sql',
+    sql: `
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS article_body TEXT;
+`,
+  },
+  {
     // Modèle d'origine des publications + état de distribution explicite :
     //   - origin 'studio'  : publication créée dans Pesce Studio (canonique). La suppression de
     //     sa copie Telegram (distribution) ne la retire JAMAIS de l'application.

@@ -42,8 +42,10 @@ function mediaSecret() {
   return process.env.PESCE_MEDIA_SIGNING_SECRET || process.env.TELEGRAM_PESCE_BOT_TOKEN;
 }
 
-function serializePost(post) {
-  const serialized = { ...post, publishedAt: toIso(post.publishedAt), updatedAt: toIso(post.updatedAt) };
+// Sérialisation publique d'une publication : tous les champs de la ligne canonique (dont le
+// corps d'article `articleBody`) sont servis tels quels au Mini App — aucune dépendance externe.
+export function serializePost(post) {
+  const serialized = { ...post, articleBody: post.articleBody ?? null, publishedAt: toIso(post.publishedAt), updatedAt: toIso(post.updatedAt) };
   if (serialized.mediaFileId) {
     try {
       const token = signMedia(serialized.mediaFileId, { secret: mediaSecret() });

@@ -88,6 +88,7 @@ const mapPost = (row) => row && ({
   mediaThumbnailFileId: row.media_thumbnail_file_id,
   articleUrl: row.article_url,
   articleImageUrl: row.article_image_url,
+  articleBody: row.article_body ?? null,
   sourceDeletedAt: row.source_deleted_at,
   published: row.published === true,
   publishedAt: row.published_at,
@@ -101,8 +102,8 @@ export async function upsertChannelPost(post) {
        id, source, origin, publish_key, distributed_at, distribution_error,
        channel_id, channel_username, message_id, content_type, text, telegram_url,
        media_file_id, media_mime_type, media_file_name, media_duration, media_width, media_height,
-       media_thumbnail_file_id, article_url, article_image_url, published, published_at, received_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, now())
+       media_thumbnail_file_id, article_url, article_image_url, article_body, published, published_at, received_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, now())
      ON CONFLICT (id) DO UPDATE SET
        source = EXCLUDED.source,
        -- Modèle d'origine : le premier enregistrement gagne. Une publication Studio (origin='studio')
@@ -119,17 +120,19 @@ export async function upsertChannelPost(post) {
        media_height = EXCLUDED.media_height, media_thumbnail_file_id = EXCLUDED.media_thumbnail_file_id,
        published = EXCLUDED.published, published_at = EXCLUDED.published_at,
        received_at = EXCLUDED.received_at, updated_at = now(),
-       -- Les métadonnées d'article (URL Telegraph, image de couverture) écrites au moment de la
-       -- publication par le Studio ne doivent JAMAIS être écrasées par un sync webhook sans image.
+       -- Les métadonnées d'article (URL Telegraph, image de couverture, corps canonique) écrites
+       -- au moment de la publication par le Studio ne doivent JAMAIS être écrasées par un sync
+       -- webhook/backfill qui ne porte pas le corps.
        article_url = COALESCE(NULLIF(EXCLUDED.article_url, ''), pesce_posts.article_url),
-       article_image_url = COALESCE(NULLIF(EXCLUDED.article_image_url, ''), pesce_posts.article_image_url)`,
+       article_image_url = COALESCE(NULLIF(EXCLUDED.article_image_url, ''), pesce_posts.article_image_url),
+       article_body = COALESCE(NULLIF(EXCLUDED.article_body, ''), pesce_posts.article_body)`,
     [
       post.id, post.source, post.origin ?? null, post.publishKey ?? null, post.distributedAt ?? null, post.distributionError ?? null,
       post.channelId ?? null, post.channelUsername ?? null, post.messageId ?? null,
       post.contentType ?? 'text', post.text || '', post.telegramUrl ?? null, post.mediaFileId ?? null,
       post.mediaMimeType ?? null, post.mediaFileName ?? null, post.mediaDuration ?? null,
       post.mediaWidth ?? null, post.mediaHeight ?? null, post.mediaThumbnailFileId ?? null,
-      post.articleUrl ?? null, post.articleImageUrl ?? null,
+      post.articleUrl ?? null, post.articleImageUrl ?? null, post.articleBody ?? null,
       post.published === true, post.publishedAt ?? new Date(), post.receivedAt ?? new Date(),
     ]
   );
@@ -322,6 +325,9 @@ export async function mergeIntoExistingArticle(post) {
   if (!existing.messageId && post.messageId) add('message_id', post.messageId);
   if (!existing.channelId && post.channelId) add('channel_id', post.channelId);
   if (!existing.articleImageUrl && post.articleImageUrl) add('article_image_url', post.articleImageUrl);
+  // Corps d'article : complété uniquement s'il manquait (resynchronisation d'un article ancien
+  // dont le corps n'a jamais été persisté dans Neon) — jamais écrasé.
+  if (!existing.articleBody && post.articleBody) add('article_body', post.articleBody);
   values.push(existing.id);
   sets.push('updated_at = now()');
   await (await ensureDb()).query(
@@ -458,6 +464,7 @@ export async function attachTelegramDistribution(postId, data) {
       add('publish_key', provisional.publishKey);
       add('article_url', provisional.articleUrl);
       add('article_image_url', provisional.articleImageUrl);
+      add('article_body', provisional.articleBody);
       add('content_type', provisional.contentType);
       add('text', provisional.text);
       add('telegram_url', telegramUrl);

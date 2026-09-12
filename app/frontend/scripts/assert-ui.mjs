@@ -115,6 +115,7 @@ const ROUTES = [
       ['module Étoiles présent', `document.getElementById('readerContent').textContent.includes('Soutenir cette enquête')`, true],
       ['navigation précédent/suivant', `document.querySelectorAll('#readerContent [data-reader-nav]').length >= 1`, true],
       ['bouton Telegraph présent', `document.getElementById('readerContent').textContent.includes('Telegraph')`, true],
+      ['état externe honnête conservé (dépêche sans corps d\'article)', `document.getElementById('readerContent').textContent.includes('Version intégrale sur Telegraph')`, true],
       ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
     ],
   },
@@ -123,7 +124,10 @@ const ROUTES = [
     readyExpr: `!document.getElementById('reader').hidden && document.getElementById('readerContent').children.length > 0`,
     asserts: [
       ['couverture Telegraph dans le lecteur', `!!document.querySelector('#readerContent img[src*="telegra.ph/file/"]')`, true],
-      ['bouton « Lire sur Telegraph » présent', `document.getElementById('readerContent').textContent.includes('Telegraph')`, true],
+      ['corps intégral de l\'article affiché dans Pesce Studio', `document.getElementById('readerContent').textContent.includes('Ce dossier complet est consultable directement ici, dans Pesce Studio')`, true],
+      ['premier paragraphe du corps affiché', `document.getElementById('readerContent').textContent.includes('La confiance numérique ne se décrète pas')`, true],
+      ['Telegraph secondaire quand le corps est intégral', `document.getElementById('readerContent').textContent.includes('Version également disponible sur Telegraph')`, true],
+      ['lecture possible sans dépendre de Telegraph', `!!document.querySelector('#readerContent .reader-body p') && document.querySelectorAll('#readerContent .reader-body p').length >= 3`, true],
     ],
   },
   {

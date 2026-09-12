@@ -1091,15 +1091,18 @@ function neighborPosts(postId) {
 
 function renderReader(post) {
   const { headline, standfirst } = headlineAndStandfirst(post);
-  const articleUrl = articleUrlOf(post);
+  const articleUrl = post.articleUrl || (articleUrlOf(post) || [])[0] || null;
+  // Corps intégral dans le Mini App : articleBody (Neon) quand il existe — la lecture ne dépend
+  // jamais de la page Telegraph (hébergement externe secondaire, qui peut être indisponible).
+  const inlineBody = Boolean(post.articleBody && String(post.articleBody).trim());
   const published = post.publishedAt ? new Date(post.publishedAt) : null;
   const updated = post.updatedAt ? new Date(post.updatedAt) : null;
   const dateLine = published && !isNaN(published)
-    ? `${published.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}${updated && !isNaN(updated) ? ` · Mis à jour à ${updated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''} · ${readingLabel(post.text)}`
+    ? `${published.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}${updated && !isNaN(updated) ? ` · Mis à jour à ${updated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''} · ${readingLabel(readerBodySource(post))}`
     : '';
   const media = readerMedia(post, standfirst);
   const { prev, next } = neighborPosts(post.id);
-  const body = readerBody(post.text || '');
+  const body = readerBody(readerBodySource(post));
   return `<article class="flex flex-col px-margin-mobile py-space-md max-w-xl mx-auto w-full">
 <div class="flex items-center gap-space-xs mb-space-sm">
 <span class="inline-block w-2 h-2 rounded-full bg-primary-container"></span>
@@ -1134,8 +1137,8 @@ ${media}
 </div>
 <div class="reader-body flex flex-col gap-space-md text-on-surface">${body}</div>
 ${articleUrl ? `<div class="bg-surface-container-low rounded-lg p-space-sm mt-space-lg flex items-center justify-between">
-<span class="font-meta-detail text-meta-detail text-on-surface-variant">Version intégrale sur Telegraph</span>
-<button class="py-2 font-kicker-label text-kicker-label text-primary uppercase font-bold tracking-wider hover:underline" type="button" data-post-link="${escapeAttribute(articleUrl[0])}">Lire sur Telegraph →</button>
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${inlineBody ? 'Version également disponible sur Telegraph' : 'Version intégrale sur Telegraph'}</span>
+<button class="py-2 font-kicker-label text-kicker-label text-primary uppercase font-bold tracking-wider hover:underline" type="button" data-post-link="${escapeAttribute(articleUrl)}">${inlineBody ? 'Ouvrir sur Telegraph →' : 'Lire sur Telegraph →'}</button>
 </div>` : ''}
 <div class="mt-space-xl flex items-center gap-space-sm">
 <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary font-serif font-bold text-sm">P</div>
@@ -1210,21 +1213,10 @@ ${caption ? `<figcaption class="mt-2 text-center font-meta-detail text-meta-deta
   return '';
 }
 
-// Corps de lecture : paragraphes de la dépêche, lettrine éditoriale sur le premier.
-function readerBody(text) {
-  const paragraphs = String(text || '')
-    .split('\n\n')
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .filter((paragraph) => !/^https?:\/\//.test(paragraph));
-  if (!paragraphs.length) return '<p class="font-body-lg text-body-lg text-on-surface leading-relaxed">Publication du canal Pesce Studio.</p>';
-  return paragraphs.map((paragraph, index) => {
-    const dropCap = index === 0 && paragraph.length > 60
-      ? ' first-letter:float-left first-letter:text-5xl first-letter:pr-3 first-letter:font-editorial-standfirst first-letter:text-primary first-letter:font-bold first-letter:leading-none'
-      : '';
-    return `<p class="font-body-lg text-body-lg text-on-surface leading-relaxed${dropCap}">${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`;
-  }).join('');
-}
+// Corps de lecture : partagé avec les tests (lib/reader-format.js, chargé avant app.js) —
+// le corps d'article canonique (articleBody) est rendu quand il existe, sinon la dépêche ;
+// chaque paragraphe est échappé avant insertion.
+const { readerBody, readerBodySource } = globalThis.PESCE_READER_FORMAT;
 
 // Micro-interactions du lecteur : favori (persistant) et partage.
 // Les favoris sont conservés sur l'appareil (localStorage) : l'état survit au rechargement.

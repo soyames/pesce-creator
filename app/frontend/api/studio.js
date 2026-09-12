@@ -18,7 +18,7 @@ import { getChannelBroadcastStats, getChannelLiveState, getChannelRtmp } from '.
 import { creatorTelegramUserIds, isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { signMedia, verifyMediaToken } from '../lib/media-token.js';
-import { articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, detectImageFormat, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
+import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, detectImageFormat, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
 import { normalizeYouTubeUrl } from '../lib/youtube.js';
@@ -141,7 +141,7 @@ export default async function handler(req, res) {
     // — Cycle de vie PUBLICATION (règle produit) : la persistance canonique Neon PRÉCÈDE la
     // distribution Telegram. Une erreur de persistance signifie « rien n'a été publié » (reprise
     // sûre) ; une erreur de distribution signifie « publié, diffusion en attente » (relançable).
-    async function persistCanonicalPost({ publishKey, contentType = 'text', text, articleUrl = null, articleImageUrl = null }) {
+    async function persistCanonicalPost({ publishKey, contentType = 'text', text, articleUrl = null, articleImageUrl = null, articleBody = null }) {
       if (publishKey) {
         const existing = await findPostByPublishKey(publishKey);
         if (existing) return existing; // reprise idempotente : la publication existe déjà
@@ -157,6 +157,7 @@ export default async function handler(req, res) {
         text,
         articleUrl,
         articleImageUrl,
+        articleBody,
         published: true,
         publishedAt: new Date(),
         receivedAt: new Date(),
@@ -266,12 +267,16 @@ export default async function handler(req, res) {
           return res.status(502).json({ message: 'L’article a été créé sur Telegraph sans image de couverture. L’article n’a pas été publié — ajoutez une image et réessayez.' });
         }
         try {
+          // Le corps de l'article est persisté canoniquement dans Neon (article_body) : la
+          // lecture dans le Mini App ne dépend JAMAIS de la page Telegraph, qui reste un
+          // hébergement externe secondaire. `text` garde le résumé de distribution Telegram.
           canonical = await persistCanonicalPost({
             publishKey,
             contentType: 'text',
             text: `${title}\n\n${page.url}`,
             articleUrl: page.url,
             articleImageUrl: cover.src,
+            articleBody: text,
           });
         } catch (error) {
           console.error('canonical persist failed', error);
@@ -369,6 +374,9 @@ export default async function handler(req, res) {
       const chatId = Number(chat.result?.id);
       if (!chatId) return res.status(502).json({ message: 'Canal Telegram introuvable.' });
       const cover = articleCoverFromPage(page);
+      // Le corps intégral lu sur la page Telegraph complète la ligne canonique (article_body)
+      // quand il manquait : la lecture dans le Mini App ne dépend plus jamais de la page externe.
+      const bodyRecovered = articleBodyFromPage(page);
       const post = {
         id: `${chatId}_${messageId}`,
         source: 'studio',
@@ -381,6 +389,7 @@ export default async function handler(req, res) {
         telegramUrl: `https://t.me/${CHANNEL_USERNAME}/${messageId}`,
         articleUrl: `https://telegra.ph/${path}`,
         articleImageUrl: cover,
+        articleBody: bodyRecovered || null,
         published: true,
         publishedAt: new Date(),
         receivedAt: new Date(),
@@ -389,7 +398,7 @@ export default async function handler(req, res) {
       // message), on complète la référence canonique au lieu de créer une seconde publication.
       const mergedId = await mergeIntoExistingArticle(post);
       if (!mergedId) await upsertChannelPost(post);
-      return res.status(200).json({ ok: true, cover, id: mergedId || post.id });
+      return res.status(200).json({ ok: true, cover, bodyRecovered: Boolean(bodyRecovered), id: mergedId || post.id });
     }
 
     // Image neuve → hébergée par Telegraph (stockage natif des articles) avec REPLI automatique

@@ -81,6 +81,7 @@ const FIXTURE_POSTS = [
     text: 'Le numérique africain a besoin de confiance, pas seulement de technologie\n\nSans confiance, aucune infrastructure numérique ne tiendra ses promesses sur le continent.\n\nhttps://telegra.ph/Le-numerique-africain-a-besoin-de-confiance-09-11-2',
     telegramUrl: `${CHANNEL_URL}/92`,
     articleUrl: 'https://telegra.ph/Le-numerique-africain-a-besoin-de-confiance-09-11-2',
+    articleBody: 'La confiance numérique ne se décrète pas : elle se construit par la transparence des algorithmes, la sécurité des paiements et la souveraineté des plateformes publiques.\n\nNous avons mené l’enquête auprès des opérateurs, des bailleurs et des autorités de régulation à Cotonou et à Dakar. Les conclusions convergent : sans cadre juridique vérifiable, aucune infrastructure ne tiendra ses promesses.\n\nCe dossier complet est consultable directement ici, dans Pesce Studio, même si la page Telegraph venait à disparaître.',
     articleImageUrl: 'https://telegra.ph/file/preview-couverture.jpg',
     publishedAt: iso(-160 * 3600e3), updatedAt: iso(-160 * 3600e3),
   },

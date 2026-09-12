@@ -1508,7 +1508,9 @@ ${renderKpi('favorite', Number(data.reactions || 0).toLocaleString('fr-FR'), 'R�
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) { showLogin(); return; }
         if (!response.ok) throw new Error(data.message || 'Synchronisation impossible.');
-        if (status) status.textContent = data.cover ? 'Article synchronisé avec sa couverture Telegraph.' : 'Article synchronisé (sans couverture détectée).';
+        if (status) status.textContent = data.bodyRecovered
+          ? 'Article synchronisé : le corps intégral est désormais disponible dans Pesce Studio, même sans la page Telegraph.'
+          : (data.cover ? 'Article synchronisé avec sa couverture Telegraph (aucun corps lisible sur la page).' : 'Article synchronisé (sans couverture détectée).');
         await load();
       } catch (error) { if (status) status.textContent = error.message || 'Synchronisation impossible.'; }
       finally { button.disabled = false; button.textContent = 'Synchroniser'; }
