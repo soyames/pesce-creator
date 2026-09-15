@@ -19,6 +19,7 @@ const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
@@ -230,13 +231,17 @@ window.__PESCE_PREVIEW__ = true;
 </script>`;
 }
 
-// — Stub du Studio web (/studio) : session Google simulée côté API, jamais de vraie connexion.
-//   ?preview=webstudio          → session valide, le bureau s'ouvre
-//   ?preview=webstudio&login=1  → pas de session : écran de connexion
-//   ?preview=webstudio&denied=1 → connexion refusée : état « accès refusé » après clic démo
+// — Stub du Studio web (/studio) : session simulée côté API, jamais de vraie connexion.
+//   ?preview=webstudio            → session valide, le bureau s'ouvre
+//   ?preview=webstudio&login=1    → pas de session : écran de connexion (mot de passe + Google)
+//   ?preview=webstudio&denied=1   → connexion refusée : état « accès refusé » après clic démo
+//   ?preview=webstudio&login=1&badpass=1 → le mot de passe de démonstration est refusé (401)
+// Aucun mot de passe réel, aucune empreinte : le stub répond par un statut, comme le ferait
+// l'API — la vérification n'existe que côté serveur (api/studio-auth.js).
 function previewWebStudioStub(searchParams) {
   const loginOnly = searchParams.get('preview') === 'webstudio' && searchParams.get('login') === '1';
   const denied = searchParams.get('denied') === '1';
+  const badPassword = searchParams.get('badpass') === '1';
   const overview = JSON.stringify(fixtureStudioOverview(false)).replace(/</g, '\\u003c');
   const postsJson = JSON.stringify(FIXTURE_POSTS.map((post) => ({ ...post })));
   return `<script>
@@ -244,6 +249,7 @@ window.__PESCE_WEB_PREVIEW__ = true;
 (function () {
   var LOGIN_ONLY = ${loginOnly ? 'true' : 'false'};
   var DENIED = ${denied ? 'true' : 'false'};
+  var BAD_PASSWORD = ${badPassword ? 'true' : 'false'};
   var realFetch = window.fetch.bind(window);
   var json = function (status, body) { return new Response(JSON.stringify(body), { status: status, headers: { 'Content-Type': 'application/json' } }); };
   var OVERVIEW = ${overview};
@@ -254,11 +260,18 @@ window.__PESCE_WEB_PREVIEW__ = true;
       if (url.indexOf('action=session') !== -1) {
         return Promise.resolve(LOGIN_ONLY || DENIED ? json(401, { authenticated: false }) : json(200, { authenticated: true, email: 'pescestudio8@gmail.com' }));
       }
-      if (url.indexOf('action=config') !== -1) return Promise.resolve(json(200, { clientId: 'preview-client.apps.googleusercontent.com' }));
+      if (url.indexOf('action=config') !== -1) return Promise.resolve(json(200, { clientId: 'preview-client.apps.googleusercontent.com', passwordLogin: true }));
       if (init && init.method === 'POST') {
         var body = {};
         try { body = JSON.parse(init.body || '{}'); } catch (e) { body = {}; }
         if (body.action === 'login') return Promise.resolve(DENIED ? json(403, { message: 'Compte non autorisé.' }) : json(200, { ok: true }));
+        if (body.action === 'password_login') {
+          // Le stub ne vérifie rien : il rejoue le CONTRAT de l'API (refus générique ou session).
+          if (BAD_PASSWORD) return Promise.resolve(json(401, { message: 'Adresse ou mot de passe incorrect.' }));
+          if (!body.email || !body.password) return Promise.resolve(json(400, { message: 'Adresse ou mot de passe incorrect.' }));
+          LOGIN_ONLY = false;
+          return Promise.resolve(json(200, { ok: true, email: 'pescestudio8@gmail.com' }));
+        }
         if (body.action === 'logout') return Promise.resolve(json(200, { ok: true }));
       }
       return Promise.resolve(json(400, { message: 'Action inconnue.' }));

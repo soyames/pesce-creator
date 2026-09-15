@@ -1,6 +1,8 @@
 /* Base du Studio créatrice web (/studio) — le système visuel (couleurs, typographies,
    espacements) vient de la config Tailwind de studio/index.html (mêmes tokens que le Mini App). */
-html, body { width: 100vw; margin: 0; padding: 0; background-color: #fbf9f5; }
+/* 100% et non 100vw : 100vw inclut la barre de défilement et provoque un débordement
+   horizontal permanent sur les surfaces défilantes (bureau comme téléphone). */
+html, body { width: 100%; max-width: 100%; overflow-x: hidden; margin: 0; padding: 0; background-color: #fbf9f5; }
 body { overscroll-behavior: none; }
 * { -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
@@ -25,3 +27,48 @@ select.editorial-input { resize: none; }
 
 /* Onglet actif de la navigation du studio web. */
 .web-nav.web-active { color: #972a0a; background: #f5f3ef; font-weight: 600; }
+
+/* — Champ de mot de passe et sa bascule d'affichage (accessible au clavier et au doigt). */
+.password-field { position: relative; display: flex; align-items: center; width: 100%; }
+.password-field .editorial-input { padding-right: 52px; }
+.password-toggle {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border: 0; border-radius: 0.5rem;
+  background: transparent; color: #58413c; cursor: pointer;
+}
+.password-toggle:hover { color: #1b1c1a; background: #f5f3ef; }
+
+/* — TÉLÉPHONE (application installée comprise).
+   Hauteur dynamique : 100vh se fige sous les barres d'outils mobiles et coupe la navigation. */
+#studioShell, body.pesce-standalone { min-height: 100dvh; }
+
+/* Zones de sécurité des écrans modernes (encoche, barre d'accueil, coins arrondis) :
+   l'en-tête, la navigation mobile et le corps ne passent jamais sous le matériel. */
+#studioShell > header { padding-top: env(safe-area-inset-top); }
+#studioShell > header > div,
+#webStudioBody > section { padding-left: max(1rem, env(safe-area-inset-left)); padding-right: max(1rem, env(safe-area-inset-right)); }
+#studioShell > nav { padding-bottom: env(safe-area-inset-bottom); }
+#studioLogin { padding-top: max(1.5rem, env(safe-area-inset-top)); padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
+
+/* Coquille d'application sur téléphone et tablette : l'en-tête et la barre de navigation
+   restent à l'écran, seul le corps défile. Sans cette contrainte de hauteur, la navigation
+   mobile est repoussée SOUS tout le contenu du Bureau — il fallait faire défiler la page
+   entière pour changer d'onglet. Le bureau (≥ 1024 px, navigation latérale) est inchangé. */
+@media (max-width: 1023px) {
+  body { height: 100vh; height: 100dvh; min-height: 100vh; min-height: 100dvh; }
+  #studioShell { flex: 1 1 auto; min-height: 0; }
+  /* L'écran de connexion garde son propre défilement : clavier ouvert sur un petit écran,
+     la carte reste intégralement atteignable. */
+  #studioLogin { overflow-y: auto; }
+}
+
+@media (max-width: 767px) {
+  /* 16 px minimum : en deçà, Safari iOS zoome la page à la mise au point d'un champ et le
+     formulaire sort du cadre dès l'ouverture du clavier. */
+  .editorial-input { font-size: 16px; padding: 12px 14px; }
+  /* Le tapuscrit reste utilisable clavier ouvert : la zone d'écriture ne mange pas l'écran. */
+  #publishText { min-height: 200px; max-height: 45vh; }
+  /* Les barres d'actions passent en pleine largeur plutôt que de se comprimer. */
+  #studioShell .web-nav { min-height: 40px; }
+}

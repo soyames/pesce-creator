@@ -185,8 +185,26 @@ Configurer dans Vercel (voir aussi `.env.example`) :
 - `PESCE_CREATOR_TELEGRAM_USER_ID` — ancien nom singulier, conservé en repli (à déprécier)
 - `TELEGRAPH_ACCESS_TOKEN` — optionnel, pour les articles Telegraph (à obtenir via « Configurer Telegraph » dans le studio)
 - `PESCE_MEDIA_SIGNING_SECRET` — optionnel, secret des URLs média signées (repli sur le token du bot)
+- `GOOGLE_OAUTH_CLIENT_ID` — identifiant OAuth Web **public** (audience du jeton d’identité) ; sans lui, la connexion Google du bureau privé n’est pas proposée
+- `PESCE_WEB_ADMIN_EMAILS` — adresses autorisées sur `/studio` (défaut documenté : l’administrateur du Studio)
+- `PESCE_STUDIO_PASSWORD_HASH` — **empreinte scrypt** du mot de passe du bureau privé (type Secret) ; sans elle, seule la connexion Google est proposée
 
 Toute modification d’environnement exige un redéploiement pour prendre effet.
+
+### Bureau privé `/studio` — connexion et application installable
+
+Le portail de bureau `/studio` propose **deux voies de connexion vers une seule session** : adresse + mot de passe, ou « Continuer avec Google ». Les deux sont vérifiées côté serveur (`api/studio-auth.js`), soumises à la même allowlist, et produisent le même cookie de session HttpOnly/Secure/SameSite adossé à Neon (7 jours).
+
+Le mot de passe n’existe nulle part : seule son empreinte **scrypt** est stockée, dans la variable Vercel `PESCE_STUDIO_PASSWORD_HASH`. Pour la produire (opération unique, sur votre machine — la saisie est masquée, rien n’est écrit ni affiché sauf l’empreinte) :
+
+```bash
+cd app/frontend
+node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-studio-password-hash.mjs
+```
+
+Coller la valeur affichée dans Vercel → Settings → Environment Variables → `PESCE_STUDIO_PASSWORD_HASH` (Production, type Secret), puis redéployer.
+
+`/studio` est aussi **installable sur téléphone** (PWA) : manifeste `studio/manifest.webmanifest` (`start_url` et `scope` = `/studio`), icônes dérivées de `assets/profilePesce.png`. Le service worker `studio-sw.js` est enregistré avec la portée `/studio` : il ne contrôle jamais le Mini App public et ne met en cache qu’une liste blanche de ressources statiques de la coquille — **jamais `/api/*`**, jamais une réponse authentifiée. Hors connexion, le Studio affiche un état honnête et refuse les publications ; rien n’est mis en file d’attente. Installer l’application n’authentifie personne.
 
 ### Migrations et vérification locale
 

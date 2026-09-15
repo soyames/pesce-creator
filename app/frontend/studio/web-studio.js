@@ -1,8 +1,11 @@
 // Studio créatrice WEB (/studio) — portail de bureau pour créer, gérer et publier le contenu.
-// Authentification : Google Sign-In, vérifié et autorisé CÔTÉ SERVEUR (/api/studio-auth) ;
-// session HttpOnly/Secure/SameSite adossée à Neon. Aucune donnée privée n'est rendue ni
-// récupérée avant l'authentification. Les actions passent par les MÊMES APIs que le Studio
-// Telegram (/api/studio, /api/content, /api/live) — aucune couche de synchronisation.
+// Authentification : adresse + mot de passe OU Google Sign-In, vérifiés et autorisés CÔTÉ
+// SERVEUR (/api/studio-auth) ; une seule session HttpOnly/Secure/SameSite adossée à Neon.
+// Aucune donnée privée n'est rendue ni récupérée avant l'authentification, et le formulaire
+// ne décide jamais rien : il transmet la saisie, le serveur seul tranche.
+// Les actions passent par les MÊMES APIs que le Studio Telegram (/api/studio, /api/content,
+// /api/live) — aucune couche de synchronisation.
+// Application installable (PWA) : uniquement le bureau privé, portée /studio (voir studio-sw.js).
 (function () {
   const PREVIEW = Boolean(window.__PESCE_WEB_PREVIEW__);
   const PESCE = window.PESCE;
@@ -49,7 +52,27 @@
   }
 
   function studioAction(body) {
+    // Hors connexion : une mutation ne peut pas atteindre le serveur. Le Studio refuse
+    // honnêtement — jamais de file d'attente muette ni de publication simulée.
+    if (navigator.onLine === false) {
+      return Promise.resolve(new Response(
+        JSON.stringify({ message: 'Hors connexion : rien ne peut être envoyé au serveur. Reconnectez-vous au réseau, puis réessayez.' }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      ));
+    }
     return fetch('/api/studio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  }
+
+  // — État de connectivité : bandeau honnête, jamais de faux « hors ligne fonctionnel ».
+  function refreshConnectivity() {
+    const offline = navigator.onLine === false;
+    document.getElementById('studioOffline')?.classList.toggle('hidden', !offline);
+    return offline;
+  }
+
+  function hideLoginError() {
+    const box = document.getElementById('loginError');
+    if (box) { box.hidden = true; box.classList.add('hidden'); }
   }
 
   function showLogin(message) {
@@ -58,7 +81,9 @@
     if (message) {
       const box = document.getElementById('loginError');
       const text = document.getElementById('loginErrorText');
-      if (box && text) { box.hidden = false; text.textContent = message; }
+      // La classe utilitaire « hidden » doit tomber avec l'attribut : sans cela le message
+      // d'erreur reste invisible et la créatrice ne sait pas pourquoi sa connexion échoue.
+      if (box && text) { box.hidden = false; box.classList.remove('hidden'); text.textContent = message; }
     }
   }
 
@@ -69,26 +94,100 @@
     await load();
   }
 
-  // — Authentification Google (côté client : bouton et jeton ; toute vérification est serveur).
-  // Le script GIS est chargé en différé : on réessaie jusqu'à ce qu'il soit disponible.
-  async function initGoogleButton(attempt = 0) {
-    if (PREVIEW) return;
+  // — Surface de connexion : le serveur déclare les voies réellement configurées
+  // (/api/studio-auth?action=config). On n'affiche jamais une voie qui ne peut pas aboutir,
+  // et cette réponse ne contient aucun secret : un identifiant OAuth public et un booléen.
+  async function initLogin() {
     const hint = document.getElementById('loginHint');
-    const config = await fetch('/api/studio-auth?action=config').then((response) => response.json()).catch(() => ({ clientId: null }));
+    const config = await fetch('/api/studio-auth?action=config', { cache: 'no-store' })
+      .then((response) => response.json())
+      .catch(() => ({ clientId: null, passwordLogin: false }));
+
+    const form = document.getElementById('passwordLoginForm');
+    if (config.passwordLogin && form) {
+      form.classList.remove('hidden');
+      form.classList.add('flex');
+    }
+    const separator = document.getElementById('loginSeparator');
+    if (config.passwordLogin && config.clientId && separator) {
+      separator.classList.remove('hidden');
+      separator.classList.add('flex');
+    }
     if (!config.clientId) {
+      document.getElementById('gsiContainer')?.classList.add('hidden');
       // Incident de configuration : erreur technique discrète, jamais de détail d'infrastructure.
-      if (hint) hint.textContent = 'La connexion est momentanément indisponible — réessayez dans un instant.';
+      if (hint && !config.passwordLogin) hint.textContent = 'La connexion est momentanément indisponible — réessayez dans un instant.';
       return;
     }
+    initGoogleButton(config.clientId);
+  }
+
+  // Bascule d'affichage du mot de passe : confort de saisie au doigt, état annoncé aux
+  // technologies d'assistance. Purement local — la valeur ne quitte jamais le champ.
+  function togglePasswordVisibility() {
+    const input = document.getElementById('loginPassword');
+    const button = document.getElementById('loginPasswordToggle');
+    if (!input || !button) return;
+    const revealed = input.type === 'text';
+    input.type = revealed ? 'password' : 'text';
+    button.setAttribute('aria-pressed', revealed ? 'false' : 'true');
+    const label = revealed ? 'Afficher le mot de passe' : 'Masquer le mot de passe';
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    const icon = button.querySelector('.material-symbols-outlined');
+    if (icon) icon.textContent = revealed ? 'visibility' : 'visibility_off';
+    input.focus();
+  }
+
+  // Connexion par mot de passe : la saisie part telle quelle vers le serveur, qui vérifie
+  // l'adresse (liste d'autorisation) et l'empreinte scrypt. Aucun message d'erreur ne distingue
+  // une adresse inconnue d'un mot de passe faux — cette distinction est celle du serveur, et
+  // il ne la fait pas non plus. Rien n'est jamais journalisé côté client.
+  async function submitPasswordLogin(event) {
+    event?.preventDefault?.();
+    const button = document.getElementById('loginSubmit');
+    const emailInput = document.getElementById('loginEmail');
+    const passwordInput = document.getElementById('loginPassword');
+    const email = String(emailInput?.value || '').trim();
+    const password = String(passwordInput?.value || '');
+    hideLoginError();
+    if (!email || !password) { showLogin('Renseignez votre adresse et votre mot de passe.'); return; }
+    if (button) { button.disabled = true; button.textContent = 'Connexion…'; }
+    try {
+      const response = await fetch('/api/studio-auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'password_login', email, password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        if (passwordInput) passwordInput.value = ''; // la saisie ne survit pas à la connexion
+        await enterShell();
+        return;
+      }
+      showLogin(data.message || 'Connexion impossible — réessayez.');
+    } catch {
+      showLogin('Connexion impossible — vérifiez votre connexion réseau, puis réessayez.');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = 'Se connecter'; }
+    }
+  }
+
+  // — Authentification Google (côté client : bouton et jeton ; toute vérification est serveur).
+  // Le script GIS est chargé en différé : on réessaie jusqu'à ce qu'il soit disponible.
+  function initGoogleButton(clientId, attempt = 0) {
+    if (PREVIEW) return;
+    const hint = document.getElementById('loginHint');
     if (typeof google === 'undefined' || !google?.accounts) {
-      if (attempt < 6) { setTimeout(() => initGoogleButton(attempt + 1), 1200); return; }
+      if (attempt < 6) { setTimeout(() => initGoogleButton(clientId, attempt + 1), 1200); return; }
       if (hint) hint.textContent = 'La connexion est momentanément indisponible — réessayez dans un instant.';
       return;
     }
     try {
       // use_fedcm_for_prompt : flux FedCM de Google Identity Services (migration officielle) —
       // garantit que le clic du bouton aboutit même lorsque les cookies tiers sont bloqués.
-      google.accounts.id.initialize({ client_id: config.clientId, locale: 'fr', use_fedcm_for_prompt: true, callback: (response) => handleGoogleCredential(response?.credential || (typeof response === 'string' ? response : '')) });
+      google.accounts.id.initialize({ client_id: clientId, locale: 'fr', use_fedcm_for_prompt: true, callback: (response) => handleGoogleCredential(response?.credential || (typeof response === 'string' ? response : '')) });
       google.accounts.id.renderButton(document.getElementById('gsiContainer'), { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', width: 280 });
     } catch {
       if (hint) hint.textContent = 'La connexion est momentanément indisponible — réessayez dans un instant.';
@@ -118,7 +217,7 @@
     }
   }
 
-  window.PesceWebStudio = Object.freeze({ handleGoogleCredential, showLogin });
+  window.PesceWebStudio = Object.freeze({ handleGoogleCredential, showLogin, submitPasswordLogin, togglePasswordVisibility, refreshConnectivity });
 
   // — Chargement des données réelles (mêmes APIs que le Studio Telegram).
   async function load() {
@@ -175,7 +274,11 @@
       pane.classList.toggle('hidden', pane.dataset.webPane !== tab);
       pane.classList.toggle('flex', pane.dataset.webPane === tab);
     });
+    // Sur téléphone le corps défile à l'intérieur de la coquille : remettre la fenêtre en haut
+    // ne suffit pas, c'est le volet lui-même qu'il faut ramener au début.
     window.scrollTo({ top: 0, behavior: 'auto' });
+    const body = document.getElementById('webStudioBody');
+    if (body) body.scrollTop = 0;
   }
 
   // — BUREAU : raccourcis opérationnels vers les espaces de travail. Chaque carte est cliquable
@@ -441,7 +544,7 @@ ${bodyParts.join('')}
 <input id="img-caption-${image.id}" class="editorial-input" type="text" maxlength="1000" placeholder="Légende de l'image" value="${escapeAttribute(image.caption)}">
 <input id="img-credit-${image.id}" class="editorial-input" type="text" maxlength="300" placeholder="Crédit / source (ex. Pesce Hounyo)" value="${escapeAttribute(image.credit)}">
 </div>
-<button class="media-remove shrink-0 px-space-sm py-2 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-media-remove="${image.id}">Retirer</button>
+<button class="media-remove shrink-0 px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container transition-colors" type="button" data-media-remove="${image.id}">Retirer</button>
 </div>
 <div class="flex items-center gap-space-sm flex-wrap">
 <button class="media-cover px-space-sm py-2 rounded-lg font-kicker-label text-kicker-label uppercase ${image.placement === 'cover' ? 'bg-on-surface text-surface' : 'bg-surface-container-high text-on-surface-variant'}" type="button" data-media-cover="${image.id}">Image de couverture</button>
@@ -593,8 +696,8 @@ ${mediaUrl ? `<img class="w-full aspect-square object-cover" src="${escapeAttrib
 <div class="p-space-md flex flex-col gap-1">
 <span class="font-kicker-label text-[0.6875rem] text-primary uppercase">Photo</span>
 <p class="font-body-sm text-body-sm text-on-surface line-clamp-2">${escapeHtml(headline)}</p>
-<span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
-${post.mediaFileId ? `<button class="photo-insert self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-photo-insert="${escapeAttribute(post.mediaFileId)}" data-photo-caption="${escapeAttribute(headline.slice(0, 120))}">Insérer dans un article</button>` : ''}
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="inline-block py-2.5 text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
+${post.mediaFileId ? `<button class="photo-insert self-start mt-1 px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-photo-insert="${escapeAttribute(post.mediaFileId)}" data-photo-caption="${escapeAttribute(headline.slice(0, 120))}">Insérer dans un article</button>` : ''}
 ${renderRecallButton(post)}
 </div>
 </article>`;
@@ -611,8 +714,8 @@ ${frame}
 <div class="p-space-md flex flex-col gap-1">
 <span class="font-kicker-label text-[0.6875rem] text-primary uppercase">Vidéo${post.mediaDuration ? ` · ${escapeHtml(formatDuration(post.mediaDuration))}` : ''}</span>
 <p class="font-body-sm text-body-sm text-on-surface line-clamp-2">${escapeHtml(headline)}</p>
-<span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
-${post.messageId ? `<button class="video-edit self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-video-edit="${escapeAttribute(post.id)}">Modifier</button>` : ''}
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="inline-block py-2.5 text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
+${post.messageId ? `<button class="video-edit self-start mt-1 px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-video-edit="${escapeAttribute(post.id)}">Modifier</button>` : ''}
 ${renderDistributionRetry(post)}
 ${renderRecallButton(post)}
 </div>
@@ -623,7 +726,7 @@ ${renderRecallButton(post)}
 <span class="font-kicker-label text-[0.6875rem] text-primary uppercase">Audio${post.mediaDuration ? ` · ${escapeHtml(formatDuration(post.mediaDuration))}` : ''}</span>
 <p class="font-body-sm text-body-sm text-on-surface">${escapeHtml(headline)}</p>
 ${mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribute(mediaUrl)}"></audio>` : ''}
-<span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}${post.telegramUrl ? ` · <a class="inline-block py-2.5 text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : ''}</span>
 ${renderRecallButton(post)}
 </article>`;
     }
@@ -634,7 +737,7 @@ ${renderRecallButton(post)}
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(headline)}</h3>
 <p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml((post.text || '').split('\n').slice(1).join(' ').trim().slice(0, 200))}</p>
-<span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.telegramUrl ? `<a class="text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Diffusion Telegram en attente'}</span>
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.telegramUrl ? `<a class="inline-block py-2.5 text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Diffusion Telegram en attente'}</span>
 ${renderDistributionRetry(post)}
 ${renderRecallButton(post)}
 </article>`;
@@ -659,7 +762,7 @@ ${renderRecallButton(post)}
   // Retrait (rappel) d'une publication : deux étapes pour éviter tout retrait accidentel
   // (le premier clic arme le bouton, le second retire la publication du Mini App et d'Écrits).
   function renderRecallButton(post) {
-    return `<button class="recall-post self-start mt-1 px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-recall="${escapeAttribute(post.id)}">Retirer</button>`;
+    return `<button class="recall-post self-start mt-1 px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-recall="${escapeAttribute(post.id)}">Retirer</button>`;
   }
 
   async function recallPostFromStudio(button) {
@@ -1607,14 +1710,32 @@ ${renderKpi('favorite', Number(data.reactions || 0).toLocaleString('fr-FR'), 'R�
     if (mode === 'bat') refreshBat();
   }
 
+  // — Application installable (PWA) du BUREAU PRIVÉ. Le worker est enregistré avec la portée
+  // explicite « /studio » : le Mini App public n'est jamais contrôlé, et aucune réponse d'API
+  // n'est mise en cache (voir studio-sw.js). Installer l'application n'authentifie personne :
+  // la coquille servie est la même page de connexion, et chaque action reste vérifiée serveur.
+  function registerStudioServiceWorker() {
+    if (PREVIEW) return;
+    if (!('serviceWorker' in navigator)) return;
+    if (!location.pathname.startsWith('/studio')) return; // frontière public/privé, côté client aussi
+    navigator.serviceWorker.register('/studio-sw.js', { scope: '/studio' })
+      .catch((error) => console.warn('studio service worker indisponible', error?.message || error));
+  }
+
   // — Démarrage : la session est établie côté serveur ; rien d'autre avant.
   // En mode preview, la session simulée est décidée par le stub — le flux reste identique.
   (async function boot() {
+    if (window.matchMedia?.('(display-mode: standalone)')?.matches) document.body.classList.add('pesce-standalone');
+    refreshConnectivity();
+    window.addEventListener('online', refreshConnectivity);
+    window.addEventListener('offline', refreshConnectivity);
+    document.getElementById('passwordLoginForm')?.addEventListener('submit', submitPasswordLogin);
+    document.getElementById('loginPasswordToggle')?.addEventListener('click', togglePasswordVisibility);
+    registerStudioServiceWorker();
     try {
       const response = await fetch('/api/studio-auth?action=session', { cache: 'no-store' });
       if (response.ok) { await enterShell(); return; }
     } catch { /* serveur indisponible : écran de connexion */ }
-    if (PREVIEW) return; // pas de session simulée : l'écran de connexion reste (bouton démo du stub)
-    initGoogleButton();
+    await initLogin();
   })();
 })();

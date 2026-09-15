@@ -192,4 +192,19 @@ ALTER TABLE pesce_support_tickets ADD COLUMN IF NOT EXISTS last_reply_message_id
 ALTER TABLE pesce_support_tickets ADD COLUMN IF NOT EXISTS reply_count INTEGER NOT NULL DEFAULT 0;
 `,
   },
+  {
+    // Tentatives de connexion échouées du Studio web : limitation de la force brute sur la
+    // connexion par mot de passe. `scope` est une EMPREINTE de l'adresse réseau (jamais l'adresse
+    // en clair, jamais l'adresse e-mail tentée) ; les lignes de plus de 24 h sont purgées.
+    // Aucun mot de passe, aucune empreinte de mot de passe n'est stocké ici ni ailleurs dans Neon.
+    name: '010_login_attempts.sql',
+    sql: `
+CREATE TABLE IF NOT EXISTS pesce_login_attempts (
+  id BIGSERIAL PRIMARY KEY,
+  scope TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS pesce_login_attempts_scope_at_idx ON pesce_login_attempts (scope, created_at DESC);
+`,
+  },
 ];

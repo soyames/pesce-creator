@@ -20,7 +20,10 @@ const PATTERNS = [
   { name: 'clé OpenAI', pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/ },
   { name: 'token Slack', pattern: /\bxox[bprs]-[A-Za-z0-9-]{10,}\b/ },
   { name: 'token GitLab', pattern: /\bglpat-[A-Za-z0-9_-]{20,}\b/ },
-  { name: 'assignation non vide d’un secret d’environnement', pattern: /^\s*(DATABASE_URL|POSTGRES_URL|PGPASSWORD|POSTGRES_PASSWORD|TELEGRAM_PESCE_BOT_TOKEN|TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET|TELEGRAPH_ACCESS_TOKEN|PESCE_MEDIA_SIGNING_SECRET|FIREBASE_PRIVATE_KEY|FIREBASE_CLIENT_EMAIL|VERCEL_TOKEN|GOOGLE_OAUTH_CLIENT_SECRET|PESCE_MT_PROTO_API_HASH|PESCE_MT_PROTO_SESSION)\s*=\s*\S+/m },
+  { name: 'assignation non vide d’un secret d’environnement', pattern: /^\s*(DATABASE_URL|POSTGRES_URL|PGPASSWORD|POSTGRES_PASSWORD|TELEGRAM_PESCE_BOT_TOKEN|TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET|TELEGRAPH_ACCESS_TOKEN|PESCE_MEDIA_SIGNING_SECRET|FIREBASE_PRIVATE_KEY|FIREBASE_CLIENT_EMAIL|VERCEL_TOKEN|GOOGLE_OAUTH_CLIENT_SECRET|PESCE_MT_PROTO_API_HASH|PESCE_MT_PROTO_SESSION|PESCE_STUDIO_PASSWORD_HASH)\s*=\s*\S+/m },
+  // Empreinte de mot de passe du Studio committée par mégarde (format scrypt$N=…,r=…,p=…$sel$empreinte).
+  // Elle n'est pas réversible, mais elle n'a rien à faire dans le dépôt : sa place est Vercel.
+  { name: 'empreinte de mot de passe du Studio', pattern: /scrypt\$N=\d+,r=\d+,p=\d+\$[A-Za-z0-9_-]{8,}\$[A-Za-z0-9_-]{16,}/ },
 ];
 
 // Noms de fichiers interdits (hors .env.example, qui est un modèle sans valeur).

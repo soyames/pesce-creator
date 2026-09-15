@@ -1,0 +1,36 @@
+{
+  "id": "/studio",
+  "name": "Pesce Studio · Bureau Privé",
+  "short_name": "Pesce Studio",
+  "description": "Bureau privé de Pesce Studio : rédiger, publier et gérer les contenus du journal.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/studio",
+  "scope": "/studio",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fbf9f5",
+  "theme_color": "#fbf9f5",
+  "categories": ["news", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/assets/studio-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/studio-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/studio-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

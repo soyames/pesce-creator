@@ -42,10 +42,12 @@ export function clearSessionCookieHeader(secure = true) {
   return attributes.join('; ');
 }
 
-export async function createWebSession(email, { ttlMs = WEB_SESSION_TTL_MS, now = new Date() } = {}) {
+// `client` (accès Neon) est injectable pour les tests, comme les clés JWKS de lib/google-auth.js ;
+// en production c'est toujours le pool unique de lib/db.js.
+export async function createWebSession(email, { ttlMs = WEB_SESSION_TTL_MS, now = new Date(), client = null } = {}) {
   const token = crypto.randomBytes(32).toString('base64url');
   const expiresAt = new Date(now.getTime() + ttlMs);
-  await db().query(
+  await (client || db()).query(
     `INSERT INTO pesce_web_sessions (token_hash, email, created_at, expires_at) VALUES ($1, $2, $3, $4)`,
     [tokenHash(token), email, now, expiresAt]
   );
@@ -54,10 +56,10 @@ export async function createWebSession(email, { ttlMs = WEB_SESSION_TTL_MS, now 
 
 // Valide la session portée par la requête : cookie → empreinte → ligne non expirée.
 // Renvoie l'adresse autorisée, ou null (session absente, inconnue ou expirée).
-export async function webSessionEmailFromRequest(req, { now = new Date() } = {}) {
+export async function webSessionEmailFromRequest(req, { now = new Date(), client = null } = {}) {
   const token = parseCookies(req.headers?.cookie)[WEB_SESSION_COOKIE];
   if (!token) return null;
-  const result = await db().query(
+  const result = await (client || db()).query(
     `SELECT email, expires_at FROM pesce_web_sessions WHERE token_hash = $1`,
     [tokenHash(token)]
   );
@@ -65,15 +67,15 @@ export async function webSessionEmailFromRequest(req, { now = new Date() } = {})
   if (!row) return null;
   const expiresAt = row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at);
   if (isNaN(expiresAt) || expiresAt.getTime() <= now.getTime()) {
-    await destroyWebSession(req).catch(() => {});
+    await destroyWebSession(req, { client }).catch(() => {});
     return null;
   }
   return row.email;
 }
 
-export async function destroyWebSession(req) {
+export async function destroyWebSession(req, { client = null } = {}) {
   const token = parseCookies(req.headers?.cookie)[WEB_SESSION_COOKIE];
   if (!token) return null;
-  await db().query(`DELETE FROM pesce_web_sessions WHERE token_hash = $1`, [tokenHash(token)]);
+  await (client || db()).query(`DELETE FROM pesce_web_sessions WHERE token_hash = $1`, [tokenHash(token)]);
   return token;
 }

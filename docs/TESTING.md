@@ -109,6 +109,26 @@ Publier depuis l’app Telegram (compte de la chaîne), puis vérifier la base P
 3. Couper le réseau après « Publier sur Telegram » : le Studio affiche soit « partie sur le canal (confirmation reçue) » soit « vérifiez le canal avant de réessayer » — jamais d'état indéterminé.
 4. Vidéo du canal : l'affiche (poster) Telegram s'affiche avant lecture quand Telegram fournit une miniature.
 
+## Bureau privé `/studio` — mot de passe et application installable
+
+Prérequis : `PESCE_STUDIO_PASSWORD_HASH` configurée dans Vercel (Production) puis **redéploiement**.
+
+1. Ouvrir `/studio` déconnectée : seuls l’écran de connexion s’affiche — **Email**, **Mot de passe**, **Se connecter**, séparateur « ou », puis **Continuer avec Google**. Aucune donnée privée dans le DOM.
+2. Bascule 👁 : le mot de passe s’affiche/se masque ; l’état est annoncé (`aria-pressed`).
+3. Mot de passe correct + `pescestudio8@gmail.com` → le Bureau s’ouvre, l’adresse de session apparaît dans l’en-tête.
+4. Mot de passe erroné → **« Adresse ou mot de passe incorrect. »**, visible, et rien d’autre. Adresse inconnue → **message strictement identique** (aucun moyen de savoir laquelle des deux est fausse).
+5. Champ vide → refus, aucun cookie posé.
+6. Après 8 échecs depuis la même origine en 15 min → « Trop de tentatives de connexion… » (429). Une connexion réussie remet le compteur à zéro.
+7. « Continuer avec Google » fonctionne toujours et ouvre la **même** session ; un compte hors allowlist → 403.
+8. Déconnexion → retour à l’écran de connexion ; le cookie est effacé **et** la ligne de session supprimée (le jeton ne fonctionne plus).
+9. Recharger `/studio` avec une session valide → le Bureau s’ouvre directement (session de 7 jours).
+10. **Installation mobile** : Chrome/Safari proposent « Ajouter à l’écran d’accueil ». L’icône installée est le portrait Pesce Studio, le nom court « Pesce Studio ». L’app s’ouvre en plein écran sur `/studio`, jamais sur le journal public.
+11. Rouvrir l’app installée → la session est conservée ; aucune reconnexion tant que le cookie est valide.
+12. **Frontière** : dans l’app installée, ouvrir `/` (lien « Journal ») → sort de la portée `/studio` ; le Mini App public reste inchangé et n’est pas contrôlé par le service worker.
+13. **Hors connexion** (mode avion) : la coquille s’ouvre, le bandeau « Hors connexion… » apparaît, et toute publication est refusée honnêtement — rien n’est mis en file d’attente ni annoncé comme publié.
+14. Onglet Réseau : aucune requête `/api/*` n’est servie depuis le cache (toutes en `fetch` réseau).
+15. Sur téléphone : l’en-tête et la barre de navigation restent à l’écran, seul le corps défile ; aucun défilement horizontal ; Rédiger, éditeur, couverture, Brouillons, Écrits, Vidéos, Audios, Photos, Directs, Messages, Audience, Paramètres sont tous utilisables.
+
 ## H. Matrice curl post-déploiement
 
 | Requête | Attendu |

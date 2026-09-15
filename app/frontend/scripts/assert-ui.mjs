@@ -225,6 +225,72 @@ const ROUTES = [
       ['favicon Pesce Studio présent', `document.querySelector('link[rel="icon"]')?.getAttribute('href') === '/assets/profilePesce.png'`, true],
       ['retour au journal public', `!!document.querySelector('#studioLogin a[href="/"]')`, true],
       ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
+      // — Deux voies de connexion proposées : mot de passe ET Google.
+      ['formulaire adresse + mot de passe proposé', `getComputedStyle(document.getElementById('passwordLoginForm')).display !== 'none'`, true],
+      ['champ adresse de type email', `document.getElementById('loginEmail').type === 'email'`, true],
+      ['mot de passe masqué par défaut', `document.getElementById('loginPassword').type === 'password'`, true],
+      ['action « Se connecter » présente', `document.getElementById('loginSubmit').textContent.trim() === 'Se connecter'`, true],
+      ['séparateur « ou » entre les deux voies', `getComputedStyle(document.getElementById('loginSeparator')).display !== 'none' && document.getElementById('loginSeparator').textContent.trim() === 'ou'`, true],
+      ['bascule d\'affichage du mot de passe fonctionnelle et annoncée', `(function () {
+        const input = document.getElementById('loginPassword');
+        const button = document.getElementById('loginPasswordToggle');
+        button.click();
+        const revealed = input.type === 'text' && button.getAttribute('aria-pressed') === 'true';
+        button.click();
+        return revealed && input.type === 'password' && button.getAttribute('aria-pressed') === 'false';
+      })()`, true],
+      ['cible tactile de la bascule suffisante', `document.getElementById('loginPasswordToggle').getBoundingClientRect().height >= 40`, true],
+      ['manifeste PWA du Studio déclaré', `document.querySelector('link[rel="manifest"]').getAttribute('href') === '/studio/manifest.webmanifest'`, true],
+      ['aucune empreinte ni nom de secret exposé au client', `!document.documentElement.innerHTML.includes('PESCE_STUDIO_PASSWORD_HASH') && !document.documentElement.innerHTML.includes('scrypt')`, true],
+    ],
+  },
+  {
+    // La connexion par mot de passe ouvre EXACTEMENT la même coquille que Google.
+    name: 'studio-web-mot-de-passe', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio&login=1`, widths: [390],
+    readyExpr: `(function () {
+      if (!window.__pwdFlow) {
+        window.__pwdFlow = 'started';
+        setTimeout(function () {
+          document.getElementById('loginEmail').value = 'pescestudio8@gmail.com';
+          document.getElementById('loginPassword').value = 'saisie-de-demonstration';
+          document.getElementById('loginSubmit').click();
+        }, 400);
+      }
+      return getComputedStyle(document.getElementById('studioShell')).display !== 'none'
+        && document.getElementById('webStudioBody').textContent.includes('Bonjour, Pesce');
+    })()`,
+    asserts: [
+      ['le mot de passe ouvre le Bureau', `getComputedStyle(document.getElementById('studioLogin')).display === 'none'`, true],
+      ['la session affichée est celle du serveur', `document.getElementById('webSessionEmail').textContent.includes('pescestudio8@gmail.com')`, true],
+      ['la saisie ne survit pas à la connexion', `document.getElementById('loginPassword').value === ''`, true],
+      ['déconnexion disponible', `!!document.getElementById('webLogout')`, true],
+      ['navigation mobile atteignable sans parcourir tout le Bureau', `(function () {
+        const rect = document.querySelector('#studioShell > nav').getBoundingClientRect();
+        return rect.top >= 0 && rect.bottom <= window.innerHeight + 1;
+      })()`, true],
+      ['le corps défile dans la coquille (en-tête et navigation restent à l\'écran)', `document.getElementById('webStudioBody').scrollHeight > document.getElementById('webStudioBody').clientHeight`, true],
+      ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
+    ],
+  },
+  {
+    // Refus de mot de passe : message générique ET RÉELLEMENT VISIBLE.
+    name: 'studio-web-mot-de-passe-refusé', url: `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio&login=1&badpass=1`, widths: [390],
+    readyExpr: `(function () {
+      if (!window.__badPwdFlow) {
+        window.__badPwdFlow = 'started';
+        setTimeout(function () {
+          document.getElementById('loginEmail').value = 'inconnu@example.org';
+          document.getElementById('loginPassword').value = 'saisie-erronee';
+          document.getElementById('loginSubmit').click();
+        }, 400);
+      }
+      return !document.getElementById('loginError').hidden;
+    })()`,
+    asserts: [
+      ['le refus est visible (et non masqué par une classe utilitaire)', `getComputedStyle(document.getElementById('loginError')).display !== 'none'`, true],
+      ['message générique : ni l\'adresse ni le mot de passe ne sont désignés', `document.getElementById('loginErrorText').textContent === 'Adresse ou mot de passe incorrect.'`, true],
+      ['la coquille reste fermée', `getComputedStyle(document.getElementById('studioShell')).display === 'none'`, true],
+      ['aucune donnée privée chargée', `!document.getElementById('webStudioBody').textContent.includes('Bonjour, Pesce')`, true],
     ],
   },
   {

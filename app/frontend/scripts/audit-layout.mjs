@@ -42,6 +42,21 @@ const ROUTES = [
   ['support', `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#support`, `document.getElementById('supportTopic').options.length > 0`, [390, 320]],
   ['studio web connexion', `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio&login=1`, `!document.getElementById('studioLogin').hidden`, [390, 1280]],
   ['studio web bureau', `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`, `!document.getElementById('studioShell').hidden && document.getElementById('webStudioBody').textContent.includes('Bonjour, Pesce')`, [390, 1280]],
+  // Chaque espace de travail du bureau privé est mesuré au format téléphone : la créatrice
+  // travaille d'abord depuis son mobile (application installée).
+  ...['rediger', 'brouillons', 'ecrits', 'videos', 'audios', 'photos', 'directs', 'messages', 'audience', 'parametres'].map((tab) => [
+    `studio web ${tab}`,
+    `http://127.0.0.1:${PREVIEW_PORT}/studio?preview=webstudio`,
+    // On réessaie le clic à chaque sondage : les écouteurs ne sont liés qu'après le
+    // chargement des données, un clic unique arriverait parfois trop tôt.
+    `(function () {
+      const pane = document.querySelector('[data-web-pane="${tab}"]');
+      if (pane && getComputedStyle(pane).display !== 'none') return true;
+      document.querySelectorAll('[data-web-tab="${tab}"]').forEach(function (button) { button.click(); });
+      return false;
+    })()`,
+    [390],
+  ]),
 ];
 
 // — L'expression d'audit s'exécute dans la page et renvoie un rapport JSON (async : chargement des polices).
@@ -51,6 +66,8 @@ const AUDIT_EXPRESSION = `(async () => {
   window.scrollTo({ top: 0, behavior: 'instant' });
   const studioBody = document.getElementById('studioBody');
   if (studioBody) studioBody.scrollTop = 0;
+  const webStudioBody = document.getElementById('webStudioBody');
+  if (webStudioBody) webStudioBody.scrollTop = 0;
   const readerContent = document.getElementById('readerContent');
   if (readerContent) readerContent.scrollTop = 0;
   await new Promise((resolve) => setTimeout(resolve, 350));
