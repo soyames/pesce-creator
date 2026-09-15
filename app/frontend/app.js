@@ -32,6 +32,9 @@ document.querySelectorAll('[data-identity-href]').forEach((el) => {
 // dans un navigateur ordinaire — un lien d'article partagé doit toujours mener au journal, pas
 // à une impasse. Seules les capacités PROPRES à Telegram (Étoiles, assistance par le bot,
 // espace créatrice) restent réservées à l'ouverture depuis Telegram, et le disent honnêtement.
+// Aucun bandeau « vous lisez sur le web » : l'onglet Soutenir est déjà dans la navigation, et
+// chaque publication du canal porte son bouton ⭐ Soutenir. Le répéter en tête de page serait du
+// bruit. Hors Telegram, « Soutenir » emmène simplement le lecteur vers le bot (voir supportWithStars).
 app.hidden = false;
 if (inTelegram) {
   tg.ready();
@@ -40,8 +43,6 @@ if (inTelegram) {
   if (tg.setBackgroundColor) tg.setBackgroundColor('#fbf9f5');
 } else {
   document.body.classList.add('pesce-web');
-  const banner = document.getElementById('webBanner');
-  if (banner) banner.hidden = false;
 }
 
 // — Aides partagées

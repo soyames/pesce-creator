@@ -877,11 +877,14 @@ export default async function handler(req, res) {
           pagesFailed += 1;
         }
 
-        // b) Le message du canal cesse de renvoyer vers l'hébergeur : son lien devient le lien
+        // c) Le message du canal cesse de renvoyer vers l'hébergeur : son lien devient le lien
         // de LECTURE dans le journal. Seuls les messages envoyés par le bot sont modifiables —
         // une publication postée à la main depuis Telegram est comptée comme non modifiable.
+        // La ligne canonique n'est réécrite QU'APRÈS confirmation de Telegram : jamais de
+        // divergence entre ce que le canal affiche et ce que le journal a enregistré.
         if (post.messageId && token) {
-          const distributionText = articleDistributionText(title, post.id);
+          // Le texte écrit par la créatrice est conservé intégralement : seul le lien change.
+          const distributionText = relinkedText(post, readLink(post.id));
           try {
             await telegram(token, 'editMessageText', {
               chat_id: post.channelId || CHANNEL_HANDLE,
@@ -1087,6 +1090,21 @@ function readLink(postId) {
 // Texte distribué sur le canal pour un ARTICLE : titre + lien de lecture dans le journal.
 function articleDistributionText(title, postId) {
   return `${title}\n\n${readLink(postId)}`;
+}
+
+// Redirection d'une publication DÉJÀ EN LIGNE : on CONSERVE le texte existant (titre, chapô,
+// toute ligne écrite par la créatrice) et on ne remplace QUE le lien. Une opération de
+// maintenance ne doit jamais effacer une ligne éditoriale — seule une correction explicite au
+// pupitre réécrit un texte. Idempotent : relancer retire l'ancien lien et repose le même.
+export function relinkedText(post, readUrl) {
+  const kept = String(post?.text || '')
+    .split('\n')
+    .filter((line) => !/^\s*https?:\/\/\S*\s*$/.test(line));
+  const body = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (!body) return readUrl;
+  // Limite Telegram (4096) : on rogne le texte conservé plutôt que de perdre le lien.
+  const room = 4096 - readUrl.length - 2;
+  return `${body.length > room ? `${body.slice(0, Math.max(0, room - 1))}…` : body}\n\n${readUrl}`;
 }
 
 // Pied des pages Telegraph : la seule sortie possible vers Pesce depuis une page hébergée par

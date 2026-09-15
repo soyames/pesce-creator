@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import studioHandler from '../api/studio.js';
+import studioHandler, { relinkedText } from '../api/studio.js';
 import { serializePost } from '../api/content.js';
 import { POST_UPDATABLE_COLUMNS } from '../lib/db.js';
 import { articleFooterNodes, editTelegraphPage, nodesFromArticle, stripArticleFooter, telegraphPathFromUrl } from '../lib/telegraph.js';
@@ -180,6 +180,45 @@ test('reposer le pied ne l’empile jamais, et ne coupe jamais l’article', () 
   const editorialRule = [...body, { tag: 'hr' }, { tag: 'p', children: ['Encadré de la rédaction.'] }];
   assert.deepEqual(stripArticleFooter(editorialRule), editorialRule, 'une séparation éditoriale a été prise pour un pied');
   assert.deepEqual(stripArticleFooter(null), []);
+});
+
+test('rattrapage : rien n’est effacé — le texte écrit est conservé, seul le lien change', () => {
+  // Un article ancien porte souvent un chapô sous son titre : c'est de l'éditorial, et c'est
+  // aussi ce qui alimente l'extrait des cartes du journal. Le rattrapage ne doit JAMAIS le perdre.
+  const post = {
+    text: 'LA SOUMISSION PEUT-ELLE ÊTRE UN HÉRITAGE ?\n\nUne enquête sur trois générations, de Cotonou à Porto-Novo.\n\nhttps://telegra.ph/La-soumission-09-12',
+  };
+  const relinked = relinkedText(post, 'https://t.me/PesceStudioBot?startapp=post_studio_abc');
+  assert.ok(relinked.includes('LA SOUMISSION PEUT-ELLE ÊTRE UN HÉRITAGE ?'), 'le titre a été perdu');
+  assert.ok(relinked.includes('Une enquête sur trois générations, de Cotonou à Porto-Novo.'), 'le chapô a été perdu');
+  assert.ok(!relinked.includes('telegra.ph'), 'l’ancien lien d’hébergement subsiste');
+  assert.ok(relinked.endsWith('https://t.me/PesceStudioBot?startapp=post_studio_abc'), 'le lien de lecture est absent');
+
+  // Idempotent : relancer ne double pas le lien et ne grignote pas le texte.
+  assert.equal(relinkedText({ text: relinked }, 'https://t.me/PesceStudioBot?startapp=post_studio_abc'), relinked, 'une seconde passe modifie le texte');
+
+  // Publication sans texte : on ne fabrique rien, on pose le lien.
+  assert.equal(relinkedText({ text: '' }, 'https://x.test/a'), 'https://x.test/a');
+  assert.equal(relinkedText({}, 'https://x.test/a'), 'https://x.test/a');
+
+  // Limite Telegram respectée sans jamais sacrifier le lien.
+  const long = relinkedText({ text: 'A'.repeat(4200) }, 'https://x.test/a');
+  assert.ok(long.length <= 4096, 'message trop long pour Telegram');
+  assert.ok(long.endsWith('https://x.test/a'), 'le lien a été rogné');
+});
+
+test('rattrapage : aucune publication n’est retirée, dépubliée ni supprimée', () => {
+  const source = read('api/studio.js');
+  const block = source.slice(source.indexOf("action === 'relink_articles'"), source.indexOf("action === 'backfill_support'"));
+  for (const destructive of ['recallPost', 'deleteDraft', 'DELETE', 'published: false', 'deleteMessage', 'upsertChannelPost']) {
+    assert.ok(!block.includes(destructive), `le rattrapage exécute « ${destructive} »`);
+  }
+  // Les seules écritures possibles sont la liste blanche de updatePost.
+  const writes = block.match(/updatePost\(post\.id, ([^)]*)\)/g) || [];
+  assert.ok(writes.length > 0, 'le rattrapage n’écrit rien');
+  for (const write of writes) {
+    assert.ok(/recovered|text: distributionText/.test(write), `écriture inattendue : ${write}`);
+  }
 });
 
 test('rattrapage : le texte d’un ancien article est rapatrié, sans recopier le pied', () => {
@@ -359,7 +398,10 @@ test('le journal public se lit hors Telegram (aucune porte bloquante)', () => {
   const html = read('index.html');
   const app = read('app.js');
   assert.ok(!html.includes('id="telegramGate"'), 'la porte bloquante hors Telegram est de retour');
-  assert.ok(html.includes('id="webBanner"'), 'aucun bandeau de lecture web');
+  // Aucun bandeau ajouté en tête : l'onglet « Soutenir » existe déjà dans la navigation et
+  // chaque publication du canal porte son bouton de soutien.
+  assert.ok(!html.includes('id="webBanner"'), 'bandeau redondant en tête de journal');
+  assert.ok(html.includes('data-section="soutenir"'), 'onglet Soutenir absent de la navigation');
   // Les chargeurs de contenu public ne dépendent plus de Telegram.
   for (const loader of ['loadHome', 'loadDirects', 'loadPublications', 'loadPhotos', 'openReader']) {
     const start = app.indexOf(`function ${loader}(`);

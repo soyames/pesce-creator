@@ -49,8 +49,8 @@ const ROUTES = [
       ['aucune porte bloquante hors Telegram', `document.getElementById('telegramGate') === null`, true],
       ['journal visible dans un navigateur ordinaire', `!document.getElementById('telegramApp').hidden`, true],
       ['contexte non-Telegram réellement simulé', `window.Telegram === undefined`, true],
-      ['bandeau de lecture web affiché', `!document.getElementById('webBanner').hidden && document.getElementById('webBanner').textContent.includes('sur le web')`, true],
-      ['accès à Telegram proposé depuis le bandeau', `document.querySelector('#webBanner a[data-identity-href="botUrl"]').getAttribute('href')`, `${PESCE.BOT_URL}?startapp`],
+      ['aucun bandeau redondant en tête de journal', `document.getElementById('webBanner') === null`, true],
+      ['le soutien reste accessible par la navigation', `!!document.querySelector('.nav-button[data-section="soutenir"]')`, true],
       ['navigation publique complète', `document.querySelectorAll('.nav-button').length >= 5`, true],
       ['fil d\'accueil réellement chargé', `document.getElementById('homeLead').children.length > 0`, true],
       ['lien « Connexion » discret vers /studio conservé', `document.querySelector('#telegramApp a[href="/studio"]') !== null`, true],
@@ -147,7 +147,7 @@ const ROUTES = [
     readyExpr: `!document.getElementById('reader').hidden && document.querySelector('#readerContent h1') !== null`,
     asserts: [
       ['le lien profond ouvre bien l\'article', `document.querySelector('#readerContent h1').textContent.includes('Le numérique africain')`, true],
-      ['on est bien dans le Mini App Telegram', `!document.getElementById('telegramApp').hidden && document.getElementById('webBanner').hidden`, true],
+      ['on est bien dans le Mini App Telegram', `!document.getElementById('telegramApp').hidden`, true],
       ['la découverte est proposée aussi dans Telegram', `document.getElementById('readerContent').textContent.includes('Découvrir plus de Pesce')`, true],
       ['le soutien en Étoiles reste accessible', `!!document.querySelector('#readerContent [data-reader-support]')`, true],
     ],
@@ -155,7 +155,7 @@ const ROUTES = [
   {
     name: 'a-la-une', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=1`, widths: [390, 820, 1280],
     asserts: [
-      ['application visible dans Telegram', `!document.getElementById('telegramApp').hidden && document.getElementById('webBanner').hidden`, true],
+      ['application visible dans Telegram', `!document.getElementById('telegramApp').hidden`, true],
       ['fond de page surface', `getComputedStyle(document.body).backgroundColor`, RGB.surface],
       ['fil d\'accueil chargé', `document.getElementById('homeLead').children.length > 0`, true],
       ['titre masthead Newsreader', `getComputedStyle(document.querySelector('#telegramApp header h1')).fontFamily.includes('Newsreader')`, true],
