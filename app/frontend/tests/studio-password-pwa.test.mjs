@@ -311,6 +311,7 @@ test('endpoint : base indisponible → aucune session, même avec le mot de pass
     await studioAuthHandler({ method: 'POST', headers: {}, body: { action: 'password_login', email: ADMIN, password: FIXTURE_PASSWORD } }, res);
     assert.ok(res.code >= 400, `connexion aboutie sans base (statut ${res.code})`);
     assert.equal(res.headers['Set-Cookie'], undefined, 'cookie de session posé sans base');
+    assert.equal(res.body.message, 'Authentification indisponible.', 'l’incident interne fuit vers le client');
     assert.ok(!JSON.stringify(res.body || {}).includes(FIXTURE_PASSWORD), 'le mot de passe est renvoyé dans l’erreur');
     assert.ok(!JSON.stringify(res.body || {}).includes(encoded), 'l’empreinte est renvoyée dans l’erreur');
   });
@@ -342,6 +343,18 @@ test('schéma : la table des tentatives existe et ne contient aucun secret', () 
   for (const item of MIGRATIONS) {
     assert.ok(!/password_hash|mot_de_passe/i.test(item.sql), `la migration ${item.name} stocke un mot de passe`);
   }
+});
+
+test('migrations : le chemin mot de passe garantit le schéma avant sa première requête (démarrage à froid)', () => {
+  // Garde-fou du défaut « relation pesce_login_attempts does not exist » : toute requête de
+  // limitation des tentatives doit passer par ensureDb() (migrations d'abord), jamais par db() nu.
+  const dbSource = read('lib/db.js');
+  assert.ok(/export async function ensureDb/.test(dbSource), 'ensureDb non exporté : les migrations ne sont pas garanties au démarrage à froid');
+  const passwordAuth = read('lib/password-auth.js');
+  assert.ok(/import \{ ensureDb \} from '\.\/db\.js'/.test(passwordAuth), 'password-auth n’emprunte pas le mécanisme de migration');
+  assert.ok(!/client \|\| db\(\)/.test(passwordAuth), 'password-auth contourne les migrations (db() direct)');
+  const webSession = read('lib/web-session.js');
+  assert.ok(!/client \|\| db\(\)/.test(webSession), 'web-session contourne les migrations (db() direct)');
 });
 
 // ——————————————————————————————————————————————————————————————————————————

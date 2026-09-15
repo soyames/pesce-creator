@@ -56,7 +56,10 @@ export async function ensureMigrations() {
   return newlyApplied;
 }
 
-async function ensureDb() {
+// Accès standard aux données : les migrations sont garanties AVANT la première requête du
+// processus (démarrage à froid). Tout chemin qui interroge Neon doit passer par ici — jamais
+// par db() directement — pour qu'une table introduite par une nouvelle migration existe déjà.
+export async function ensureDb() {
   await ensureMigrations();
   return db();
 }

@@ -12,7 +12,7 @@
 // (lib/web-session.js) : jeton aléatoire 256 bits, empreinte SHA-256 dans Neon, cookie
 // HttpOnly/Secure/SameSite, expiration à 7 jours. Aucun système d'authentification parallèle.
 import crypto from 'node:crypto';
-import { db } from './db.js';
+import { ensureDb } from './db.js';
 
 // Paramètres de coût : N=2^15, r=8, p=1 (~32 Mio, ~100 ms) — robuste et compatible avec la
 // durée d'exécution d'une fonction serverless. `maxmem` doit dépasser 128 × N × r.
@@ -105,9 +105,12 @@ export function loginScope(req) {
   return crypto.createHash('sha256').update(`pesce-studio-login:${address}`).digest('hex').slice(0, 32);
 }
 
-// `client` (accès Neon) est injectable pour les tests ; en production c'est le pool de lib/db.js.
+// `client` (accès Neon) est injectable pour les tests ; en production c'est le pool de lib/db.js,
+// via ensureDb() : les migrations (dont pesce_login_attempts) sont garanties AVANT la requête,
+// même au tout premier démarrage à froid de la fonction.
 export async function loginFailureCount(scope, { now = new Date(), windowMs = LOGIN_WINDOW_MS, client = null } = {}) {
-  const result = await (client || db()).query(
+  const access = client || (await ensureDb());
+  const result = await access.query(
     'SELECT count(*)::int AS failures FROM pesce_login_attempts WHERE scope = $1 AND created_at > $2',
     [scope, new Date(now.getTime() - windowMs)]
   );
@@ -115,12 +118,12 @@ export async function loginFailureCount(scope, { now = new Date(), windowMs = LO
 }
 
 export async function recordLoginFailure(scope, { now = new Date(), client = null } = {}) {
-  const access = client || db();
+  const access = client || (await ensureDb());
   await access.query('INSERT INTO pesce_login_attempts (scope, created_at) VALUES ($1, $2)', [scope, now]);
   // Purge opportuniste : la table ne conserve jamais d'historique au-delà de 24 h.
   await access.query('DELETE FROM pesce_login_attempts WHERE created_at < $1', [new Date(now.getTime() - LOGIN_RETENTION_MS)]);
 }
 
 export async function clearLoginFailures(scope, { client = null } = {}) {
-  await (client || db()).query('DELETE FROM pesce_login_attempts WHERE scope = $1', [scope]);
+  await (client || (await ensureDb())).query('DELETE FROM pesce_login_attempts WHERE scope = $1', [scope]);
 }

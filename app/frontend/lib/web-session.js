@@ -3,7 +3,7 @@
 // Neon ne stocke que l'empreinte SHA-256 du jeton + l'adresse autorisée + l'expiration.
 // Aucun secret d'environnement n'est requis : le jeton est généré à la connexion.
 import crypto from 'node:crypto';
-import { db } from './db.js';
+import { ensureDb } from './db.js';
 
 export const WEB_SESSION_COOKIE = 'pesce_web_session';
 export const WEB_SESSION_TTL_MS = 7 * 24 * 3600 * 1000; // 7 jours
@@ -43,11 +43,11 @@ export function clearSessionCookieHeader(secure = true) {
 }
 
 // `client` (accès Neon) est injectable pour les tests, comme les clés JWKS de lib/google-auth.js ;
-// en production c'est toujours le pool unique de lib/db.js.
+// en production c'est toujours le pool unique de lib/db.js via ensureDb() (migrations garanties).
 export async function createWebSession(email, { ttlMs = WEB_SESSION_TTL_MS, now = new Date(), client = null } = {}) {
   const token = crypto.randomBytes(32).toString('base64url');
   const expiresAt = new Date(now.getTime() + ttlMs);
-  await (client || db()).query(
+  await (client || (await ensureDb())).query(
     `INSERT INTO pesce_web_sessions (token_hash, email, created_at, expires_at) VALUES ($1, $2, $3, $4)`,
     [tokenHash(token), email, now, expiresAt]
   );
@@ -59,7 +59,7 @@ export async function createWebSession(email, { ttlMs = WEB_SESSION_TTL_MS, now 
 export async function webSessionEmailFromRequest(req, { now = new Date(), client = null } = {}) {
   const token = parseCookies(req.headers?.cookie)[WEB_SESSION_COOKIE];
   if (!token) return null;
-  const result = await (client || db()).query(
+  const result = await (client || (await ensureDb())).query(
     `SELECT email, expires_at FROM pesce_web_sessions WHERE token_hash = $1`,
     [tokenHash(token)]
   );
@@ -76,6 +76,6 @@ export async function webSessionEmailFromRequest(req, { now = new Date(), client
 export async function destroyWebSession(req, { client = null } = {}) {
   const token = parseCookies(req.headers?.cookie)[WEB_SESSION_COOKIE];
   if (!token) return null;
-  await (client || db()).query(`DELETE FROM pesce_web_sessions WHERE token_hash = $1`, [tokenHash(token)]);
+  await (client || (await ensureDb())).query(`DELETE FROM pesce_web_sessions WHERE token_hash = $1`, [tokenHash(token)]);
   return token;
 }

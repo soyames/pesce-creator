@@ -136,7 +136,10 @@ export default async function handler(req, res) {
     }
     return res.status(405).json({ message: 'Méthode non autorisée.' });
   } catch (error) {
+    // Incident interne : le détail n'appartient qu'aux journaux serveur. Le client reçoit un
+    // message unique et générique — jamais un message de base de données ou d'infrastructure,
+    // qui exposerait le schéma ou distinguerait les causes d'échec.
     console.error(error);
-    return res.status(500).json({ message: error.message || 'Authentification indisponible.' });
+    return res.status(500).json({ message: 'Authentification indisponible.' });
   }
 }
