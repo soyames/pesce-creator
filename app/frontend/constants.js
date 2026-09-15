@@ -30,6 +30,19 @@
   // composant ne doit reconstruire cette forme à la main.
   const articleLink = (postId) => `${MINI_APP_URL}?post=${encodeURIComponent(String(postId || ''))}`;
 
+  // Lien de RETOUR depuis une page Telegraph : telegra.ph est hébergé par Telegram et ne peut
+  // pas rediriger vers nous. La page porte donc un lien vers le journal, identifié par le
+  // CHEMIN Telegraph — une clé stable, indépendante de l'identifiant de ligne (qui peut encore
+  // changer lors de la course avec le webhook au moment de la publication).
+  const telegraphPathOf = (value) => String(value || '')
+    .replace(/^https?:\/\/telegra\.ph\//i, '')
+    .replace(/^\/+|\/+$/g, '')
+    .split(/[?#]/)[0];
+  const articleLinkFromTelegraph = (pathOrUrl) => {
+    const path = telegraphPathOf(pathOrUrl);
+    return path ? `${MINI_APP_URL}?article=${encodeURIComponent(path)}` : MINI_APP_URL;
+  };
+
   // Équivalent Telegram : ouvre le Mini App directement sur la publication. Le paramètre de
   // démarrage Telegram n'accepte que [A-Za-z0-9_-] (64 caractères max) ; hors de ce jeu, on
   // renvoie null et l'appelant retombe sur le lien web, qui fonctionne partout.
@@ -59,5 +72,7 @@
     SUPPORT_TOPICS,
     articleLink,
     articleTelegramLink,
+    articleLinkFromTelegraph,
+    telegraphPathOf,
   });
 })();

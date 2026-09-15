@@ -198,8 +198,17 @@ Toute modification d’environnement exige un redéploiement pour prendre effet.
 | Mini App / journal public | `https://pesce-creator-nine.vercel.app/` | Public — Telegram **et** navigateur ordinaire |
 | Article (lien partageable) | `https://pesce-creator-nine.vercel.app/?post=<id>` | Public — ouvre le journal sur l'article |
 | Article (lien profond Telegram) | `https://t.me/PesceStudioBot?startapp=post_<id>` | Public — ouvre le Mini App sur l'article |
+| Article (retour depuis Telegraph) | `https://pesce-creator-nine.vercel.app/?article=<chemin>` | Public — retrouve l'article par sa page d'hébergement |
 | Bureau privé (web) | `https://pesce-creator-nine.vercel.app/studio` | **Privé** — mot de passe ou Google, allowlist |
 | Bureau privé (Telegram) | `https://t.me/PesceStudioBot?startapp=studio` | **Privé** — créatrice uniquement |
+
+### Où l'on lit un article
+
+**Dans le Mini App.** Le texte intégral de chaque article est conservé dans la base (`article_body`) et rendu directement dans le journal, entouré de la navigation, des autres publications et du bouton de soutien. Telegraph continue d'**héberger** la page (Instant View, copie externe) mais n'est plus la destination de lecture : le message publié sur le canal renvoie vers le journal, pas vers telegra.ph.
+
+Une page telegra.ph appartient à Telegram : on ne peut ni y ajouter de navigation ou de boutons, ni y installer une redirection. Ce qu'elle peut porter, ce sont des liens — chaque article publié se termine donc par **« Lire cet article dans Pesce Studio »**, qui rouvre l'article dans le journal.
+
+Les articles publiés avant cette évolution se rattrapent en une fois : **Paramètres → « Rediriger les articles déjà publiés »**. Les anciens messages du canal cessent de pointer vers telegra.ph et les anciennes pages reçoivent leur pied de retour. L'action modifie les messages et les pages sur place ; la relancer ne crée jamais de doublon. Une publication postée à la main depuis Telegram n'est pas modifiable par le bot et est comptée comme telle dans le compte rendu.
 
 ### Corriger une publication déjà en ligne
 

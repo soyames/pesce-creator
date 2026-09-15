@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url';
 import studioHandler from '../api/studio.js';
 import { serializePost } from '../api/content.js';
 import { POST_UPDATABLE_COLUMNS } from '../lib/db.js';
-import { editTelegraphPage, nodesFromArticle, telegraphPathFromUrl } from '../lib/telegraph.js';
-import PESCE, { articleLink, articleTelegramLink, WEB_STUDIO_URL } from '../lib/config.js';
+import { articleFooterNodes, editTelegraphPage, nodesFromArticle, stripArticleFooter, telegraphPathFromUrl } from '../lib/telegraph.js';
+import PESCE, { articleLink, articleLinkFromTelegraph, articleTelegramLink, telegraphPathOf, WEB_STUDIO_URL } from '../lib/config.js';
 
 const read = (relative) => readFileSync(fileURLToPath(new URL(`../${relative}`, import.meta.url)), 'utf8');
 
@@ -128,6 +128,61 @@ test('correction sans nouvelle image : la couverture déjà en ligne reste dans 
 });
 
 // ——————————————————————————————————————————————————————————————————————————
+// B bis. Pied d'article Telegraph : la seule sortie possible depuis une page de Telegram
+// ——————————————————————————————————————————————————————————————————————————
+
+const footerText = (nodes) => JSON.stringify(nodes);
+
+test('pied Telegraph : liens vers le journal et le soutien, après une ligne de séparation', () => {
+  const footer = articleFooterNodes({ journalUrl: 'https://journal.test/', supportUrl: 'https://t.me/bot?startapp=support', creatorName: 'Pesce Hounyo' });
+  assert.equal(footer[0].tag, 'hr', 'le pied ne se détache pas de l’article');
+  const serialized = footerText(footer);
+  assert.ok(serialized.includes('Pesce Studio'), 'le pied ne nomme pas le journal');
+  assert.ok(serialized.includes('https://journal.test/'), 'aucun lien vers le journal');
+  assert.ok(serialized.includes('https://t.me/bot?startapp=support'), 'aucun lien de soutien');
+  // Telegraph ne rend que du contenu : uniquement des balises autorisées, jamais de bouton.
+  const tags = JSON.stringify(footer).match(/"tag":"(\w+)"/g).map((match) => match.slice(7, -1));
+  for (const tag of tags) {
+    assert.ok(['hr', 'p', 'strong', 'a', 'em', 'br'].includes(tag), `balise « ${tag} » non rendue par Telegraph`);
+  }
+  assert.deepEqual(articleFooterNodes({}), [], 'un pied est produit sans aucune adresse');
+});
+
+test('pied Telegraph : ajouté en fin d’article, après le corps et les images', () => {
+  const cover = { src: '/file/c.jpg', placement: 'cover' };
+  const nodes = nodesFromArticle({
+    text: 'Premier paragraphe.\n\nSecond paragraphe.',
+    images: [cover],
+    footer: articleFooterNodes({ journalUrl: 'https://journal.test/', supportUrl: 'https://s.test/', creatorName: 'Pesce Hounyo' }),
+  });
+  assert.equal(nodes[0].tag, 'figure', 'la couverture n’ouvre plus l’article');
+  assert.equal(nodes[nodes.length - 3].tag, 'hr', 'le pied n’est pas en fin d’article');
+  assert.ok(footerText(nodes.slice(-2)).includes('https://journal.test/'));
+  // Sans pied demandé, l'article est strictement inchangé (aucune régression).
+  const bare = nodesFromArticle({ text: 'Premier paragraphe.\n\nSecond paragraphe.', images: [cover] });
+  assert.equal(bare.filter((node) => node.tag === 'hr').length, 0, 'un pied s’ajoute sans être demandé');
+});
+
+test('reposer le pied ne l’empile jamais, et ne coupe jamais l’article', () => {
+  const footer = articleFooterNodes({ journalUrl: 'https://journal.test/', supportUrl: 'https://s.test/', creatorName: 'Pesce Hounyo' });
+  const body = [{ tag: 'p', children: ['Corps de l’article.'] }, { tag: 'figure', children: [{ tag: 'img', attrs: { src: '/file/a.jpg' } }] }];
+
+  // Page déjà munie du pied : il est retiré puis reposé — un seul pied au final.
+  const withFooter = [...body, ...footer];
+  const stripped = stripArticleFooter(withFooter);
+  assert.deepEqual(stripped, body, 'le retrait du pied abîme le corps de l’article');
+  assert.equal([...stripped, ...footer].filter((node) => node.tag === 'hr').length, 1, 'pied empilé');
+
+  // Page sans pied : rien n'est retiré.
+  assert.deepEqual(stripArticleFooter(body), body);
+
+  // Page contenant une ligne de séparation ÉDITORIALE : on n'y touche pas.
+  const editorialRule = [...body, { tag: 'hr' }, { tag: 'p', children: ['Encadré de la rédaction.'] }];
+  assert.deepEqual(stripArticleFooter(editorialRule), editorialRule, 'une séparation éditoriale a été prise pour un pied');
+  assert.deepEqual(stripArticleFooter(null), []);
+});
+
+// ——————————————————————————————————————————————————————————————————————————
 // C. Autorisation : personne ne corrige une publication sans preuve d'identité serveur
 // ——————————————————————————————————————————————————————————————————————————
 
@@ -207,6 +262,45 @@ test('lien profond Telegram : jeu de caractères respecté, repli honnête sinon
   assert.equal(articleTelegramLink('x'.repeat(60)), null, 'identifiant trop long accepté');
 });
 
+test('un article distribué envoie le lecteur DANS le journal, pas sur la page d’hébergement', () => {
+  const source = read('api/studio.js');
+  // Le texte distribué sur le canal est construit par une seule fonction, à partir du lien de
+  // lecture — jamais à partir de l'URL Telegraph.
+  const helper = source.slice(source.indexOf('function readLink('), source.indexOf('// Pied des pages Telegraph'));
+  assert.ok(helper.includes('articleTelegramLink(postId) || articleLink(postId)'), 'le lien de lecture n’ouvre pas le Mini App');
+  assert.ok(helper.includes('function articleDistributionText('), 'aucun texte de distribution dédié');
+  assert.ok(!helper.includes('articleUrl'), 'le texte distribué repart de l’URL Telegraph');
+
+  // Les deux chemins (publication et correction) utilisent ce même texte.
+  const publish = source.slice(source.indexOf("action === 'article_publish'"), source.indexOf("action === 'article_update'"));
+  assert.ok(publish.includes('articleDistributionText(title, id)'), 'la publication distribue encore le lien Telegraph');
+  assert.ok(!/text: `\$\{title\}\\n\\n\$\{canonical\.articleUrl/.test(publish), 'lien Telegraph distribué');
+  const update = source.slice(source.indexOf("action === 'article_update'"), source.indexOf("action === 'live_rtmp'"));
+  assert.ok(update.includes('articleDistributionText(title, post.id)'), 'la correction distribue encore le lien Telegraph');
+
+  // La page Telegraph reste référencée dans Neon : elle héberge toujours l'article et reste
+  // proposée en lecture secondaire, elle n'est simplement plus la destination du canal.
+  assert.ok(source.includes('articleUrl: page.url'), 'la référence Telegraph a été perdue');
+});
+
+test('lecture : le lien de distribution n’apparaît jamais dans le corps lu', async () => {
+  await import('../lib/reader-format.js');
+  const { readerBody, readerBodySource } = globalThis.PESCE_READER_FORMAT;
+  // Forme distribuée désormais : titre + lien profond vers le Mini App.
+  const post = {
+    text: 'Titre de l’article\n\nhttps://t.me/PesceStudioBot?startapp=post_studio_abc',
+    articleBody: 'Premier paragraphe du dossier.\n\nSecond paragraphe du dossier.',
+    articleUrl: 'https://telegra.ph/Titre-09-15',
+  };
+  const html = readerBody(readerBodySource(post));
+  assert.ok(html.includes('Premier paragraphe du dossier.'), 'le corps canonique n’est pas lu');
+  assert.ok(!html.includes('t.me'), 'le lien de distribution apparaît dans le corps lu');
+  assert.ok(!html.includes('telegra.ph'), 'l’URL d’hébergement apparaît dans le corps lu');
+  // Ancienne forme (lien Telegraph dans le texte) : toujours filtrée de la même façon.
+  const legacy = readerBody(readerBodySource({ text: 'Titre\n\nhttps://telegra.ph/Titre-01-01' }));
+  assert.ok(!legacy.includes('telegra.ph'));
+});
+
 test('le journal distribue le lien de LECTURE en plus du soutien (clavier de publication)', () => {
   const source = read('api/studio.js');
   assert.ok(source.includes('function postMarkup('), 'aucun clavier de publication dédié');
@@ -274,12 +368,27 @@ test('partage : le lien partagé est le lien canonique, jamais l’URL de sessio
   assert.ok(!/const url = window\.location\.href/.test(block), 'URL de session partagée');
 });
 
-test('routage : ?post=, #post- historique et startapp Telegram mènent tous à l’article', () => {
+test('routage : ?post=, ?article=, #post- historique et startapp Telegram mènent tous à l’article', () => {
   const app = read('app.js');
   assert.ok(app.includes('function routeFromQuery('), 'lien ?post= non pris en charge');
-  assert.ok(app.includes("new URLSearchParams(location.search).get('post')"), 'paramètre ?post= non lu');
+  assert.ok(app.includes("query.get('post')"), 'paramètre ?post= non lu');
+  assert.ok(app.includes("query.get('article')"), 'lien de retour depuis Telegraph (?article=) non lu');
   assert.ok(app.includes("hash.startsWith('post-')"), 'les ancres #post- déjà partagées ne fonctionnent plus');
   assert.ok(app.includes("startParam.startsWith('post_')"), 'lien profond Telegram vers un article non pris en charge');
+  // Un lien venu de Telegraph se résout par le CHEMIN de la page, clé stable dans le temps.
+  const resolver = app.slice(app.indexOf('async function openReaderByArticle('), app.indexOf('function routeFromStartParam('));
+  assert.ok(resolver.includes('PESCE.telegraphPathOf(post.articleUrl)'), 'la résolution ne passe pas par le chemin Telegraph');
+  assert.ok(resolver.includes("fetchJson('./api/content"), 'la résolution n’utilise pas le flux public existant');
+});
+
+test('lien de retour depuis Telegraph : chemin stable, jamais l’identifiant de ligne', () => {
+  assert.equal(telegraphPathOf('https://telegra.ph/Mon-Article-09-15'), 'Mon-Article-09-15');
+  assert.equal(telegraphPathOf('Mon-Article-09-15'), 'Mon-Article-09-15');
+  assert.equal(telegraphPathOf('https://telegra.ph/Mon-Article-09-15?x=1#y'), 'Mon-Article-09-15');
+  assert.equal(telegraphPathOf(''), '');
+  assert.equal(articleLinkFromTelegraph('https://telegra.ph/Mon-Article-09-15'), `${PESCE.MINI_APP_URL}?article=Mon-Article-09-15`);
+  // Sans chemin exploitable, on renvoie au journal plutôt qu'à un lien cassé.
+  assert.equal(articleLinkFromTelegraph(''), PESCE.MINI_APP_URL);
 });
 
 test('frontière : le Studio reste privé, son adresse n’est visible que côté autorisé', () => {

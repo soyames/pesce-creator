@@ -80,6 +80,27 @@ const ROUTES = [
     ],
   },
   {
+    // Retour depuis la page d'hébergement Telegraph : le lecteur qui a ouvert telegra.ph
+    // retrouve l'article DANS le journal, par le chemin de la page (clé stable).
+    name: 'web-retour-telegraph', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&article=Le-numerique-africain-a-besoin-de-confiance-09-11-2`, widths: [390],
+    readyExpr: `!document.getElementById('reader').hidden && document.querySelector('#readerContent h1') !== null`,
+    asserts: [
+      ['l\'article est retrouvé par son chemin Telegraph', `document.querySelector('#readerContent h1').textContent.includes('Le numérique africain')`, true],
+      ['le corps est lu dans le journal, pas sur Telegraph', `document.querySelector('#readerContent .reader-body').textContent.length > 80`, true],
+      ['la découverte et le soutien sont là', `document.getElementById('readerContent').textContent.includes('Découvrir plus de Pesce') && !!document.querySelector('#readerContent [data-reader-support]')`, true],
+    ],
+  },
+  {
+    // Chemin Telegraph inconnu : état honnête, pas d'article arbitraire.
+    name: 'web-retour-telegraph-inconnu', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&article=Page-Inexistante-01-01`, widths: [390],
+    readyExpr: `!document.getElementById('reader').hidden && document.getElementById('readerContent').textContent.includes('introuvable')`,
+    asserts: [
+      ['état « introuvable » explicite', `document.getElementById('readerContent').textContent.includes('Publication introuvable')`, true],
+      ['aucun article arbitraire affiché', `document.querySelector('#readerContent h1') === null`, true],
+      ['sortie vers le journal proposée', `!!document.querySelector('#readerContent [data-reader-home]')`, true],
+    ],
+  },
+  {
     // Lien périmé, retiré ou incomplet : échec franc, jamais un cul-de-sac.
     name: 'web-article-introuvable', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&post=inexistant-999`, widths: [390],
     readyExpr: `!document.getElementById('reader').hidden && document.getElementById('readerContent').textContent.includes('introuvable')`,

@@ -24,4 +24,6 @@ export const STAR_TIERS = P.STAR_TIERS;
 export const SUPPORT_TOPICS = P.SUPPORT_TOPICS;
 export const articleLink = P.articleLink;
 export const articleTelegramLink = P.articleTelegramLink;
+export const articleLinkFromTelegraph = P.articleLinkFromTelegraph;
+export const telegraphPathOf = P.telegraphPathOf;
 export default P;

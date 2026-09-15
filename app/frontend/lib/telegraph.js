@@ -280,11 +280,66 @@ function figureNode(image) {
   return { tag: 'figure', children };
 }
 
+// — Pied d'article Telegraph : la sortie vers le journal.
+//
+// telegra.ph est l'hébergement de Telegram, pas notre page : il ne rend que du CONTENU
+// d'article (paragraphes, images, liens). On ne peut donc pas y poser la navigation de Pesce,
+// la découverte d'autres publications ni de vrais boutons. Ce qu'on PEUT faire — et ce que
+// fait ce pied — c'est offrir au lecteur arrivé sur Telegraph des liens explicites vers le
+// journal complet et vers le soutien, pour que la page cesse d'être un cul-de-sac.
+export function articleFooterNodes({ journalUrl, supportUrl, creatorName, articleUrl = null } = {}) {
+  if (!journalUrl && !supportUrl) return [];
+  const links = [];
+  if (articleUrl) links.push({ tag: 'a', attrs: { href: articleUrl }, children: ['Lire cet article dans Pesce Studio'] });
+  if (journalUrl) links.push({ tag: 'a', attrs: { href: journalUrl }, children: [articleUrl ? 'Toutes les publications' : 'Lire toutes les publications de Pesce'] });
+  if (supportUrl) links.push({ tag: 'a', attrs: { href: supportUrl }, children: ['⭐ Soutenir le travail de Pesce'] });
+  const children = [];
+  links.forEach((link, index) => {
+    if (index > 0) children.push(' · ');
+    children.push(link);
+  });
+  return [
+    { tag: 'hr' },
+    {
+      tag: 'p',
+      children: [
+        { tag: 'strong', children: ['Pesce Studio'] },
+        creatorName ? ` — journal indépendant de ${creatorName}.` : ' — journal indépendant.',
+      ],
+    },
+    { tag: 'p', children },
+  ];
+}
+
+// Texte brut d'un arbre de nœuds Telegraph (pour reconnaître un pied déjà posé).
+function nodeText(node) {
+  if (typeof node === 'string') return node;
+  if (!node || !Array.isArray(node.children)) return '';
+  return node.children.map(nodeText).join('');
+}
+
+// Retire un pied d'article DÉJÀ posé, pour pouvoir le reposer à jour sans l'empiler.
+// Règle stricte : on ne coupe qu'à partir du DERNIER `hr` et seulement si tout ce qui suit
+// porte la signature du pied de Pesce Studio. Sans cette certitude, le contenu est laissé
+// intact — mieux vaut un pied en double qu'un paragraphe d'article supprimé.
+export function stripArticleFooter(nodes) {
+  if (!Array.isArray(nodes)) return [];
+  let cut = -1;
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    if (nodes[index] && nodes[index].tag === 'hr') { cut = index; break; }
+  }
+  if (cut === -1) return nodes;
+  const tail = nodes.slice(cut + 1).map(nodeText).join(' ');
+  if (!tail.includes('Pesce Studio') || !tail.includes('Soutenir le travail de Pesce')) return nodes;
+  return nodes.slice(0, cut);
+}
+
 // Nœuds d'article avec images : paragraphes du texte + figures Telegraph.
 // La couverture (placement cover) vient en tête ; les images « dans l'article » s'insèrent
 // après le paragraphe choisi (afterParagraph, 1 = après le premier paragraphe).
+// `footer` (nœuds) est ajouté en fin d'article — voir articleFooterNodes.
 // `normalize` injectable : mêmes règles d'acceptation que validateArticleImages.
-export function nodesFromArticle({ text, images = [], normalize } = {}) {
+export function nodesFromArticle({ text, images = [], normalize, footer = [] } = {}) {
   const paragraphs = String(text || '')
     .split(/\n{2,}/)
     .map((block) => block.trim())
@@ -308,5 +363,6 @@ export function nodesFromArticle({ text, images = [], normalize } = {}) {
   for (const [after, figures] of inlineByAfter) {
     if (after > nodes.length) result.push(...figures);
   }
+  if (Array.isArray(footer) && footer.length) result.push(...footer);
   return result.filter(Boolean);
 }

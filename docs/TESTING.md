@@ -128,7 +128,9 @@ Publier depuis l’app Telegram (compte de la chaîne), puis vérifier la base P
 2. L'article affiche l'identité Pesce, la navigation publique (À la une, Écrits, Directs, Photos, Soutenir) et le bouton de soutien.
 3. En bas : **« Découvrir plus de Pesce »** avec d'autres publications réelles — jamais l'article courant, jamais un brouillon, jamais une publication retirée.
 4. **Ouvrir le journal Pesce Studio** et **Toutes les publications** ramènent dans l'application.
-5. Depuis le canal Telegram : **📖 Lire dans Pesce Studio** ouvre le Mini App **sur l'article** (`?startapp=post_<id>`).
+5. Depuis le canal Telegram : le message d'un article porte le titre et un lien **vers le journal** (plus vers telegra.ph), et le bouton **📖 Lire dans Pesce Studio** ouvre le Mini App **sur l'article**.
+5b. Depuis une page telegra.ph (lien ancien, forwardé ou copié) : en bas de l'article, **« Lire cet article dans Pesce Studio »** rouvre l'article dans le journal (`?article=<chemin>`). C'est la seule sortie possible — telegra.ph appartient à Telegram et ne peut pas rediriger.
+5c. Paramètres → **« Rediriger les articles déjà publiés »** : les anciens messages du canal pointent désormais vers le journal et les anciennes pages Telegraph reçoivent le pied. Relancer n'ajoute jamais de doublon ; les publications postées à la main depuis Telegram ne sont pas modifiables par le bot et sont comptées comme telles.
 6. Dans le Mini App, **Partager** diffuse le lien canonique `?post=<id>` (jamais l'URL de session Telegram).
 7. Lien périmé (`?post=inexistant`) ou publication retirée : « Publication introuvable » + sorties vers le journal. Jamais de page blanche.
 8. Les anciens liens `#post-…` déjà partagés fonctionnent toujours.

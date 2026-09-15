@@ -1293,6 +1293,12 @@ ${renderTelegraph()}
 <button id="reconcileButton" class="self-start px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button">Réconcilier maintenant</button>
 <p id="reconcileStatus" class="form-status" aria-live="polite"></p>
 </section>
+<section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm xl:col-span-2">
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Ramener les anciens articles dans le journal</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Les articles publiés avant cette évolution renvoient encore vers leur page telegra.ph, hébergée par Telegram — une page qui ne peut porter ni navigation, ni suggestions, ni bouton de soutien. Cette action reprend vos articles déjà publiés et, pour chacun : le <strong class="text-on-surface">message du canal</strong> pointe désormais vers la lecture dans Pesce Studio, et la <strong class="text-on-surface">page Telegraph</strong> reçoit en bas un lien « Lire cet article dans Pesce Studio ». Les pages et les messages sont modifiés sur place (mêmes adresses, contenu inchangé) ; relancer ne crée jamais de doublon. Les nouveaux articles sont déjà publiés de cette façon.</p>
+<button id="telegraphFooterButton" class="self-start px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Rediriger les articles déjà publiés</button>
+<p id="telegraphFooterStatus" class="form-status" aria-live="polite"></p>
+</section>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
 <h2 class="font-headline-sm text-headline-sm text-on-surface">Bouton de soutien du canal</h2>
 <p class="font-body-md text-body-md text-on-surface-variant">Les nouvelles publications reçoivent automatiquement le bouton « ⭐ Soutenir le travail de Pesce ». Utilisez ceci une fois pour les publications déjà présentes.</p>
@@ -1709,6 +1715,21 @@ ${renderKpi('favorite', Number(data.reactions || 0).toLocaleString('fr-FR'), 'R�
       finally { button.disabled = false; button.textContent = 'Charger les statistiques Telegram'; }
     });
     document.getElementById('backfillSupportButton')?.addEventListener('click', backfillSupport);
+    document.getElementById('telegraphFooterButton')?.addEventListener('click', async () => {
+      const button = document.getElementById('telegraphFooterButton');
+      const status = document.getElementById('telegraphFooterStatus');
+      button.disabled = true; button.textContent = 'Redirection en cours…';
+      try {
+        const response = await studioAction({ action: 'telegraph_footer_backfill' });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) { showLogin(); return; }
+        if (!response.ok) throw new Error(data.message || 'Redirection impossible.');
+        // Le rechargement re-rend les volets : la confirmation passe par le bandeau, qui survit.
+        flash(data.message || 'Articles redirigés vers le journal.');
+        await load();
+      } catch (error) { if (status) status.textContent = error.message || 'Redirection impossible.'; }
+      finally { button.disabled = false; button.textContent = 'Rediriger les articles déjà publiés'; }
+    });
     document.getElementById('reconcileButton')?.addEventListener('click', async () => {
       const status = document.getElementById('reconcileStatus');
       const button = document.getElementById('reconcileButton');

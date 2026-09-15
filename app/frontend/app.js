@@ -1447,9 +1447,33 @@ function routeFromHash() {
 // commençant par « post- ». Le paramètre `startapp=post_<id>` en est l'équivalent Telegram.
 function routeFromQuery() {
   try {
-    const postId = new URLSearchParams(location.search).get('post');
-    return postId ? { post: postId } : null;
+    const query = new URLSearchParams(location.search);
+    const postId = query.get('post');
+    if (postId) return { post: postId };
+    // ?article=<chemin telegra.ph> : lien de retour porté par la page d'hébergement. La clé est
+    // le chemin Telegraph, stable pour toujours, et non l'identifiant de ligne.
+    const article = query.get('article');
+    return article ? { article } : null;
   } catch { return null; }
+}
+
+// Ouvre le lecteur à partir d'un CHEMIN TELEGRAPH (lien venu de la page d'hébergement) :
+// on retrouve la publication par son URL d'article dans le flux public. Introuvable → le
+// lecteur affiche son état honnête, avec les sorties vers le journal.
+async function openReaderByArticle(reference) {
+  const wanted = PESCE.telegraphPathOf(reference);
+  if (!wanted) { openSection('ecrits'); return; }
+  let posts = lastFeed;
+  if (!posts.length) {
+    try {
+      const data = await fetchJson('./api/content?limit=50', { cache: 'no-store' });
+      posts = Array.isArray(data.posts) ? data.posts : [];
+      lastFeed = posts;
+      cachePosts(posts);
+    } catch { posts = []; }
+  }
+  const match = posts.find((post) => post.articleUrl && PESCE.telegraphPathOf(post.articleUrl) === wanted);
+  openReader(match ? match.id : `article:${wanted}`);
 }
 
 function routeFromStartParam(startParam) {
@@ -1492,6 +1516,7 @@ selectStars(selectedStars);
   if (route?.filter) currentFilter = route.filter;
   openSection(firstSection);
   if (route?.post) openReader(route.post);
+  else if (route?.article) openReaderByArticle(route.article);
   trackOpen();
   if (inTelegram) {
     if (startParam === 'studio' || route?.studio) {

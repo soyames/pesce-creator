@@ -18,11 +18,11 @@ import { getChannelBroadcastStats, getChannelLiveState, getChannelRtmp } from '.
 import { creatorTelegramUserIds, isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { signMedia, verifyMediaToken } from '../lib/media-token.js';
-import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, detectImageFormat, editTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, telegraphPathFromUrl, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
+import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, articleFooterNodes, createTelegraphAccount, createTelegraphPage, detectImageFormat, editTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, stripArticleFooter, telegraphPathFromUrl, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
 import { normalizeYouTubeUrl } from '../lib/youtube.js';
-import { articleTelegramLink, CHANNEL_HANDLE, CHANNEL_USERNAME, CREATOR_NAME, MINI_APP_URL, SUPPORT_URL } from '../lib/config.js';
+import { articleLink, articleLinkFromTelegraph, articleTelegramLink, CHANNEL_HANDLE, CHANNEL_USERNAME, CREATOR_NAME, MINI_APP_URL, SUPPORT_URL } from '../lib/config.js';
 
 // Audio enregistré/importer depuis le navigateur : limite du corps JSON serverless (~4,5 Mo),
 // soit ~3,3 Mo de données audio — plusieurs minutes de note vocale en Opus.
@@ -167,14 +167,22 @@ export default async function handler(req, res) {
 
     // Diffusion Telegram : secondaire. Identité attachée à la ligne canonique (même message,
     // une seule publication) ; un échec est enregistré et n'efface rien.
-    async function distributePost(canonical, { text }) {
+    // `textFor(id)` : texte dépendant de l'identité canonique (lien de LECTURE dans le Mini App).
+    // `text` reste accepté pour les publications dont le texte n'en dépend pas (dépêches, vidéos).
+    async function distributePost(canonical, { text, textFor = null, disablePreview = false }) {
+      const bodyFor = (id) => (textFor ? textFor(id) : text);
       if (canonical.messageId) {
         // Déjà distribuée (ou le webhook a déjà porté l'identité) : jamais de second envoi.
         await updatePost(canonical.id, { distributionError: null }).catch(() => {});
         return { distributed: true, postId: canonical.id, messageId: Number(canonical.messageId) };
       }
       try {
-        const sent = await telegram(token, 'sendMessage', { chat_id: CHANNEL_HANDLE, text, disable_web_page_preview: false, reply_markup: supportMarkup() });
+        const sent = await telegram(token, 'sendMessage', {
+          chat_id: CHANNEL_HANDLE,
+          text: bodyFor(canonical.id),
+          disable_web_page_preview: disablePreview,
+          reply_markup: postMarkup(canonical.id),
+        });
         const messageId = Number(sent?.result?.message_id);
         const chatId = Number(sent?.result?.chat?.id);
         if (!messageId || !chatId) throw new Error('Réponse Telegram incomplète.');
@@ -185,12 +193,19 @@ export default async function handler(req, res) {
           distributedAt: new Date(),
         });
         await updatePost(postId, { distributionError: null });
-        // Le clavier « Lire dans Pesce Studio » est posé APRÈS l'attachement : l'identité
-        // canonique peut changer lors de la course normale avec le webhook, et le lien profond
-        // doit pointer vers la ligne réellement canonique. Au mieux : un échec laisse le
-        // message avec son bouton de soutien, jamais sans clavier.
-        await telegram(token, 'editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup: postMarkup(postId) })
-          .catch((error) => console.error('post markup update failed', postId, error.message));
+        // Course normale avec le webhook : l'identité canonique peut changer au moment de
+        // l'attachement. Le lien de lecture et le clavier doivent suivre la ligne réellement
+        // canonique — sinon le message du canal pointerait vers une publication disparue.
+        if (postId !== canonical.id) {
+          await telegram(token, 'editMessageText', {
+            chat_id: chatId,
+            message_id: messageId,
+            text: bodyFor(postId),
+            disable_web_page_preview: disablePreview,
+            reply_markup: postMarkup(postId),
+          }).then(() => updatePost(postId, { text: bodyFor(postId) }))
+            .catch((error) => console.error('post link correction failed', postId, error.message));
+        }
         return { distributed: true, postId, messageId };
       } catch (error) {
         console.error('telegram distribution failed', canonical.id, error.message);
@@ -249,7 +264,7 @@ export default async function handler(req, res) {
         if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré. Utilisez « Configurer Telegraph » dans le studio, puis enregistrez le jeton dans TELEGRAPH_ACCESS_TOKEN.' });
         let page;
         try {
-          page = await createTelegraphPage({ accessToken, title, content: nodesFromArticle({ text, images, normalize: imageNormalizer }), authorName: CREATOR_NAME });
+          page = await createTelegraphPage({ accessToken, title, content: nodesFromArticle({ text, images, normalize: imageNormalizer, footer: telegraphFooter() }), authorName: CREATOR_NAME });
         } catch (error) {
           console.error('telegraph page creation failed', error.message);
           return res.status(502).json({ message: 'Impossible de créer l’article Telegraph pour le moment. L’article n’a pas été publié — réessayez dans un instant.' });
@@ -275,11 +290,12 @@ export default async function handler(req, res) {
         try {
           // Le corps de l'article est persisté canoniquement dans Neon (article_body) : la
           // lecture dans le Mini App ne dépend JAMAIS de la page Telegraph, qui reste un
-          // hébergement externe secondaire. `text` garde le résumé de distribution Telegram.
+          // hébergement externe secondaire. `text` garde le résumé de distribution Telegram —
+          // il est aligné sur le lien de lecture dès que l'identité canonique est connue.
           canonical = await persistCanonicalPost({
             publishKey,
             contentType: 'text',
-            text: `${title}\n\n${page.url}`,
+            text: title,
             articleUrl: page.url,
             articleImageUrl: cover.src,
             articleBody: text,
@@ -290,7 +306,16 @@ export default async function handler(req, res) {
         }
       }
       if (draftId) await deleteDraft(draftId).catch((error) => console.error('draft removal failed', draftId, error.message));
-      const distribution = await distributePost(canonical, { text: `${title}\n\n${canonical.articleUrl || ''}` });
+      // Destination de lecture : le journal, pas la page d'hébergement. L'aperçu de lien est
+      // coupé (un lien profond Telegram n'a pas d'aperçu utile) — le bouton « 📖 Lire dans
+      // Pesce Studio » est l'entrée visible du message.
+      const distribution = await distributePost(canonical, {
+        textFor: (id) => articleDistributionText(title, id),
+        disablePreview: true,
+      });
+      // Le texte canonique reflète exactement ce qui est distribué sur le canal.
+      await updatePost(distribution.postId, { text: articleDistributionText(title, distribution.postId) })
+        .catch((error) => console.error('article canonical text sync failed', error.message));
       return res.status(200).json({
         ok: true, published: true, postId: distribution.postId,
         distributed: distribution.distributed,
@@ -345,9 +370,9 @@ export default async function handler(req, res) {
         ? images
         : (articleImageUrl ? [{ src: articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }] : []);
 
-      // Texte distribué sur Telegram : pour un article, le résumé (titre + lien INCHANGÉ) ;
-      // pour une dépêche, le texte lui-même.
-      const distributionText = isArticle ? [title, post.articleUrl || ''].filter(Boolean).join('\n\n') : text;
+      // Texte distribué sur Telegram : pour un article, titre + lien de LECTURE dans le journal
+      // (l'identité canonique est déjà fixée ici) ; pour une dépêche, le texte lui-même.
+      const distributionText = isArticle ? articleDistributionText(title, post.id) : text;
 
       // 1) CANONIQUE : Neon d'abord. Échec ici = rien n'a changé, on le dit.
       try {
@@ -369,7 +394,7 @@ export default async function handler(req, res) {
             accessToken,
             path: telegraphPath,
             title,
-            content: nodesFromArticle({ text, images: effectiveImages, normalize: imageNormalizer }),
+            content: nodesFromArticle({ text, images: effectiveImages, normalize: imageNormalizer, footer: telegraphFooter(telegraphPath) }),
             authorName: CREATOR_NAME,
           });
           telegraphUpdated = true;
@@ -387,7 +412,7 @@ export default async function handler(req, res) {
             chat_id: post.channelId || CHANNEL_HANDLE,
             message_id: Number(post.messageId),
             text: distributionText,
-            disable_web_page_preview: false,
+            disable_web_page_preview: isArticle,
             reply_markup: postMarkup(post.id),
           });
           telegramUpdated = true;
@@ -774,6 +799,90 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, recalled: true, telegramDeleted });
     }
 
+    // — Pose du pied « Pesce Studio » sur les articles Telegraph DÉJÀ publiés.
+    //
+    // Une page telegra.ph publiée avant cette évolution n'offre aucune sortie vers le journal.
+    // Cette action ajoute le pied à ces pages EXISTANTES, sans toucher à leur contenu : on relit
+    // la page telle qu'elle est, on retire un éventuel pied déjà posé, on rajoute le pied à jour
+    // et on réécrit la MÊME page (même `path` → même URL). Aucune republication, aucun doublon,
+    // aucune ligne Neon modifiée. Idempotent : relancer ne crée jamais de second pied.
+    if (action === 'telegraph_footer_backfill') {
+      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
+      const posts = await listChannelPosts({ limit: 50 });
+      const articles = posts.filter((post) => telegraphPathFromUrl(post.articleUrl));
+      let pagesUpdated = 0;
+      let messagesUpdated = 0;
+      let pagesFailed = 0;
+      let messagesFailed = 0;
+
+      for (const post of articles) {
+        const path = telegraphPathFromUrl(post.articleUrl);
+        const title = String(post.text || '').split('\n').map((line) => line.trim()).find((line) => line && !/^https?:\/\//.test(line)) || 'Pesce Studio';
+
+        // a) La page Telegraph reçoit (ou reçoit à nouveau) son pied de retour vers le journal.
+        // Le contenu existant est relu et réécrit tel quel : seul le pied change.
+        if (accessToken) {
+          try {
+            const page = await getTelegraphPage({ accessToken, path });
+            const content = Array.isArray(page?.content) ? page.content : null;
+            if (!content) throw new Error('contenu de page illisible');
+            await editTelegraphPage({
+              accessToken,
+              path,
+              title: page.title || title,
+              content: [...stripArticleFooter(content), ...telegraphFooter(path)],
+              authorName: page.author_name || CREATOR_NAME,
+            });
+            pagesUpdated += 1;
+          } catch (error) {
+            console.error('telegraph footer backfill failed', path, error.message);
+            pagesFailed += 1;
+          }
+        }
+
+        // b) Le message du canal cesse de renvoyer vers l'hébergeur : son lien devient le lien
+        // de LECTURE dans le journal. Seuls les messages envoyés par le bot sont modifiables —
+        // une publication postée à la main depuis Telegram est comptée comme non modifiable.
+        if (post.messageId && token) {
+          const distributionText = articleDistributionText(title, post.id);
+          try {
+            await telegram(token, 'editMessageText', {
+              chat_id: post.channelId || CHANNEL_HANDLE,
+              message_id: Number(post.messageId),
+              text: distributionText,
+              disable_web_page_preview: true,
+              reply_markup: postMarkup(post.id),
+            });
+            await updatePost(post.id, { text: distributionText }).catch((error) => console.error('relink canonical text failed', post.id, error.message));
+            messagesUpdated += 1;
+          } catch (error) {
+            // « message is not modified » : le message porte déjà le bon lien.
+            if (/not modified/i.test(error.message || '')) messagesUpdated += 1;
+            else {
+              console.error('channel relink failed', post.id, error.message);
+              messagesFailed += 1;
+            }
+          }
+        }
+      }
+
+      const parts = [`${articles.length} article(s) vérifié(s)`];
+      parts.push(accessToken ? `${pagesUpdated} page(s) Telegraph mise(s) à jour` : 'pages Telegraph ignorées (Telegraph non configuré)');
+      parts.push(`${messagesUpdated} message(s) du canal redirigé(s) vers le journal`);
+      if (pagesFailed || messagesFailed) {
+        parts.push(`${pagesFailed} page(s) et ${messagesFailed} message(s) non modifiables (publication postée à la main ou page d’un autre compte)`);
+      }
+      return res.status(200).json({
+        ok: true,
+        checked: articles.length,
+        pagesUpdated,
+        messagesUpdated,
+        pagesFailed,
+        messagesFailed,
+        message: `${parts.join(' · ')}.`,
+      });
+    }
+
     if (action === 'backfill_support') {
       const posts = await listChannelPosts({ limit: 50 });
       let updated = 0;
@@ -926,6 +1035,35 @@ function editorialImageUploadError(error) {
 
 function supportMarkup() {
   return { inline_keyboard: [[{ text: '⭐ Soutenir le travail de Pesce', url: SUPPORT_URL }]] };
+}
+
+// Lien de LECTURE d'une publication. Telegraph héberge l'article (Instant View, sauvegarde
+// externe) mais n'en est PAS la destination de lecture : on lit dans Pesce Studio, où l'article
+// vit avec la navigation, les autres publications et le soutien. Le lien profond ouvre le Mini
+// App sur l'article ; hors de ce jeu de caractères, on retombe sur le lien web, qui marche partout.
+function readLink(postId) {
+  return articleTelegramLink(postId) || articleLink(postId);
+}
+
+// Texte distribué sur le canal pour un ARTICLE : titre + lien de lecture dans le journal.
+function articleDistributionText(title, postId) {
+  return `${title}\n\n${readLink(postId)}`;
+}
+
+// Pied des pages Telegraph : la seule sortie possible vers Pesce depuis une page hébergée par
+// Telegram (telegra.ph ne rend que du contenu — ni navigation, ni boutons, ni découverte).
+// `postId` n'est PAS utilisé : l'identité canonique peut encore changer lors de la course avec
+// le webhook, et un lien mort dans un article publié serait pire que pas de lien du tout.
+// `telegraphPath` : quand on le connaît, le pied ouvre CET article dans le journal. La clé est
+// le chemin Telegraph — stable pour toujours, contrairement à l'identifiant de ligne, qui peut
+// encore changer lors de la course avec le webhook au moment de la publication.
+function telegraphFooter(telegraphPath = null) {
+  return articleFooterNodes({
+    journalUrl: MINI_APP_URL,
+    supportUrl: SUPPORT_URL,
+    creatorName: CREATOR_NAME,
+    articleUrl: telegraphPath ? articleLinkFromTelegraph(telegraphPath) : null,
+  });
 }
 
 // Clavier d'une publication DONT on connaît l'identité canonique : « Lire dans Pesce Studio »

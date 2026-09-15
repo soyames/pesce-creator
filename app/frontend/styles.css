@@ -33,11 +33,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid #972a0a; outline-offs
 .rubric-btn:not(.rubric-active) { background: #efeeea; color: #58413c; }
 .rubric-btn:not(.rubric-active):hover { background: #eae8e4; }
 
-/* — Porte Telegram (navigateur hors Telegram) : carte du masthead. */
-.gateway-card { border: 1px solid #e0bfb7; }
-.telegram-button { display: block; width: 100%; padding: 14px 18px; border-radius: 12px; text-decoration: none; font-weight: 700; background: #972a0a; color: #ffffff; }
-.telegram-button:hover { background: #b84221; }
-
 /* — Lecteur : réglages du corps éditorial rendus en JS. */
 .reader-body p { margin: 0 0 1rem; }
 .reader-body p:last-child { margin-bottom: 0; }
