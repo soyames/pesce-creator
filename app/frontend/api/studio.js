@@ -461,15 +461,12 @@ export default async function handler(req, res) {
     if (action === 'telegram_stats') {
       try {
         const stats = await getChannelBroadcastStats({ channelUsername: CHANNEL_USERNAME });
-        const counters = stats?.counters || {};
-        return res.status(200).json({
-          ok: true,
-          followers: counters.followers || 0,
-          views: counters.views || 0,
-          shares: counters.shares || 0,
-          reactions: counters.reactions || 0,
-          notifications: counters.notifications || 0,
-        });
+        // Forme non reconnue : on le DIT, au lieu d'afficher des zéros qui passeraient pour
+        // des mesures réelles (règle du Studio : jamais de chiffres inventés).
+        if (!stats) {
+          return res.status(503).json({ message: 'Telegram n’a pas fourni de statistiques pour ce canal. Elles n’apparaissent qu’à partir d’un certain nombre d’abonnés — réessayez plus tard.' });
+        }
+        return res.status(200).json({ ok: true, ...stats });
       } catch (error) {
         console.error('telegram stats failed', error.message);
         return res.status(503).json({ message: mtProtoEditorialError(error) });
@@ -1058,6 +1055,23 @@ export function mtProtoEditorialError(error) {
   const raw = String(error?.message || '');
   if (/CHAT_ADMIN_REQUIRED/i.test(raw)) {
     return 'Cette opération nécessite une session MTProto d’un administrateur du canal. La session configurée n’a pas les droits d’administration sur le canal — régénérez-la avec un compte administrateur (procédure scripts/mtproto-setup.mjs), puis redéployez.';
+  }
+  // Session expirée, révoquée ou créée avec d'autres identifiants : ce n'est PAS un problème de
+  // droits, et le dire éviterait de chercher au mauvais endroit.
+  if (/AUTH_KEY_(UNREGISTERED|INVALID)|SESSION_(REVOKED|EXPIRED)|USER_DEACTIVATED/i.test(raw)) {
+    return 'La session MTProto n’est plus valide (expirée ou révoquée) — régénérez-la avec le compte administrateur du canal (procédure scripts/mtproto-setup.mjs), puis redéployez.';
+  }
+  // Le compte de la session ne voit pas le canal : il n'en est pas membre.
+  if (/CHANNEL_(PRIVATE|INVALID)/i.test(raw)) {
+    return 'Le compte de la session MTProto n’a pas accès à ce canal : ajoutez-le au canal comme administrateur, puis réessayez.';
+  }
+  if (/BROADCAST_REQUIRED/i.test(raw)) {
+    return 'Telegram ne fournit ces statistiques que pour un canal de diffusion.';
+  }
+  if (/FLOOD_WAIT_(\d+)/i.test(raw)) {
+    const seconds = Number((raw.match(/FLOOD_WAIT_(\d+)/i) || [])[1]) || 0;
+    const minutes = Math.ceil(seconds / 60);
+    return `Telegram limite temporairement les demandes : réessayez dans ${minutes > 1 ? `${minutes} minutes` : 'une minute'}.`;
   }
   if (/MTProto non configuré/i.test(raw)) return raw;
   return 'Telegram a refusé cette opération pour le moment. Réessayez dans un instant.';

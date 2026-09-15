@@ -56,9 +56,18 @@ réel des appels sont fournis par l'API utilisateur MTProto (`phone.getGroupCall
 réservée au propriétaire du canal (documentée dans `scripts/mtproto-setup.mjs`) :
 
 1. Créer les identifiants sur my.telegram.org (API development tools).
-2. En local : `PESCE_MT_PROTO_API_ID=… PESCE_MT_PROTO_API_HASH=… node scripts/mtproto-setup.mjs`
-   (connexion interactive), puis sauvegarder la chaîne de session affichée.
+2. En local : `node scripts/mtproto-setup.mjs` — le script **demande `api_id` et `api_hash` en
+   saisie masquée** (rien sur la ligne de commande, donc rien dans l'historique du shell), puis
+   ouvre la connexion interactive. Se connecter avec le compte **administrateur du canal**, et
+   sauvegarder la chaîne de session affichée.
 3. Sur Vercel (type Secret) : `PESCE_MT_PROTO_API_ID`, `PESCE_MT_PROTO_API_HASH`, `PESCE_MT_PROTO_SESSION`.
+
+Les statistiques de diffusion suivent le schéma réel de Telegram (`stats.broadcastStats`) :
+valeurs « actuelle/précédente » et **moyennes PAR PUBLICATION** pour les vues, partages et
+réactions — jamais des totaux. `normalizeBroadcastStats` renvoie `null` sur une forme inconnue
+et le Studio le dit, **plutôt que d'afficher des zéros qui passeraient pour des mesures**.
+Telegram héberge ces statistiques sur un centre de données précis : `STATS_MIGRATE_<dc>` est
+rejoué sur le bon DC, sans quoi l'appel échoue avec une session pourtant valide.
 
 Sans configuration, toute opération MTProto échoue proprement (503 explicite) : la clé de
 stream ne transite QUE par l'API authentifiée du Studio — jamais par une route publique.

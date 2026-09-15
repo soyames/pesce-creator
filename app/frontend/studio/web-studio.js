@@ -1240,6 +1240,16 @@ ${replied && ticket.lastReply ? `<div class="bg-surface-container-low rounded-lg
   }
 
   // — AUDIENCE & STARS : indicateurs réels uniquement.
+  // Période réellement couverte par les statistiques Telegram : la donner évite de laisser
+  // croire que les chiffres portent sur toute la vie du canal.
+  function periodLabel(period) {
+    const from = period?.from ? new Date(period.from) : null;
+    const to = period?.to ? new Date(period.to) : null;
+    if (!from || !to || isNaN(from) || isNaN(to)) return 'Chiffres fournis par Telegram.';
+    const day = (date) => date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    return `Chiffres fournis par Telegram, du ${day(from)} au ${day(to)}.`;
+  }
+
   function renderAudience() {
     const audience = studioData?.audience || {};
     const payments = studioData?.recentPayments || [];
@@ -1702,13 +1712,18 @@ ${renderTelegraph()}
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) { showLogin(); return; }
         if (!response.ok) throw new Error(data.message || 'Statistiques Telegram indisponibles.');
+        // Telegram renvoie des MOYENNES PAR PUBLICATION pour les vues, partages et réactions :
+        // les libeller « Vues » ou « Partages » laisserait croire à des totaux.
+        const figure = (value) => (value === null || value === undefined ? '—' : Number(value).toLocaleString('fr-FR'));
         box.innerHTML = `
-${renderKpi('group', Number(data.followers || 0).toLocaleString('fr-FR'), 'Abonnés')}
-${renderKpi('visibility', Number(data.views || 0).toLocaleString('fr-FR'), 'Vues')}
-${renderKpi('send', Number(data.shares || 0).toLocaleString('fr-FR'), 'Partages')}
-${renderKpi('favorite', Number(data.reactions || 0).toLocaleString('fr-FR'), 'Réactions')}`;
+${renderKpi('group', figure(data.followers), 'Abonnés')}
+${renderKpi('visibility', figure(data.viewsPerPost), 'Vues par publication')}
+${renderKpi('send', figure(data.sharesPerPost), 'Partages par publication')}
+${renderKpi('favorite', figure(data.reactionsPerPost), 'Réactions par publication')}
+${data.notificationsPercent === null || data.notificationsPercent === undefined ? '' : renderKpi('notifications_active', `${data.notificationsPercent} %`, 'Notifications activées')}`;
         box.classList.remove('hidden');
         box.classList.add('grid');
+        if (status) status.textContent = periodLabel(data.period);
       } catch (error) {
         if (status) status.textContent = error.message || 'Statistiques Telegram indisponibles — cette capacité nécessite la configuration MTProto du canal.';
       }

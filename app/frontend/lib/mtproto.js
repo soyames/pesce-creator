@@ -73,12 +73,60 @@ export async function channelMessageExists({ channelUsername, messageId }) {
   return messages.length > 0;
 }
 
+// — Lecture des statistiques de diffusion renvoyées par Telegram (stats.broadcastStats).
+//
+// Telegram ne renvoie PAS de compteurs bruts : il renvoie des valeurs « actuelle / précédente »
+// (StatsAbsValueAndPrev) et des MOYENNES PAR PUBLICATION pour les vues, partages et réactions.
+// Les lire comme des totaux serait inventer des chiffres. Renvoie null si la forme n'est pas
+// reconnue — mieux vaut dire « indisponible » qu'afficher des zéros qui passeraient pour des
+// mesures réelles.
+export function normalizeBroadcastStats(stats) {
+  if (!stats || typeof stats !== 'object') return null;
+  const current = (value) => {
+    const number = Number(value?.current);
+    return Number.isFinite(number) ? Math.round(number) : null;
+  };
+  const followers = current(stats.followers);
+  const viewsPerPost = current(stats.viewsPerPost);
+  const sharesPerPost = current(stats.sharesPerPost);
+  const reactionsPerPost = current(stats.reactionsPerPost);
+  if (followers === null && viewsPerPost === null && sharesPerPost === null && reactionsPerPost === null) return null;
+
+  const part = Number(stats.enabledNotifications?.part);
+  const total = Number(stats.enabledNotifications?.total);
+  const notificationsPercent = Number.isFinite(part) && Number.isFinite(total) && total > 0
+    ? Math.round((part / total) * 100)
+    : null;
+
+  const toIso = (seconds) => {
+    const value = Number(seconds);
+    return Number.isFinite(value) && value > 0 ? new Date(value * 1000).toISOString() : null;
+  };
+  return {
+    followers,
+    viewsPerPost,
+    sharesPerPost,
+    reactionsPerPost,
+    notificationsPercent,
+    period: { from: toIso(stats.period?.minDate), to: toIso(stats.period?.maxDate) },
+  };
+}
+
 // Statistiques de diffusion du canal (Phase 3) — honnêtement indisponible sans configuration.
+// Telegram héberge les statistiques d'un canal sur un centre de données précis : la première
+// requête peut répondre STATS_MIGRATE_<dc>, auquel cas il faut la rejouer sur ce centre. Sans
+// ce rejeu, les statistiques échouent alors même que la session est parfaitement valide.
 export async function getChannelBroadcastStats({ channelUsername }) {
   if (!mtProtoConfigured()) throw new Error(NOT_CONFIGURED);
   const client = await mtProtoClient();
   const { Api } = await import('telegram');
   const peer = await client.getEntity(channelUsername);
-  const stats = await client.invoke(new Api.stats.GetBroadcastStats({ channel: peer }));
-  return stats;
+  const request = new Api.stats.GetBroadcastStats({ channel: peer });
+  try {
+    return normalizeBroadcastStats(await client.invoke(request));
+  } catch (error) {
+    const migrate = String(error?.message || '').match(/STATS_MIGRATE_(\d+)/i);
+    if (!migrate) throw error;
+    return normalizeBroadcastStats(await client.invoke(request, Number(migrate[1])));
+  }
 }

@@ -12,44 +12,9 @@
 // PESCE_STUDIO_PASSWORD_HASH (type Secret) avec la valeur affichée, et redéployer.
 // Ne collez jamais le mot de passe lui-même dans le dépôt, un ticket, un chat ou Vercel.
 import { hashPassword, SCRYPT_PARAMS, verifyPassword } from '../lib/password-auth.js';
+import { readSecret } from './secret-prompt.mjs';
 
 const MIN_LENGTH = 12;
-
-// Saisie masquée : aucun écho du mot de passe dans le terminal (ni dans un éventuel
-// enregistrement de session). Repli sans TTY : le script refuse plutôt que d'écrire en clair.
-function readSecret(prompt) {
-  return new Promise((resolve, reject) => {
-    if (!process.stdin.isTTY) {
-      reject(new Error('Terminal interactif requis : refus de lire un mot de passe sans saisie masquée.'));
-      return;
-    }
-    process.stdout.write(prompt);
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.setEncoding('utf8');
-    let value = '';
-    const onData = (chunk) => {
-      for (const char of chunk) {
-        if (char === '\r' || char === '\n') {
-          process.stdin.setRawMode(false);
-          process.stdin.pause();
-          process.stdin.removeListener('data', onData);
-          process.stdout.write('\n');
-          resolve(value);
-          return;
-        }
-        if (char === '\u0003') { // Ctrl+C
-          process.stdin.setRawMode(false);
-          process.stdout.write('\n');
-          process.exit(130);
-        }
-        if (char === '\u007f' || char === '\b') value = value.slice(0, -1);
-        else if (char >= ' ') value += char;
-      }
-    };
-    process.stdin.on('data', onData);
-  });
-}
 
 async function main() {
   console.error('Empreinte du mot de passe du Studio (scrypt). La saisie reste invisible.');

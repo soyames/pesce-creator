@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { getChannelLiveState, getChannelRtmp, mtProtoConfigured } from '../lib/mtproto.js';
+import { getChannelLiveState, getChannelRtmp, mtProtoConfigured, normalizeBroadcastStats } from '../lib/mtproto.js';
+import { mtProtoEditorialError } from '../api/studio.js';
 
 function withEnv(env, fn) {
   const saved = process.env;
@@ -46,4 +47,68 @@ test('la session MTProto n’est jamais écrite dans le dépôt', () => {
   assert.ok(setup.includes('console.log'), 'script de configuration présent');
   assert.ok(!/PESCE_MT_PROTO_SESSION\s*=\s*['"][A-Za-z0-9]/.test(setup), 'session codée en dur dans le script de configuration');
   assert.ok(setup.includes('client.session.save()'), 'la session doit être produite dynamiquement par la connexion');
+});
+
+// — Statistiques de diffusion : Telegram ne renvoie PAS de compteurs bruts.
+// La lecture doit suivre le schéma réel (stats.broadcastStats) : valeurs « actuelle/précédente »
+// et MOYENNES PAR PUBLICATION. Lire un champ `counters` inexistant renvoyait des zéros partout —
+// des chiffres inventés, présentés comme des mesures.
+test('normalizeBroadcastStats : schéma réel de Telegram, moyennes par publication', () => {
+  const stats = normalizeBroadcastStats({
+    followers: { current: 1240.0, previous: 1180.0 },
+    viewsPerPost: { current: 432.6, previous: 410.0 },
+    sharesPerPost: { current: 12.4, previous: 9.0 },
+    reactionsPerPost: { current: 38.2, previous: 30.0 },
+    enabledNotifications: { part: 620, total: 1240 },
+    period: { minDate: 1757894400, maxDate: 1758499200 },
+  });
+  assert.equal(stats.followers, 1240);
+  assert.equal(stats.viewsPerPost, 433, 'la moyenne par publication n’est pas arrondie');
+  assert.equal(stats.sharesPerPost, 12);
+  assert.equal(stats.reactionsPerPost, 38);
+  assert.equal(stats.notificationsPercent, 50);
+  assert.equal(stats.period.from, '2025-09-15T00:00:00.000Z');
+  assert.equal(stats.period.to, '2025-09-22T00:00:00.000Z');
+  // Aucun champ « counters » n'existe dans le schéma : s'y fier redonnerait des zéros.
+  assert.equal(normalizeBroadcastStats({ counters: { followers: 10, views: 20 } }), null, 'un champ inexistant est lu comme une mesure');
+});
+
+test('normalizeBroadcastStats : forme inconnue → null (jamais de zéros présentés comme des mesures)', () => {
+  assert.equal(normalizeBroadcastStats(null), null);
+  assert.equal(normalizeBroadcastStats(undefined), null);
+  assert.equal(normalizeBroadcastStats({}), null);
+  assert.equal(normalizeBroadcastStats('stats'), null);
+  // Une valeur partielle reste exploitable : on ne jette pas ce que Telegram a fourni.
+  const partial = normalizeBroadcastStats({ followers: { current: 52 } });
+  assert.equal(partial.followers, 52);
+  assert.equal(partial.viewsPerPost, null, 'une mesure absente doit rester absente, pas valoir 0');
+  assert.equal(partial.notificationsPercent, null);
+  // Division par zéro impossible sur le pourcentage de notifications.
+  assert.equal(normalizeBroadcastStats({ followers: { current: 1 }, enabledNotifications: { part: 5, total: 0 } }).notificationsPercent, null);
+});
+
+test('statistiques : le centre de données de Telegram est suivi (STATS_MIGRATE)', () => {
+  // Telegram héberge les statistiques d'un canal sur un DC précis et répond STATS_MIGRATE_<dc> :
+  // sans rejeu sur ce DC, les statistiques échouent avec une session pourtant valide.
+  const source = readFileSync(fileURLToPath(new URL('../lib/mtproto.js', import.meta.url)), 'utf8');
+  const block = source.slice(source.indexOf('export async function getChannelBroadcastStats'));
+  assert.ok(/STATS_MIGRATE_\(\d\+\)/.test(block) || block.includes('STATS_MIGRATE_'), 'la migration de centre de données n’est pas gérée');
+  assert.ok(block.includes('client.invoke(request, Number(migrate[1]))'), 'la requête n’est pas rejouée sur le bon centre de données');
+});
+
+test('messages MTProto : chaque échec désigne la bonne cause, jamais « droits manquants » par défaut', () => {
+  assert.match(mtProtoEditorialError(new Error('CHAT_ADMIN_REQUIRED')), /administrateur du canal/);
+  assert.match(mtProtoEditorialError(new Error('AUTH_KEY_UNREGISTERED')), /n’est plus valide/);
+  assert.match(mtProtoEditorialError(new Error('SESSION_REVOKED')), /n’est plus valide/);
+  assert.match(mtProtoEditorialError(new Error('CHANNEL_PRIVATE')), /n’a pas accès à ce canal/);
+  assert.match(mtProtoEditorialError(new Error('FLOOD_WAIT_120')), /2 minutes/);
+  assert.match(mtProtoEditorialError(new Error('MTProto non configuré : …')), /MTProto non configuré/);
+  // Chaque cause a SON message : une session expirée et un manque de droits ne doivent pas
+  // envoyer la créatrice chercher au même endroit.
+  const causes = ['CHAT_ADMIN_REQUIRED', 'AUTH_KEY_UNREGISTERED', 'CHANNEL_PRIVATE', 'FLOOD_WAIT_120', 'BROADCAST_REQUIRED']
+    .map((code) => mtProtoEditorialError(new Error(code)));
+  assert.equal(new Set(causes).size, causes.length, 'deux causes différentes donnent le même message');
+  // Un échec inconnu ne prétend jamais connaître la cause.
+  const unknown = mtProtoEditorialError(new Error('QUELQUE_CHOSE_D_INATTENDU'));
+  assert.ok(!/administrateur|plus valide|accès à ce canal/.test(unknown), 'une cause est devinée pour un échec inconnu');
 });
