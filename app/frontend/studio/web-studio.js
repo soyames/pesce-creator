@@ -303,6 +303,9 @@
   //   Messages ouverts→ studioData.openTickets (pesce_support_tickets, statut open)
   //   Ouvertures      → studioData.audience.last7Days (pesce_audience_events, 7 derniers jours)
   //   Visiteurs uniques→ studioData.audience.uniqueUsers (total cumulé)
+  // NOTE D'EXACTITUDE : ces deux mesures ne comptent que les ouvertures DEPUIS TELEGRAM —
+  // /api/track exige une initData valide. Les lecteurs du web ne sont pas comptés, et les
+  // libellés le disent : compter sans identité vérifiée serait gonflable à volonté, donc faux.
   //   Telegram Stars  → studioData.stars (pesce_payments, somme)
   //   Total éditorial → drafts + publications du même flux (brouillons · publiés)
   function renderBureau() {
@@ -325,8 +328,8 @@ ${renderStat('ecrits', 'auto_stories', String(textPosts.length), 'Écrits publi�
 ${renderStat('brouillons', 'drafts', String(drafts.length), 'Brouillons', 'Ébauches en cours')}
 ${renderStat('directs', 'podium', nextLive ? liveShortDate(nextLive.scheduledAt) : 'Aucun', 'Direct programmé', 'Régie des directs')}
 ${renderStat('messages', 'mark_email_unread', String(tickets), 'Messages ouverts', 'Sans réponse')}
-${renderStat('audience', 'send', Number(audience.last7Days || 0).toLocaleString('fr-FR'), 'Ouvertures', '7 derniers jours')}
-${renderStat('audience', 'group', Number(audience.uniqueUsers || 0).toLocaleString('fr-FR'), 'Visiteurs uniques', 'Total cumulé')}
+${renderStat('audience', 'send', Number(audience.last7Days || 0).toLocaleString('fr-FR'), 'Ouvertures Telegram', '7 derniers jours')}
+${renderStat('audience', 'group', Number(audience.uniqueUsers || 0).toLocaleString('fr-FR'), 'Lecteurs Telegram uniques', 'Total cumulé')}
 ${renderStat('audience', 'star', Number(studioData?.stars || 0).toLocaleString('fr-FR'), 'Telegram Stars reçues', 'Soutiens des lecteurs')}
 ${renderStat('ecrits', 'history_edu', String(drafts.length + posts.length), 'Total éditorial', `${drafts.length} brouillons · ${posts.length} publiés`)}
 </div>
@@ -1257,17 +1260,18 @@ ${replied && ticket.lastReply ? `<div class="bg-surface-container-low rounded-lg
 <div><span class="font-kicker-label text-kicker-label text-primary uppercase">Audience &amp; Soutiens</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Audience &amp; Stars</h1></div>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
 <h2 class="font-headline-sm text-headline-sm text-on-surface">Statistiques Telegram</h2>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Les statistiques de diffusion du canal (abonnés, vues, partages, réactions) sont fournies par Telegram — distinctes des indicateurs Pesce Studio ci-dessous. Elles sont chargées à la demande et ne sont jamais inventées.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Les statistiques de diffusion du canal (abonnés, vues, partages, réactions) sont fournies par Telegram — distinctes des indicateurs Pesce Studio ci-dessous. Telegram donne des <strong class="text-on-surface">moyennes par publication</strong>, pas des totaux, et n'ouvre ces chiffres qu'à partir d'un certain nombre d'abonnés. Ils sont chargés à la demande et ne sont jamais inventés.</p>
 <button id="telegramStatsButton" class="self-start px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Charger les statistiques Telegram</button>
 <div id="telegramStatsBox" class="hidden grid grid-cols-2 md:grid-cols-4 gap-space-sm"></div>
 <p id="telegramStatsStatus" class="form-status" aria-live="polite"></p>
 </section>
 <div class="grid grid-cols-2 xl:grid-cols-4 gap-space-md">
-${renderKpi('send', Number(audience.opens || 0).toLocaleString('fr-FR'), `Ouvertures (+${Number(audience.last7Days || 0).toLocaleString('fr-FR')} sur 7 jours)`)}
-${renderKpi('group', Number(audience.uniqueUsers || 0).toLocaleString('fr-FR'), 'Visiteurs uniques')}
+${renderKpi('send', Number(audience.opens || 0).toLocaleString('fr-FR'), `Ouvertures Telegram (+${Number(audience.last7Days || 0).toLocaleString('fr-FR')} sur 7 jours)`)}
+${renderKpi('group', Number(audience.uniqueUsers || 0).toLocaleString('fr-FR'), 'Lecteurs Telegram uniques')}
 ${renderKpi('star', Number(studioData?.stars || 0).toLocaleString('fr-FR'), 'Telegram Stars reçues')}
 ${renderKpi('volunteer_activism', Number(studioData?.supporters || 0).toLocaleString('fr-FR'), 'Soutiens')}
 </div>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant">Ces quatre chiffres sont des comptages réels de Pesce Studio. Les ouvertures et les lecteurs uniques ne concernent que Telegram : une lecture sur le web ne peut pas être rattachée à une identité vérifiée, et la compter sans cette garantie donnerait un chiffre gonflable — donc faux.</p>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md">
 <h2 class="font-headline-sm text-headline-sm text-on-surface">Dernières contributions</h2>
 ${payments.length ? payments.map((payment) => `<div class="flex items-center justify-between p-space-md bg-surface-container-low rounded-lg">

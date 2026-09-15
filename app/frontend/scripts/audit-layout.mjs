@@ -7,7 +7,7 @@
 //   - images cassées (naturalWidth 0),
 //   - éléments tronqués qui coupent du texte utile.
 // Usage : node scripts/audit-layout.mjs [portPreview=4173]
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -241,7 +241,16 @@ async function main() {
     'about:blank',
   ], { stdio: 'ignore' });
   const watchdog = setTimeout(() => { browser.kill(); process.exit(1); }, 600000);
-  const cleanup = () => { clearTimeout(watchdog); browser.kill(); };
+  // Windows : Chromium essaime des processus enfants que kill() ne touche pas. Sans purge de
+  // l'arbre, ils s'accumulent d'une exécution à l'autre jusqu'à épuiser la machine — et les
+  // pages ne deviennent alors « jamais prêtes », ce qui ressemble à tort à une régression.
+  const cleanup = () => {
+    clearTimeout(watchdog);
+    if (process.platform === 'win32' && browser.pid) {
+      try { spawnSync('taskkill', ['/PID', String(browser.pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* déjà terminé */ }
+    }
+    browser.kill();
+  };
   process.on('exit', cleanup);
 
   let browserSocketUrl = null;

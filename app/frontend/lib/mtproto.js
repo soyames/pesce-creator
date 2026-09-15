@@ -116,17 +116,52 @@ export function normalizeBroadcastStats(stats) {
 // Telegram héberge les statistiques d'un canal sur un centre de données précis : la première
 // requête peut répondre STATS_MIGRATE_<dc>, auquel cas il faut la rejouer sur ce centre. Sans
 // ce rejeu, les statistiques échouent alors même que la session est parfaitement valide.
+// Rôle réel du compte de la session sur le canal : 'creator', 'admin', 'member' ou null si la
+// question n'a pas pu être posée. Sert à distinguer un VRAI manque de droits d'un refus de
+// Telegram qui porte le même code d'erreur.
+export async function channelAdminStatus({ channelUsername }) {
+  if (!mtProtoConfigured()) throw new Error(NOT_CONFIGURED);
+  const client = await mtProtoClient();
+  const { Api } = await import('telegram');
+  const peer = await client.getEntity(channelUsername);
+  try {
+    const result = await client.invoke(new Api.channels.GetParticipant({ channel: peer, participant: 'me' }));
+    const kind = result?.participant?.className || '';
+    if (/Creator/i.test(kind)) return 'creator';
+    if (/Admin/i.test(kind)) return 'admin';
+    return 'member';
+  } catch {
+    return null;
+  }
+}
+
 export async function getChannelBroadcastStats({ channelUsername }) {
   if (!mtProtoConfigured()) throw new Error(NOT_CONFIGURED);
   const client = await mtProtoClient();
   const { Api } = await import('telegram');
   const peer = await client.getEntity(channelUsername);
   const request = new Api.stats.GetBroadcastStats({ channel: peer });
+  const invoke = async () => {
+    try {
+      return await client.invoke(request);
+    } catch (error) {
+      const migrate = String(error?.message || '').match(/STATS_MIGRATE_(\d+)/i);
+      if (!migrate) throw error;
+      return client.invoke(request, Number(migrate[1]));
+    }
+  };
   try {
-    return normalizeBroadcastStats(await client.invoke(request));
+    return normalizeBroadcastStats(await invoke());
   } catch (error) {
-    const migrate = String(error?.message || '').match(/STATS_MIGRATE_(\d+)/i);
-    if (!migrate) throw error;
-    return normalizeBroadcastStats(await client.invoke(request, Number(migrate[1])));
+    // Telegram répond CHAT_ADMIN_REQUIRED sur les statistiques même au PROPRIÉTAIRE du canal
+    // tant que celui-ci n'a pas atteint le seuil d'abonnés qui les ouvre. Confondre les deux
+    // causes enverrait la créatrice régénérer une session déjà parfaite : on pose donc la
+    // question des droits avant de conclure.
+    if (!/CHAT_ADMIN_REQUIRED/i.test(String(error?.message || ''))) throw error;
+    const role = await channelAdminStatus({ channelUsername }).catch(() => null);
+    if (role === 'creator' || role === 'admin') {
+      throw Object.assign(new Error('Statistiques de canal non encore ouvertes par Telegram.'), { code: 'stats_threshold' });
+    }
+    throw error;
   }
 }

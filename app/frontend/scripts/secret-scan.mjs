@@ -24,6 +24,10 @@ const PATTERNS = [
   // Empreinte de mot de passe du Studio committée par mégarde (format scrypt$N=…,r=…,p=…$sel$empreinte).
   // Elle n'est pas réversible, mais elle n'a rien à faire dans le dépôt : sa place est Vercel.
   { name: 'empreinte de mot de passe du Studio', pattern: /scrypt\$N=\d+,r=\d+,p=\d+\$[A-Za-z0-9_-]{8,}\$[A-Za-z0-9_-]{16,}/ },
+  // Chaîne de session MTProto (GramJS StringSession) : « 1 » suivi d'un long base64. C'est un
+  // accès COMPLET au compte Telegram — bien plus qu'un accès au canal. Elle ne doit jamais
+  // entrer dans le dépôt, même dans un script de diagnostic ou un fichier d'exemple.
+  { name: 'chaîne de session MTProto', pattern: /\b1[A-Za-z0-9+/]{200,}={0,2}/ },
 ];
 
 // Noms de fichiers interdits (hors .env.example, qui est un modèle sans valeur).

@@ -112,3 +112,64 @@ test('messages MTProto : chaque échec désigne la bonne cause, jamais « droits
   const unknown = mtProtoEditorialError(new Error('QUELQUE_CHOSE_D_INATTENDU'));
   assert.ok(!/administrateur|plus valide|accès à ce canal/.test(unknown), 'une cause est devinée pour un échec inconnu');
 });
+
+// — Deux causes, un seul code d'erreur Telegram. Le propriétaire du canal reçoit
+// CHAT_ADMIN_REQUIRED sur les statistiques tant que le seuil d'abonnés n'est pas atteint :
+// lui dire « régénérez la session » l'enverrait corriger ce qui fonctionne déjà.
+test('statistiques refusées à un administrateur : la cause réelle est nommée', () => {
+  const threshold = mtProtoEditorialError(Object.assign(new Error('Statistiques de canal non encore ouvertes par Telegram.'), { code: 'stats_threshold' }));
+  assert.match(threshold, /nombre d’abonnés/);
+  assert.match(threshold, /rien à corriger/);
+  assert.ok(!/régénérez|mtproto-setup/.test(threshold), 'on demande de régénérer une session déjà valide');
+
+  // Le vrai manque de droits garde, lui, son instruction de régénération.
+  const rights = mtProtoEditorialError(new Error('400: CHAT_ADMIN_REQUIRED (caused by stats.GetBroadcastStats)'));
+  assert.match(rights, /administrateur du canal/);
+  assert.match(rights, /mtproto-setup/);
+  assert.notEqual(threshold, rights, 'les deux causes donnent le même message');
+});
+
+test('le seuil n’est conclu qu’APRÈS vérification des droits réels', () => {
+  const source = readFileSync(fileURLToPath(new URL('../lib/mtproto.js', import.meta.url)), 'utf8');
+  const block = source.slice(source.indexOf('export async function getChannelBroadcastStats'));
+  assert.ok(block.includes('channelAdminStatus('), 'le rôle réel n’est pas vérifié avant de conclure');
+  assert.ok(block.includes("code: 'stats_threshold'"), 'la cause « seuil » n’est pas distinguée');
+  // Un simple membre garde l'erreur d'origine : on ne lui invente pas un seuil.
+  assert.ok(/role === 'creator' \|\| role === 'admin'/.test(block), 'le seuil serait conclu pour un non-administrateur');
+});
+
+// — RÈGLE : aucun chiffre inventé, et chaque libellé dit exactement ce qu'il mesure.
+test('audience : les libellés disent ce qui est réellement compté (Telegram uniquement)', () => {
+  const web = readFileSync(fileURLToPath(new URL('../studio/web-studio.js', import.meta.url)), 'utf8');
+  const mini = readFileSync(fileURLToPath(new URL('../studio.js', import.meta.url)), 'utf8');
+  const track = readFileSync(fileURLToPath(new URL('../api/track.js', import.meta.url)), 'utf8');
+
+  // La mesure exige une identité Telegram vérifiée : une lecture web n'est donc PAS comptée.
+  assert.ok(track.includes('validateTelegramInitData(initData, token)'), 'la mesure d’audience accepterait une identité non vérifiée');
+  assert.ok(track.includes('return res.status(401)'), 'un événement non authentifié serait compté');
+
+  // Les libellés ne doivent donc pas prétendre couvrir toute l'audience.
+  for (const [name, source] of [['web-studio.js', web], ['studio.js', mini]]) {
+    assert.ok(!/'Ouvertures'|>Ouvertures</.test(source), `${name} : « Ouvertures » sans préciser Telegram`);
+    assert.ok(!/'Visiteurs uniques'|>Visiteurs uniques</.test(source), `${name} : « Visiteurs uniques » sans préciser Telegram`);
+    assert.ok(/Ouvertures Telegram/.test(source), `${name} : la portée de la mesure n’est pas dite`);
+  }
+});
+
+test('statistiques : aucun chiffre n’est fabriqué en cas d’indisponibilité', () => {
+  const server = readFileSync(fileURLToPath(new URL('../api/studio.js', import.meta.url)), 'utf8');
+  const block = server.slice(server.indexOf("action === 'telegram_stats'"), server.indexOf("action === 'live_status_sync'"));
+  // Une forme non reconnue doit répondre « indisponible », jamais des zéros.
+  assert.ok(block.includes('if (!stats)'), 'une réponse illisible pourrait être servie telle quelle');
+  assert.ok(/503/.test(block), 'l’indisponibilité n’est pas signalée comme telle');
+  assert.ok(!/\|\| 0/.test(block), 'un compteur absent est remplacé par 0 (chiffre inventé)');
+
+  // Côté Studio, une mesure absente s'affiche « — », jamais 0.
+  const web = readFileSync(fileURLToPath(new URL('../studio/web-studio.js', import.meta.url)), 'utf8');
+  const panelStart = web.indexOf("action: 'telegram_stats'");
+  assert.ok(panelStart > 0, 'panneau des statistiques introuvable');
+  const panel = web.slice(panelStart, web.indexOf('periodLabel(data.period)', panelStart));
+  assert.ok(panel.includes("? '—' :"), 'une mesure absente serait affichée comme 0');
+  assert.ok(!/Number\(data\.\w+ \|\| 0\)/.test(panel), 'une mesure absente est convertie en 0');
+  assert.ok(panel.includes('par publication'), 'des moyennes par publication sont présentées comme des totaux');
+});

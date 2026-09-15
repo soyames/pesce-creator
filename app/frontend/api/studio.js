@@ -1053,6 +1053,12 @@ export default async function handler(req, res) {
 // (code, classe d'API) restent dans les journaux serveur, jamais dans l'interface.
 export function mtProtoEditorialError(error) {
   const raw = String(error?.message || '');
+  // Cause identifiée en amont : le compte EST administrateur (ou propriétaire) du canal, et
+  // Telegram refuse quand même. Rien à corriger — le dire, plutôt que d'envoyer la créatrice
+  // régénérer une session parfaitement valide.
+  if (error?.code === 'stats_threshold') {
+    return 'Telegram n’ouvre les statistiques d’un canal qu’à partir d’un certain nombre d’abonnés. Votre configuration est correcte — il n’y a rien à corriger : ces chiffres apparaîtront d’eux-mêmes quand le canal aura grandi.';
+  }
   if (/CHAT_ADMIN_REQUIRED/i.test(raw)) {
     return 'Cette opération nécessite une session MTProto d’un administrateur du canal. La session configurée n’a pas les droits d’administration sur le canal — régénérez-la avec un compte administrateur (procédure scripts/mtproto-setup.mjs), puis redéployez.';
   }

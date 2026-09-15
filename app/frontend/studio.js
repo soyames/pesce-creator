@@ -200,7 +200,7 @@
 ${renderKpiTile('draw', 'text-tertiary', String(drafts.length), 'Brouillon' + (drafts.length > 1 ? 's' : '') + ' actif' + (drafts.length > 1 ? 's' : ''))}
 ${renderKpiTile('sensors', 'text-primary', nextLive ? liveShortDate(nextLive.scheduledAt) : 'Aucun', 'Direct programmé')}
 ${renderKpiTile('mark_email_unread', 'text-primary-container', String(studioData?.openTickets || 0), 'Message' + ((studioData?.openTickets || 0) > 1 ? 's' : '') + ' ouvert' + ((studioData?.openTickets || 0) > 1 ? 's' : ''))}
-${renderKpiTile('send', 'text-tertiary', Number(audience.opens || 0).toLocaleString('fr-FR'), 'Ouvertures Pesce Studio')}
+${renderKpiTile('send', 'text-tertiary', Number(audience.opens || 0).toLocaleString('fr-FR'), 'Ouvertures Telegram')}
 </div>
 </div>
 ${renderChantiers()}
@@ -659,16 +659,16 @@ ${ticket.status === 'replied' && ticket.lastReply ? `<div class="bg-surface-cont
 <div class="flex flex-col gap-space-xs">
 <div class="flex items-center gap-space-xs"><span class="w-1.5 h-1.5 bg-primary rounded-full"></span><span class="font-kicker-label text-kicker-label text-primary uppercase">Audience &amp; Soutiens</span></div>
 <h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Audience</h1>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Ouvertures de Pesce Studio et soutiens Telegram Stars — sans métriques inventées.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Ouvertures depuis Telegram et soutiens Telegram Stars — comptages réels, sans métriques inventées. Les lectures faites sur le web ne sont pas comptées : elles ne peuvent pas être attribuées à une identité vérifiée.</p>
 </div>
 <div class="grid grid-cols-2 gap-space-sm">
 <div class="bg-surface-container-lowest p-space-md rounded-lg flex flex-col justify-between shadow-sm">
-<span class="font-meta-detail text-meta-detail text-on-surface-variant uppercase tracking-wider">Ouvertures</span>
+<span class="font-meta-detail text-meta-detail text-on-surface-variant uppercase tracking-wider">Ouvertures Telegram</span>
 <span class="font-headline-md text-headline-md text-on-surface leading-none font-bold my-space-xs">${Number(audience.opens || 0).toLocaleString('fr-FR')}</span>
 <span class="font-meta-detail text-[0.6875rem] text-primary">+${Number(audience.last7Days || 0).toLocaleString('fr-FR')} sur 7 jours</span>
 </div>
 <div class="bg-surface-container-lowest p-space-md rounded-lg flex flex-col justify-between shadow-sm">
-<span class="font-meta-detail text-meta-detail text-on-surface-variant uppercase tracking-wider">Visiteurs uniques</span>
+<span class="font-meta-detail text-meta-detail text-on-surface-variant uppercase tracking-wider">Lecteurs Telegram uniques</span>
 <span class="font-headline-md text-headline-md text-on-surface leading-none font-bold my-space-xs">${Number(audience.uniqueUsers || 0).toLocaleString('fr-FR')}</span>
 <span class="font-meta-detail text-[0.6875rem] text-secondary">Personnes distinctes</span>
 </div>

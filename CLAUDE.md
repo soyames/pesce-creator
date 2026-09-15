@@ -62,6 +62,17 @@ réservée au propriétaire du canal (documentée dans `scripts/mtproto-setup.mj
    sauvegarder la chaîne de session affichée.
 3. Sur Vercel (type Secret) : `PESCE_MT_PROTO_API_ID`, `PESCE_MT_PROTO_API_HASH`, `PESCE_MT_PROTO_SESSION`.
 
+**Diagnostic** (local, n'affiche que des statuts — jamais une valeur) :
+`node scripts/mtproto-doctor.mjs [--credentials <fichier my.telegram.org>] [--session <fichier>]`
+Il répond, ligne par ligne : session valide ? canal visible ? rôle réel sur le canal ? statistiques
+disponibles ? flux RTMP fourni ? À lancer avant tout redéploiement pour ne pas corriger au hasard.
+
+`CHAT_ADMIN_REQUIRED` sur les statistiques a **deux causes distinctes** portant le même code :
+un vrai manque de droits, OU un canal qui n'a pas encore atteint le seuil d'abonnés à partir
+duquel Telegram ouvre les statistiques — ce second cas frappe **même le propriétaire du canal**.
+`getChannelBroadcastStats` vérifie donc le rôle réel (`channelAdminStatus`) avant de conclure et
+lève `code: 'stats_threshold'` : la créatrice n'est jamais envoyée régénérer une session valide.
+
 Les statistiques de diffusion suivent le schéma réel de Telegram (`stats.broadcastStats`) :
 valeurs « actuelle/précédente » et **moyennes PAR PUBLICATION** pour les vues, partages et
 réactions — jamais des totaux. `normalizeBroadcastStats` renvoie `null` sur une forme inconnue
@@ -87,6 +98,8 @@ node scripts/assert-ui.mjs   # assertions navigateur (preview.mjs doit tourner)
 node scripts/audit-layout.mjs # audit géométrique mobile/bureau (preview.mjs doit tourner)
 node scripts/generate-pwa-icons.mjs            # icônes PWA depuis assets/profilePesce.png
 node scripts/generate-studio-password-hash.mjs # empreinte du mot de passe (local, interactif)
+node scripts/mtproto-setup.mjs                 # session MTProto (local, interactif, saisie masquée)
+node scripts/mtproto-doctor.mjs                # diagnostic MTProto (statuts seuls, aucun secret affiché)
 node --check <fichier>.js    # vérification de syntaxe
 ```
 
