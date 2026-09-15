@@ -22,21 +22,42 @@
     freeze({ value: 'autre', label: 'Autre sujet' }),
   ]);
 
+  const MINI_APP_URL = 'https://pesce-creator-nine.vercel.app/';
+  const BOT_URL = 'https://t.me/PesceStudioBot';
+
+  // Lien PUBLIC et partageable d'une publication : il ouvre le journal complet sur cet article
+  // (navigateur ordinaire comme Telegram) — jamais une page isolée. Source unique : aucun
+  // composant ne doit reconstruire cette forme à la main.
+  const articleLink = (postId) => `${MINI_APP_URL}?post=${encodeURIComponent(String(postId || ''))}`;
+
+  // Équivalent Telegram : ouvre le Mini App directement sur la publication. Le paramètre de
+  // démarrage Telegram n'accepte que [A-Za-z0-9_-] (64 caractères max) ; hors de ce jeu, on
+  // renvoie null et l'appelant retombe sur le lien web, qui fonctionne partout.
+  const articleTelegramLink = (postId) => {
+    const id = String(postId || '');
+    return /^[A-Za-z0-9_-]{1,58}$/.test(id) ? `${BOT_URL}?startapp=post_${id}` : null;
+  };
+
   globalThis.PESCE = freeze({
     APP_NAME: 'Pesce Studio',
     CREATOR_NAME: 'Pesce Hounyo',
     TAGLINE: 'Journaliste · Société · Opinion',
     BOT_USERNAME: 'PesceStudioBot',
-    BOT_URL: 'https://t.me/PesceStudioBot',
+    BOT_URL,
     CHANNEL_USERNAME: 'PesceHounyoOfficiel',
     CHANNEL_HANDLE: '@PesceHounyoOfficiel',
     CHANNEL_URL: 'https://t.me/PesceHounyoOfficiel',
     SUPPORT_URL: 'https://t.me/PesceStudioBot?startapp=support',
     STUDIO_URL: 'https://t.me/PesceStudioBot?startapp=studio',
-    MINI_APP_URL: 'https://pesce-creator-nine.vercel.app/',
+    // Bureau privé sur le web (portail de bureau, connexion mot de passe ou Google).
+    // Adresse canonique unique : aucun composant ne la reconstruit à la main.
+    WEB_STUDIO_URL: `${MINI_APP_URL}studio`,
+    MINI_APP_URL,
     YOUTUBE_HANDLE: '@gnonnouxopescehounyo2576',
     YOUTUBE_URL: 'https://www.youtube.com/@gnonnouxopescehounyo2576',
     STAR_TIERS,
     SUPPORT_TOPICS,
+    articleLink,
+    articleTelegramLink,
   });
 })();

@@ -41,22 +41,79 @@ const RGB = {
 // Chaque assertion : [label, expression JS évaluée dans la page, valeur attendue (ou true = vérifié dans l'expression)].
 const ROUTES = [
   {
-    name: 'gate', url: `http://127.0.0.1:${PREVIEW_PORT}/`, widths: [390],
+    // Navigateur ordinaire (hors Telegram) : le JOURNAL est lisible — plus de porte bloquante.
+    // Un lien partagé ne doit jamais aboutir à une impasse.
+    name: 'web-public', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web`, widths: [390, 1280],
+    readyExpr: `document.getElementById('homeLead').children.length > 0`,
     asserts: [
-      ['portail Telegram visible', `!document.getElementById('telegramGate').hidden`, true],
-      ['wordmark SVG présent', `!!document.querySelector('#telegramGate svg')`, true],
-      ['titre du wordmark', `document.querySelector('#telegramGate .masthead-title').textContent`, 'PESCE STUDIO'],
-      ['bouton bot → deep link startapp', `document.querySelector('#telegramGate .telegram-button').getAttribute('href')`, `${PESCE.BOT_URL}?startapp`],
-      ['bouton primaire terracotta', `getComputedStyle(document.querySelector('#telegramGate .telegram-button')).backgroundColor`, RGB.primary],
-      ['lien canal présent', `document.querySelector('#telegramGate [data-identity-href="channelUrl"]') !== null`, true],
-      ['lien « Connexion » discret vers /studio', `document.querySelector('#telegramGate a[href="/studio"]') !== null`, true],
+      ['aucune porte bloquante hors Telegram', `document.getElementById('telegramGate') === null`, true],
+      ['journal visible dans un navigateur ordinaire', `!document.getElementById('telegramApp').hidden`, true],
+      ['contexte non-Telegram réellement simulé', `window.Telegram === undefined`, true],
+      ['bandeau de lecture web affiché', `!document.getElementById('webBanner').hidden && document.getElementById('webBanner').textContent.includes('sur le web')`, true],
+      ['accès à Telegram proposé depuis le bandeau', `document.querySelector('#webBanner a[data-identity-href="botUrl"]').getAttribute('href')`, `${PESCE.BOT_URL}?startapp`],
+      ['navigation publique complète', `document.querySelectorAll('.nav-button').length >= 5`, true],
+      ['fil d\'accueil réellement chargé', `document.getElementById('homeLead').children.length > 0`, true],
+      ['lien « Connexion » discret vers /studio conservé', `document.querySelector('#telegramApp a[href="/studio"]') !== null`, true],
       ['favicon Pesce Studio présent', `document.querySelector('link[rel="icon"]')?.getAttribute('href') === '/assets/profilePesce.png'`, true],
+      ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
+    ],
+  },
+  {
+    // Parcours du LECTEUR : un lien d'article reçu par message ouvre l'article ET le journal.
+    name: 'web-article-partage', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&post=post-9`, widths: [390, 1280],
+    readyExpr: `!document.getElementById('reader').hidden && document.querySelector('#readerContent h1') !== null`,
+    asserts: [
+      ['l\'article partagé s\'ouvre hors Telegram', `document.querySelector('#readerContent h1').textContent.includes('Le numérique africain')`, true],
+      ['le corps canonique est lu depuis Pesce Studio', `document.querySelector('#readerContent .reader-body').textContent.includes('La confiance numérique')`, true],
+      ['l\'article appartient visiblement à Pesce Studio', `document.getElementById('readerContent').textContent.includes('Pesce Studio')`, true],
+      ['section « Découvrir plus de Pesce » présente', `document.getElementById('readerContent').textContent.includes('Découvrir plus de Pesce')`, true],
+      ['d\'autres publications sont proposées', `document.querySelectorAll('#readerContent [data-reader-nav]').length >= 3`, true],
+      ['l\'article en cours n\'est pas proposé à lui-même', `![...document.querySelectorAll('#readerContent [data-reader-nav]')].some((button) => button.dataset.post === 'post-9')`, true],
+      ['aucune publication retirée de la source proposée', `!document.getElementById('readerContent').textContent.includes('Test supprimé du canal')`, true],
+      ['accès explicite au journal complet', `!!document.querySelector('#readerContent [data-reader-home]') && !!document.querySelector('#readerContent [data-reader-section="ecrits"]')`, true],
+      ['soutien accessible depuis l\'article', `!!document.querySelector('#readerContent [data-reader-support]')`, true],
+      // Honnêteté de la métadonnée : un article jamais corrigé ne doit PAS annoncer de mise à jour.
+      ['aucune mention « Mis à jour » sur un article jamais corrigé', `!document.querySelector('#readerContent .text-secondary').textContent.includes('Mis à jour')`, true],
+      ['la date de publication reste affichée', `/\\d{4}/.test(document.querySelector('#readerContent .text-secondary').textContent)`, true],
+      ['navigation publique atteignable', `document.querySelectorAll('.nav-button').length >= 5`, true],
+      ['aucun débordement horizontal', `document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1`, true],
+    ],
+  },
+  {
+    // Lien périmé, retiré ou incomplet : échec franc, jamais un cul-de-sac.
+    name: 'web-article-introuvable', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&post=inexistant-999`, widths: [390],
+    readyExpr: `!document.getElementById('reader').hidden && document.getElementById('readerContent').textContent.includes('introuvable')`,
+    asserts: [
+      ['état « introuvable » explicite', `document.getElementById('readerContent').textContent.includes('Publication introuvable')`, true],
+      ['sortie vers le journal proposée', `!!document.querySelector('#readerContent [data-reader-home]')`, true],
+      ['aucune donnée d\'une autre publication affichée', `document.querySelector('#readerContent h1') === null`, true],
+    ],
+  },
+  {
+    // Une publication retirée (supprimée de sa source) n'est jamais servie par un lien direct.
+    name: 'web-article-retire', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&post=post-12`, widths: [390],
+    readyExpr: `!document.getElementById('reader').hidden && document.getElementById('readerContent').textContent.includes('introuvable')`,
+    asserts: [
+      ['la publication retirée n\'est pas lisible', `!document.getElementById('readerContent').textContent.includes('Test supprimé du canal')`, true],
+      ['sortie vers le journal proposée', `!!document.querySelector('#readerContent [data-reader-home]')`, true],
+    ],
+  },
+  {
+    // Lien profond du canal Telegram : « 📖 Lire dans Pesce Studio » ouvre le Mini App SUR
+    // l'article — le lecteur arrive dans le journal, pas sur une page isolée.
+    name: 'telegram-deeplink-article', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=1&startapp=post_post-9`, widths: [390],
+    readyExpr: `!document.getElementById('reader').hidden && document.querySelector('#readerContent h1') !== null`,
+    asserts: [
+      ['le lien profond ouvre bien l\'article', `document.querySelector('#readerContent h1').textContent.includes('Le numérique africain')`, true],
+      ['on est bien dans le Mini App Telegram', `!document.getElementById('telegramApp').hidden && document.getElementById('webBanner').hidden`, true],
+      ['la découverte est proposée aussi dans Telegram', `document.getElementById('readerContent').textContent.includes('Découvrir plus de Pesce')`, true],
+      ['le soutien en Étoiles reste accessible', `!!document.querySelector('#readerContent [data-reader-support]')`, true],
     ],
   },
   {
     name: 'a-la-une', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=1`, widths: [390, 820, 1280],
     asserts: [
-      ['application visible (portail masqué)', `!document.getElementById('telegramApp').hidden && document.getElementById('telegramGate').hidden`, true],
+      ['application visible dans Telegram', `!document.getElementById('telegramApp').hidden && document.getElementById('webBanner').hidden`, true],
       ['fond de page surface', `getComputedStyle(document.body).backgroundColor`, RGB.surface],
       ['fil d\'accueil chargé', `document.getElementById('homeLead').children.length > 0`, true],
       ['titre masthead Newsreader', `getComputedStyle(document.querySelector('#telegramApp header h1')).fontFamily.includes('Newsreader')`, true],
@@ -75,7 +132,15 @@ const ROUTES = [
     name: 'ecrits', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#ecrits`, widths: [390, 820, 1280],
     asserts: [
       ['composition éditoriale chargée', `document.getElementById('publicationFeed').children.length > 0 && document.getElementById('publicationFeed').dataset.loading !== 'true'`, true],
-      ['article Telegraph avec couverture affiché (image telegra.ph)', `!!document.querySelector('#publicationFeed img[src*="telegra.ph/file/"]') && document.getElementById('publicationFeed').textContent.includes('Le numérique africain')`, true],
+      // La couverture est servie depuis la référence canonique (article_image_url) : son
+      // hébergeur (Telegraph OU Pesce Studio via Telegram, repli existant) n'est pas le sujet.
+      ['article avec sa couverture canonique affichée', `(function () {
+        const card = [...document.querySelectorAll('#publicationFeed .editorial-card')].find((item) => item.textContent.includes('Le numérique africain'));
+        const image = card && card.querySelector('img');
+        // Chargement paresseux : on vérifie la RÉFÉRENCE servie, pas le pixel déjà téléchargé
+        // (les images réellement cassées sont détectées par scripts/audit-layout.mjs).
+        return !!image && !!image.getAttribute('src');
+      })()`, true],
       ['publication supprimée de la source absente du flux public', `!document.getElementById('publicationFeed').textContent.includes('Test supprimé du canal')`, true],
       ['lead « Jeunesse ouest-africaine » en tête', `document.querySelector('#publicationFeed .font-headline-lg-mobile').textContent.includes('Jeunesse ouest-africaine')`, true],
       ['filtre actif souligné terracotta', `getComputedStyle(document.querySelector('[data-filter="tout"]'), '::after').backgroundColor`, RGB.primary],
@@ -123,7 +188,7 @@ const ROUTES = [
     name: 'lecteur-article', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#post-9`, widths: [390],
     readyExpr: `!document.getElementById('reader').hidden && document.getElementById('readerContent').children.length > 0`,
     asserts: [
-      ['couverture Telegraph dans le lecteur', `!!document.querySelector('#readerContent img[src*="telegra.ph/file/"]')`, true],
+      ['couverture canonique affichée dans le lecteur', `(function () { const img = document.querySelector('#readerContent figure img'); return !!img && img.naturalWidth > 0; })()`, true],
       ['corps intégral de l\'article affiché dans Pesce Studio', `document.getElementById('readerContent').textContent.includes('Ce dossier complet est consultable directement ici, dans Pesce Studio')`, true],
       ['premier paragraphe du corps affiché', `document.getElementById('readerContent').textContent.includes('La confiance numérique ne se décrète pas')`, true],
       ['Telegraph secondaire quand le corps est intégral', `document.getElementById('readerContent').textContent.includes('Version également disponible sur Telegraph')`, true],

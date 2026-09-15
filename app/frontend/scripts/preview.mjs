@@ -83,7 +83,7 @@ const FIXTURE_POSTS = [
     telegramUrl: `${CHANNEL_URL}/92`,
     articleUrl: 'https://telegra.ph/Le-numerique-africain-a-besoin-de-confiance-09-11-2',
     articleBody: 'La confiance numérique ne se décrète pas : elle se construit par la transparence des algorithmes, la sécurité des paiements et la souveraineté des plateformes publiques.\n\nNous avons mené l’enquête auprès des opérateurs, des bailleurs et des autorités de régulation à Cotonou et à Dakar. Les conclusions convergent : sans cadre juridique vérifiable, aucune infrastructure ne tiendra ses promesses.\n\nCe dossier complet est consultable directement ici, dans Pesce Studio, même si la page Telegraph venait à disparaître.',
-    articleImageUrl: 'https://telegra.ph/file/preview-couverture.jpg',
+    articleImageUrl: './api/media?file_id=lead-photo&token=preview',
     publishedAt: iso(-160 * 3600e3), updatedAt: iso(-160 * 3600e3),
   },
   {
@@ -169,6 +169,37 @@ const MEDIA_SIZES = {
   'photo-2': [900, 900, 'Façades afro-brésiliennes'],
 };
 
+// — Corrections de prévisualisation partagées entre les pages (Studio → journal public).
+// Uniquement de la démonstration : aucune donnée réelle, aucun serveur, aucune persistance
+// au-delà de l'onglet. Elles rejouent ce que Neon ferait en production.
+const PREVIEW_EDIT_STORE = `<script>
+(function () {
+  var KEY = 'pesce.preview.edits';
+  function readEdits() {
+    try { return JSON.parse(sessionStorage.getItem(KEY) || '{}'); } catch (error) { return {}; }
+  }
+  window.savePreviewEdit = function (payload) {
+    try {
+      var edits = readEdits();
+      edits[payload.postId] = { title: payload.title || '', text: payload.text || '', updatedAt: new Date().toISOString() };
+      sessionStorage.setItem(KEY, JSON.stringify(edits));
+    } catch (error) { /* stockage indisponible : la correction reste locale à la page */ }
+  };
+  window.applyPreviewEdits = function (posts) {
+    var edits = readEdits();
+    posts.forEach(function (post) {
+      var edit = edits[post.id];
+      if (!edit) return;
+      var isArticle = Boolean(post.articleUrl || post.articleBody);
+      post.text = isArticle ? (edit.title + '\\n\\n' + (post.articleUrl || '')) : edit.text;
+      if (isArticle) post.articleBody = edit.text;
+      post.updatedAt = edit.updatedAt;
+    });
+    return posts;
+  };
+})();
+</script>`;
+
 // — Intercepteur fetch injecté dans index.html (browser) : redirige ./api/* vers ce serveur.
 function previewStubScript() {
   const posts = FIXTURE_POSTS.map((post) => ({ ...post, publishedAt: post.publishedAt, updatedAt: post.updatedAt }));
@@ -178,9 +209,13 @@ window.__PESCE_PREVIEW__ = true;
 (function () {
   var isVisitor = /preview=visitor/.test(location.search);
   var isEmpty = /preview=empty/.test(location.search);
-  window.Telegram = { WebApp: {
+  // ?preview=web : navigateur ORDINAIRE (aucun Telegram) — c'est le parcours d'un lecteur qui
+  // reçoit un lien d'article. Les fixtures d'API restent servies : seul Telegram est absent.
+  var isWeb = /preview=web/.test(location.search);
+  if (!isWeb) window.Telegram = { WebApp: {
     initData: 'preview_fixture_init_data',
-    initDataUnsafe: { user: { id: 1, first_name: 'Pesce', last_name: 'Hounyo', username: 'pescehounyo', language_code: 'fr' }, start_param: '' },
+    // ?startapp=… reproduit le paramètre de démarrage Telegram (lien profond du canal).
+    initDataUnsafe: { user: { id: 1, first_name: 'Pesce', last_name: 'Hounyo', username: 'pescehounyo', language_code: 'fr' }, start_param: new URLSearchParams(location.search).get('startapp') || '' },
     ready: function(){}, expand: function(){}, setHeaderColor: function(){}, setBackgroundColor: function(){},
     showPopup: function(p){ console.log('[preview popup]', p.title, p.message); },
     openTelegramLink: function(u){ console.log('[preview t.me]', u); },
@@ -189,6 +224,7 @@ window.__PESCE_PREVIEW__ = true;
     BackButton: { show: function(){}, hide: function(){}, onClick: function(){}, offClick: function(){} }
   }};
   var POSTS = ${JSON.stringify(posts)};
+  applyPreviewEdits(POSTS);
   var LIVES = ${JSON.stringify(lives)};
   var realFetch = window.fetch.bind(window);
   var json = function (status, body) { return new Response(JSON.stringify(body), { status: status, headers: { 'Content-Type': 'application/json' } }); };
@@ -253,6 +289,10 @@ window.__PESCE_WEB_PREVIEW__ = true;
   var realFetch = window.fetch.bind(window);
   var json = function (status, body) { return new Response(JSON.stringify(body), { status: status, headers: { 'Content-Type': 'application/json' } }); };
   var OVERVIEW = ${overview};
+  var POSTS = ${postsJson};
+  // Les corrections effectuées au pupitre survivent au changement de page (Studio → journal) :
+  // c'est ce qui permet de rejouer le parcours complet créatrice → lectrice en prévisualisation.
+  applyPreviewEdits(POSTS);
   window.fetch = function (input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) || '';
     if (url.indexOf('/api/') === -1) return realFetch(input, init);
@@ -283,8 +323,26 @@ window.__PESCE_WEB_PREVIEW__ = true;
           if (['article_publish', 'video_publish', 'video_update', 'audio_publish'].includes(actionBody.action)) window.__previewLastPublish = actionBody;
           // Cycle de vie : une publication réussie retire le brouillon de la vue d'ensemble.
           if (actionBody.draftId && OVERVIEW.drafts) OVERVIEW.drafts = OVERVIEW.drafts.filter(function (draft) { return draft.id !== actionBody.draftId; });
-          if (actionBody.action === 'article_image_upload') return Promise.resolve(json(200, { ok: true, src: '/file/preview-image.jpg', url: 'https://telegra.ph/file/preview-image.jpg' }));
-          if (actionBody.action === 'article_image_from_channel') return Promise.resolve(json(200, { ok: true, src: '/file/preview-canal.jpg', url: 'https://telegra.ph/file/preview-canal.jpg' }));
+          if (actionBody.action === 'article_image_upload') return Promise.resolve(json(200, { ok: true, src: '/file/preview-image.jpg', url: '/api/media?file_id=photo-1&token=preview' }));
+          if (actionBody.action === 'article_image_from_channel') return Promise.resolve(json(200, { ok: true, src: '/file/preview-canal.jpg', url: '/api/media?file_id=photo-2&token=preview' }));
+          // Correction EN PLACE : le stub rejoue le contrat de l'API — même identifiant, même
+          // lien, même date de publication ; seul updatedAt avance.
+          if (actionBody.action === 'article_update') {
+            window.__previewLastUpdate = actionBody;
+            savePreviewEdit(actionBody);
+            var target = POSTS.filter(function (p) { return p.id === actionBody.postId; })[0];
+            if (!target) return Promise.resolve(json(404, { message: 'Publication introuvable.' }));
+            var isArticle = Boolean(target.articleUrl || target.articleBody);
+            target.text = isArticle ? (actionBody.title + '\\n\\n' + (target.articleUrl || '')) : actionBody.text;
+            if (isArticle) target.articleBody = actionBody.text;
+            target.updatedAt = new Date().toISOString();
+            return Promise.resolve(json(200, {
+              ok: true, postId: target.id, articleUrl: target.articleUrl || null,
+              publishedAt: target.publishedAt, updatedAt: target.updatedAt,
+              telegraphUpdated: true, telegramUpdated: true,
+              message: 'Publication mise à jour : même article, même lien, même date de publication.',
+            }));
+          }
         } catch (error) { /* corps illisible : ok simple */ }
         return Promise.resolve(json(200, { ok: true }));
       }
@@ -295,7 +353,7 @@ window.__PESCE_WEB_PREVIEW__ = true;
       var limit = Number((url.match(/limit=(\\d+)/) || [])[1] || 30);
       // Règle de source identique au vrai /api/content : les publications supprimées de la
       // source (Telegram) ne sont plus servies.
-      var active = ${postsJson}.filter(function (p) { return !p.sourceDeletedAt; });
+      var active = POSTS.filter(function (p) { return !p.sourceDeletedAt; });
       var list = type ? active.filter(function (p) { return p.contentType === type; }) : active;
       return Promise.resolve(json(200, { channel: { username: '${CHANNEL_USERNAME}', url: '${CHANNEL_URL}' }, posts: list.slice(0, limit) }));
     }
@@ -366,7 +424,7 @@ const server = createServer((req, res) => {
     const html = content.toString('utf8');
     const injected = html.replace(
       '  <script src="/constants.js"></script>',
-      `${previewWebStudioStub(url.searchParams)}\n  <script src="/constants.js"></script>`
+      `${PREVIEW_EDIT_STORE}\n${previewWebStudioStub(url.searchParams)}\n  <script src="/constants.js"></script>`
     );
     content = Buffer.from(injected, 'utf8');
   } else if (isIndex && url.searchParams.has('preview')) {
@@ -375,7 +433,7 @@ const server = createServer((req, res) => {
     // et on injecte le stub à la place.
     const injected = html.replace(
       '  <script src="https://telegram.org/js/telegram-web-app.js"></script>',
-      `${previewStubScript()}\n  <!-- telegram-web-app.js retiré en mode preview (WebApp simulé injecté) -->`
+      `${PREVIEW_EDIT_STORE}\n${previewStubScript()}\n  <!-- telegram-web-app.js retiré en mode preview (WebApp simulé injecté) -->`
     );
     content = Buffer.from(injected, 'utf8');
   }

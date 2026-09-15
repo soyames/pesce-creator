@@ -7,7 +7,6 @@ const inTelegram = Boolean(tg?.initData);
 const PESCE = window.PESCE;
 if (!PESCE) console.error('PESCE manquant : constants.js n’a pas été chargé.');
 
-const gate = document.getElementById('telegramGate');
 const app = document.getElementById('telegramApp');
 const sections = [...document.querySelectorAll('.content-section')];
 const navButtons = [...document.querySelectorAll('.nav-button')];
@@ -29,17 +28,20 @@ document.querySelectorAll('[data-identity-href]').forEach((el) => {
   if (value) el.href = `${value}${el.dataset.identityHrefSuffix || ''}`;
 });
 
-// — Porte Telegram (navigateur hors Telegram)
+// — Contexte d'ouverture. Le JOURNAL PUBLIC se lit partout : dans Telegram (Mini App) comme
+// dans un navigateur ordinaire — un lien d'article partagé doit toujours mener au journal, pas
+// à une impasse. Seules les capacités PROPRES à Telegram (Étoiles, assistance par le bot,
+// espace créatrice) restent réservées à l'ouverture depuis Telegram, et le disent honnêtement.
+app.hidden = false;
 if (inTelegram) {
-  gate.hidden = true;
-  app.hidden = false;
   tg.ready();
   tg.expand();
   if (tg.setHeaderColor) tg.setHeaderColor('#fbf9f5');
   if (tg.setBackgroundColor) tg.setBackgroundColor('#fbf9f5');
 } else {
-  gate.hidden = false;
-  app.hidden = true;
+  document.body.classList.add('pesce-web');
+  const banner = document.getElementById('webBanner');
+  if (banner) banner.hidden = false;
 }
 
 // — Aides partagées
@@ -119,7 +121,7 @@ function applyHeaderState(id) {
 }
 
 function openSection(id) {
-  if (!inTelegram || !SECTIONS.includes(id)) return;
+  if (!SECTIONS.includes(id)) return;
   sections.forEach((section) => { section.hidden = section.id !== id; });
   navButtons.forEach((button) => {
     const active = button.dataset.section === id;
@@ -153,6 +155,11 @@ document.addEventListener('click', (event) => {
   if (readerClose) { closeReader(); return; }
   const readerSupport = event.target.closest('[data-reader-support]');
   if (readerSupport) { closeReader(); openSection('soutenir'); return; }
+  // Sorties explicites du lecteur vers le journal : un article mène toujours plus loin.
+  const readerHome = event.target.closest('[data-reader-home]');
+  if (readerHome) { closeReader(); openSection('a-la-une'); return; }
+  const readerSection = event.target.closest('[data-reader-section]');
+  if (readerSection) { closeReader(); openSection(readerSection.dataset.readerSection); return; }
   const readButton = event.target.closest('[data-reader]');
   if (readButton) { openReader(readButton.dataset.reader); return; }
   const readerNav = event.target.closest('[data-reader-nav]');
@@ -469,7 +476,9 @@ function selectStars(amount) {
 }
 
 async function supportWithStars() {
-  if (!inTelegram) return;
+  // Les Étoiles Telegram n'existent que dans Telegram : hors de l'application, on emmène le
+  // lecteur au bon endroit plutôt que de laisser un bouton sans effet.
+  if (!inTelegram) { openExternal(PESCE.SUPPORT_URL); return; }
   const buttons = [...document.querySelectorAll('.support-send')];
   buttons.forEach((button) => { button.disabled = true; });
   const labels = [...document.querySelectorAll('.support-send-label')];
@@ -523,7 +532,7 @@ async function sendSupport(event) {
 let homeLoaded = false;
 
 async function loadHome() {
-  if (!inTelegram || homeLoaded) return;
+  if (homeLoaded) return;
   homeLoaded = true;
   const leadSlot = document.getElementById('homeLead');
   const chronique = document.getElementById('homeChronique');
@@ -661,7 +670,6 @@ function renderDispatchAudioCard(post) {
 
 // — Directs : bannière « Prochain direct » (accueil) et programmation complète (section Directs).
 async function loadLive() {
-  if (!inTelegram) return;
   try {
     const data = await fetchJson('./api/live', { cache: 'no-store' });
     const banner = document.getElementById('homeLiveBanner');
@@ -704,7 +712,7 @@ ${when ? `<span class="font-meta-detail text-meta-detail text-on-surface-variant
 let directsLoaded = false;
 
 async function loadDirects() {
-  if (!inTelegram || directsLoaded) return;
+  if (directsLoaded) return;
   directsLoaded = true;
   const feed = document.getElementById('directFeed');
   if (!feed) return;
@@ -746,7 +754,7 @@ function syncFilterButtons() {
 }
 
 async function loadPublications() {
-  if (!inTelegram || publicationsLoaded) return;
+  if (publicationsLoaded) return;
   await fetchPublications(currentFilter);
 }
 
@@ -992,7 +1000,7 @@ function renderFilteredList(posts) {
 let photosLoaded = false;
 
 async function loadPhotos() {
-  if (!inTelegram || photosLoaded) return;
+  if (photosLoaded) return;
   photosLoaded = true;
   const target = document.getElementById('photoFeed');
   if (!target) return;
@@ -1035,7 +1043,6 @@ function unbindBackButton() {
 }
 
 async function openReader(postId) {
-  if (!inTelegram) return;
   let post = postCache.get(postId);
   if (!post) {
     try {
@@ -1053,11 +1060,16 @@ async function openReader(postId) {
   bookmarkActive = isBookmarked(post?.id || null);
   content.innerHTML = post
     ? renderReader(post)
+    // Lien invalide, publication retirée ou identifiant inconnu : on le dit franchement, et on
+    // propose quand même le journal — un lien périmé ne doit jamais être un cul-de-sac.
     : `<article class="empty-card bg-surface-container-lowest p-space-md shadow-sm flex flex-col items-center gap-space-sm text-center">
 <span class="material-symbols-outlined text-[28px] text-on-surface-variant">warning</span>
 <h3 class="font-headline-sm text-headline-sm text-on-surface">Publication introuvable</h3>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Cette publication n’est plus disponible pour le moment.</p>
-<button class="bg-on-secondary-fixed text-surface px-space-md py-space-sm font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors" type="button" data-reader-close>Retour</button>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Ce lien ne correspond à aucune publication en ligne : elle a pu être retirée, ou l’adresse est incomplète.</p>
+<div class="flex flex-col sm:flex-row gap-space-sm w-full max-w-sm">
+<button class="flex-1 bg-on-secondary-fixed text-surface px-space-md py-3 rounded-lg font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors" type="button" data-reader-home>Ouvrir le journal Pesce Studio</button>
+<button class="flex-1 bg-surface-container-high text-on-surface px-space-md py-3 rounded-lg font-kicker-label text-kicker-label uppercase tracking-widest" type="button" data-reader-section="ecrits">Toutes les publications</button>
+</div>
 </article>`;
   reader.hidden = false;
   readerOpen = true;
@@ -1097,8 +1109,17 @@ function renderReader(post) {
   const inlineBody = Boolean(post.articleBody && String(post.articleBody).trim());
   const published = post.publishedAt ? new Date(post.publishedAt) : null;
   const updated = post.updatedAt ? new Date(post.updatedAt) : null;
+  // « Mis à jour » n'est affiché que si l'article a RÉELLEMENT été corrigé après sa mise en
+  // ligne : une publication jamais retouchée porte updated_at ≈ published_at, et annoncer une
+  // mise à jour inexistante tromperait le lecteur. Au-delà d'un jour, on donne la date.
+  const editedAfterPublication = published && updated && !isNaN(published) && !isNaN(updated)
+    && updated.getTime() - published.getTime() > 120000;
+  const sameDay = editedAfterPublication && updated.toDateString() === published.toDateString();
+  const updatedLabel = editedAfterPublication
+    ? ` · Mis à jour ${sameDay ? `à ${updated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : `le ${updated.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`}`
+    : '';
   const dateLine = published && !isNaN(published)
-    ? `${published.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}${updated && !isNaN(updated) ? ` · Mis à jour à ${updated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''} · ${readingLabel(readerBodySource(post))}`
+    ? `${published.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}${updatedLabel} · ${readingLabel(readerBodySource(post))}`
     : '';
   const media = readerMedia(post, standfirst);
   const { prev, next } = neighborPosts(post.id);
@@ -1164,6 +1185,7 @@ ${articleUrl ? `<div class="bg-surface-container-low rounded-lg p-space-sm mt-sp
 <p class="font-body-sm text-body-sm text-on-surface-variant">Que pensez-vous de ce dossier ? Participez au salon d'analyse ouvert sur notre canal officiel.</p>
 <button class="w-full py-3 px-space-md rounded-lg bg-surface-container-high text-on-surface font-kicker-label text-[12px] uppercase tracking-wide font-semibold hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-1.5" type="button" data-channel><span>Rejoindre la discussion Telegram</span><span class="material-symbols-outlined text-[16px]">arrow_forward</span></button>
 </div>
+${renderReaderDiscovery(post)}
 ${prev || next ? `<div class="mt-space-lg mb-space-xl flex items-center justify-between gap-space-sm pt-space-md">
 ${prev ? `<button class="flex-1 p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-container transition-colors flex flex-col min-w-0 text-left" type="button" data-reader-nav data-post="${escapeAttribute(prev.id)}">
 <span class="font-meta-detail text-[11px] text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">arrow_back</span> Précédent</span>
@@ -1175,6 +1197,47 @@ ${next ? `<button class="flex-1 p-space-sm rounded-lg bg-surface-container-low h
 </button>` : '<span class="flex-1"></span>'}
 </div>` : ''}
 </article>`;
+}
+
+// — « Découvrir plus de Pesce » : un article n'est jamais une impasse. On propose d'autres
+// publications RÉELLES du même flux public (aucune source séparée, aucun moteur de
+// recommandation : le flux /api/content ne sert que du contenu publié), puis un accès explicite
+// au journal complet. La publication en cours est exclue ; les médias gardent leurs propres
+// rubriques. Silencieux s'il n'y a rien d'autre à montrer.
+function readerDiscoveryPosts(post, limit = 3) {
+  return lastFeed
+    .filter((item) => item && item.id !== post.id && !item.sourceDeletedAt)
+    .slice(0, limit);
+}
+
+function renderReaderDiscovery(post) {
+  const others = readerDiscoveryPosts(post);
+  const cards = others.map((item) => {
+    const { headline, standfirst } = headlineAndStandfirst(item);
+    // Vignette : miniature Telegram, puis image du média quand c'est bien une image (une photo
+    // ou l'illustration d'un écrit), puis couverture d'article, puis affiche YouTube.
+    const imageBearing = ['photo', 'text', 'document'].includes(item.contentType);
+    const thumb = item.mediaThumbnailUrl || (imageBearing ? mediaUrlOf(item) : '') || item.articleImageUrl || youtubeInfo(item.text)?.thumbnail || '';
+    return `<button class="w-full text-left flex items-center gap-space-sm p-space-sm rounded-lg bg-surface-container-lowest hover:bg-surface-container transition-colors" type="button" data-reader-nav data-post="${escapeAttribute(item.id)}">
+${thumb ? `<img class="w-16 h-16 rounded-lg object-cover shrink-0 bg-surface-container-high" src="${escapeAttribute(thumb)}" alt="" loading="lazy">` : '<span class="w-16 h-16 rounded-lg bg-surface-container-high shrink-0 flex items-center justify-center text-on-surface-variant"><span class="material-symbols-outlined text-[20px]">article</span></span>'}
+<span class="flex flex-col min-w-0 flex-1">
+<span class="font-kicker-label text-[11px] uppercase tracking-wider text-primary">${escapeHtml(kickerOf(item))}</span>
+<span class="font-headline-sm text-[14px] leading-snug text-on-surface line-clamp-2">${escapeHtml(headline)}</span>
+${standfirst ? `<span class="font-meta-detail text-meta-detail text-on-surface-variant line-clamp-1 mt-0.5">${escapeHtml(standfirst)}</span>` : ''}
+</span>
+</button>`;
+  }).join('');
+  return `<section class="mt-space-xl flex flex-col gap-space-sm" aria-label="Découvrir plus de Pesce">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">explore</span>
+<h2 class="font-kicker-label text-kicker-label uppercase text-on-surface font-bold tracking-wider">Découvrir plus de Pesce</h2>
+</div>
+${cards || '<p class="font-body-sm text-body-sm text-on-surface-variant">D’autres publications arrivent bientôt sur Pesce Studio.</p>'}
+<div class="flex flex-col sm:flex-row gap-space-sm mt-space-xs">
+<button class="flex-1 py-3 px-space-md rounded-lg bg-on-secondary-fixed text-surface font-kicker-label text-[12px] uppercase tracking-wider font-bold flex items-center justify-center gap-1.5 hover:bg-primary transition-colors" type="button" data-reader-home><span class="material-symbols-outlined text-[16px]">home</span> Ouvrir le journal Pesce Studio</button>
+<button class="flex-1 py-3 px-space-md rounded-lg bg-surface-container-high text-on-surface font-kicker-label text-[12px] uppercase tracking-wider font-semibold flex items-center justify-center gap-1.5 hover:bg-surface-container-highest transition-colors" type="button" data-reader-section="ecrits"><span class="material-symbols-outlined text-[16px]">auto_stories</span> Toutes les publications</button>
+</div>
+</section>`;
 }
 
 function readerMedia(post, caption) {
@@ -1263,7 +1326,10 @@ function toggleBookmark(button) {
 function shareArticle() {
   const post = currentReaderPost;
   const title = post ? headlineAndStandfirst(post).headline : 'Pesce Studio';
-  const url = window.location.href;
+  // On partage le LIEN CANONIQUE de la publication, pas l'URL courante : dans Telegram celle-ci
+  // porte des paramètres de session inutilisables par un tiers, et elle ne rouvrirait pas
+  // l'article. Le lien canonique ouvre le journal complet sur cet article, partout.
+  const url = post ? PESCE.articleLink(post.id) : PESCE.MINI_APP_URL;
   if (navigator.share) {
     navigator.share({ title, text: 'Enquête exclusive par Pesce Hounyo sur Pesce Studio', url }).catch(() => {});
   } else {
@@ -1369,45 +1435,71 @@ function routeFromHash() {
   if (SECTIONS.includes(hash)) return { section: hash };
   const filterMatch = hash.match(/^ecrits-(tout|enquetes|societe|opinion|videos|audios|entretiens)$/);
   if (filterMatch) return { section: 'ecrits', filter: filterMatch[1] };
-  // L'identifiant complet de publication commence par « post- » : on le conserve tel quel.
+  // Ancre historique : l'identifiant complet commence par « post- » et est conservé tel quel.
+  // Les liens déjà partagés sous cette forme continuent de fonctionner.
   if (hash.startsWith('post-') && hash.length > 5) return { post: hash };
   return null;
 }
 
-// — Démarrage
-if (inTelegram) {
-  initSupportTopic();
-  renderCotonouClock();
-  document.querySelectorAll('.support-send').forEach((button) => button.addEventListener('click', supportWithStars));
-  document.getElementById('supportForm')?.addEventListener('submit', sendSupport);
-  document.getElementById('readerShare')?.addEventListener('click', shareArticle);
-  document.getElementById('profileButton')?.addEventListener('click', () => {
-    const user = tg?.initDataUnsafe?.user;
-    const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'visiteur';
-    popup('Votre profil', `Bienvenue ${name} dans Pesce Studio.`);
-  });
+// — Lien canonique d'une publication : ?post=<identifiant>. C'est la forme PARTAGEABLE (elle
+// traverse les navigateurs, les messageries et Telegram), et elle accepte n'importe quel
+// identifiant canonique — contrairement à l'ancre historique, limitée aux identifiants
+// commençant par « post- ». Le paramètre `startapp=post_<id>` en est l'équivalent Telegram.
+function routeFromQuery() {
+  try {
+    const postId = new URLSearchParams(location.search).get('post');
+    return postId ? { post: postId } : null;
+  } catch { return null; }
+}
 
-  const soutenirPacte = document.getElementById('soutenirPacte');
-  if (soutenirPacte) soutenirPacte.innerHTML = renderPacte();
-  const starOptionsHome = document.getElementById('starOptionsHome');
-  if (starOptionsHome) starOptionsHome.innerHTML = renderStarOptions();
-  selectStars(selectedStars);
+function routeFromStartParam(startParam) {
+  if (typeof startParam !== 'string' || !startParam) return null;
+  if (startParam === 'studio') return { studio: true, section: 'studio' };
+  if (startParam === 'support') return { section: 'support' };
+  if (startParam.startsWith('post_') && startParam.length > 5) return { post: startParam.slice(5) };
+  return null;
+}
 
+// — Démarrage : identique dans Telegram et dans un navigateur ordinaire. Les capacités propres
+// à Telegram (Étoiles, assistance par le bot, espace créatrice, mesure d'audience) restent
+// conditionnées plus bas — le JOURNAL, lui, se lit partout.
+initSupportTopic();
+renderCotonouClock();
+document.querySelectorAll('.support-send').forEach((button) => button.addEventListener('click', supportWithStars));
+document.getElementById('supportForm')?.addEventListener('submit', sendSupport);
+document.getElementById('readerShare')?.addEventListener('click', shareArticle);
+document.getElementById('profileButton')?.addEventListener('click', () => {
+  if (!inTelegram) { openExternal(PESCE.BOT_URL); return; }
+  const user = tg?.initDataUnsafe?.user;
+  const name = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'visiteur';
+  popup('Votre profil', `Bienvenue ${name} dans Pesce Studio.`);
+});
+
+const soutenirPacte = document.getElementById('soutenirPacte');
+if (soutenirPacte) soutenirPacte.innerHTML = renderPacte();
+const starOptionsHome = document.getElementById('starOptionsHome');
+if (starOptionsHome) starOptionsHome.innerHTML = renderStarOptions();
+selectStars(selectedStars);
+
+{
   const startParam = getStartParam();
-  const route = routeFromHash();
+  // Priorité de routage : paramètre de démarrage Telegram, puis ?post=, puis l'ancre.
+  const startRoute = routeFromStartParam(startParam);
+  const route = startRoute || routeFromQuery() || routeFromHash();
   let firstSection = 'a-la-une';
   if (startParam === 'support') firstSection = 'support';
-  if (startParam === 'studio') firstSection = 'studio';
-  if (route?.section) firstSection = route.section;
+  if (route?.section && SECTIONS.includes(route.section)) firstSection = route.section;
   if (route?.filter) currentFilter = route.filter;
   openSection(firstSection);
   if (route?.post) openReader(route.post);
   trackOpen();
-  if (startParam === 'studio' || route?.studio) {
-    // Entrée privée : le rôle est revalidé puis le serveur décide (/api/studio). Silencieux sinon.
-    attemptStudio();
-  } else {
-    resolveRole();
+  if (inTelegram) {
+    if (startParam === 'studio' || route?.studio) {
+      // Entrée privée : le rôle est revalidé puis le serveur décide (/api/studio). Silencieux sinon.
+      attemptStudio();
+    } else {
+      resolveRole();
+    }
   }
 }
 

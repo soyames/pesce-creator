@@ -191,6 +191,22 @@ Configurer dans Vercel (voir aussi `.env.example`) :
 
 Toute modification d’environnement exige un redéploiement pour prendre effet.
 
+### Adresses canoniques
+
+| Surface | Adresse | Accès |
+|---|---|---|
+| Mini App / journal public | `https://pesce-creator-nine.vercel.app/` | Public — Telegram **et** navigateur ordinaire |
+| Article (lien partageable) | `https://pesce-creator-nine.vercel.app/?post=<id>` | Public — ouvre le journal sur l'article |
+| Article (lien profond Telegram) | `https://t.me/PesceStudioBot?startapp=post_<id>` | Public — ouvre le Mini App sur l'article |
+| Bureau privé (web) | `https://pesce-creator-nine.vercel.app/studio` | **Privé** — mot de passe ou Google, allowlist |
+| Bureau privé (Telegram) | `https://t.me/PesceStudioBot?startapp=studio` | **Privé** — créatrice uniquement |
+
+### Corriger une publication déjà en ligne
+
+Une publication n'a jamais besoin d'être retirée pour être corrigée. Dans **Écrits**, chaque écrit publié porte **Modifier** : le pupitre s'ouvre en mode correction (titre, corps et couverture existants préchargés) et l'action finale devient **« Mettre à jour la publication »**.
+
+La correction se fait **en place** : même publication, même identifiant, même lien public, même date de publication, mêmes soutiens et statistiques. Seule la date de modification avance. La page Telegraph est éditée à la même adresse et le message du canal est mis à jour en conservant ses boutons. Neon est écrit **en premier** : si Telegraph ou Telegram refusent, la correction est déjà en ligne pour les lecteurs et le Studio le dit franchement.
+
 ### Bureau privé `/studio` — connexion et application installable
 
 Le portail de bureau `/studio` propose **deux voies de connexion vers une seule session** : adresse + mot de passe, ou « Continuer avec Google ». Les deux sont vérifiées côté serveur (`api/studio-auth.js`), soumises à la même allowlist, et produisent le même cookie de session HttpOnly/Secure/SameSite adossé à Neon (7 jours).

@@ -36,6 +36,31 @@ export function createTelegraphPage({ accessToken, title, content, authorName })
   });
 }
 
+// Met à jour une page d'article EXISTANTE, en place : `path` est conservé, donc l'URL publique
+// de l'article ne change jamais (aucun lien partagé ne casse, aucune seconde page n'est créée).
+// Telegraph renvoie la même page { path, url }.
+export function editTelegraphPage({ accessToken, path, title, content, authorName }) {
+  return telegraphCall('editPage', {
+    access_token: accessToken,
+    path,
+    title,
+    author_name: authorName,
+    content,
+    return_content: false,
+  });
+}
+
+// Chemin Telegraph (`path`) d'une URL d'article : nécessaire pour éditer la page en place.
+// Renvoie null pour toute URL qui n'est pas une page telegra.ph.
+export function telegraphPathFromUrl(url) {
+  try {
+    const parsed = new URL(String(url || ''));
+    if (!/(^|\.)telegra\.ph$/i.test(parsed.hostname)) return null;
+    const path = parsed.pathname.replace(/^\/+/, '').replace(/\/+$/, '');
+    return path || null;
+  } catch { return null; }
+}
+
 // Convertit un texte simple en nœuds Telegraph : un paragraphe <p> par bloc séparé par une ligne vide.
 export function nodesFromPlainText(text) {
   return String(text || '')

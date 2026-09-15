@@ -27,7 +27,9 @@ if (!BROWSER) { console.error('Edge/Chrome introuvable.'); process.exit(1); }
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const ROUTES = [
-  ['porte (hors Telegram)', `http://127.0.0.1:${PREVIEW_PORT}/`, `!document.getElementById('telegramGate').hidden`, [390, 320]],
+  // Prêt = la une ET les rails de formats rendus (la mesure attend ensuite les polices).
+  ['journal web (hors Telegram)', `http://127.0.0.1:${PREVIEW_PORT}/?preview=web`, `document.getElementById('homeLead').children.length > 0 && !document.getElementById('homeFormats').hidden`, [390, 320]],
+  ['article partagé (hors Telegram)', `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&post=post-9`, `!document.getElementById('reader').hidden && document.querySelector('#readerContent h1') !== null`, [390, 320]],
   ['à la une', `http://127.0.0.1:${PREVIEW_PORT}/?preview=1`, `document.getElementById('homeLead').children.length > 0`, [390, 320]],
   ['écrits', `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#ecrits`, `document.getElementById('publicationFeed').children.length > 0 && document.getElementById('publicationFeed').dataset.loading !== 'true'`, [390, 320]],
   ['lecteur', `http://127.0.0.1:${PREVIEW_PORT}/?preview=1#post-1`, `!document.getElementById('reader').hidden && document.getElementById('readerContent').children.length > 0`, [390, 320]],
@@ -78,6 +80,10 @@ const AUDIT_EXPRESSION = `(async () => {
     try { await document.fonts.load('1rem ' + family); } catch { /* police indisponible */ }
     report.fonts[family] = document.fonts.check('1rem ' + family);
   }
+  // La police d'icônes doit être chargée AVANT toute mesure : tant qu'elle manque, chaque
+  // icône affiche le texte de sa ligature (« play_arrow ») et élargit faussement sa ligne.
+  try { await document.fonts.load('1rem "Material Symbols Outlined"'); } catch { /* police indisponible */ }
+  await document.fonts.ready;
 
   // Images cassées
   document.querySelectorAll('img').forEach((img) => {
@@ -145,7 +151,7 @@ const AUDIT_EXPRESSION = `(async () => {
   const appVisible = document.getElementById('telegramApp') && !document.getElementById('telegramApp').hidden;
   const studioVisible = document.getElementById('studioScreen') && !document.getElementById('studioScreen').hidden;
   const readerVisible = document.getElementById('reader') && !document.getElementById('reader').hidden;
-  const gateVisible = document.getElementById('telegramGate') && !document.getElementById('telegramGate').hidden;
+
   let header = null;
   let nav = null;
   let contentRoot = null;
@@ -156,8 +162,6 @@ const AUDIT_EXPRESSION = `(async () => {
   } else if (readerVisible) {
     header = document.querySelector('#reader > header');
     contentRoot = document.getElementById('readerContent');
-  } else if (gateVisible) {
-    contentRoot = document.getElementById('telegramGate');
   } else if (appVisible) {
     header = document.querySelector('#telegramApp > header');
     nav = document.querySelector('#telegramApp > nav');
@@ -269,7 +273,7 @@ async function main() {
       await pageSession.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
       await pageSession.send('Page.navigate', { url });
       const readyOk = await waitFor(pageSession, ready);
-      await sleep(1200);
+      await sleep(1800); // Tailwind CDN : compilation des utilitaires du balisage injecté
       if (!readyOk) {
         console.log(`PROBLÈME ${label}@${width} — écran jamais prêt`);
         issues += 1;

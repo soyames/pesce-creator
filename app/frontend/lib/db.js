@@ -423,13 +423,21 @@ export async function recallPost(postId) {
   return result.rowCount > 0;
 }
 
-// Mise à jour ciblée d'une publication (état de distribution, texte) — liste blanche stricte.
+// Mise à jour ciblée d'une publication (état de distribution, texte, contenu d'article) —
+// liste blanche stricte. L'IDENTITÉ CANONIQUE est intouchable : ni `id`, ni `published`, ni
+// `published_at`, ni `article_url`, ni l'identité Telegram ne peuvent être modifiés ici.
+// Une correction éditoriale ne recrée jamais la publication : même ligne, même URL publique,
+// même date de publication ; seul `updated_at` avance.
+export const POST_UPDATABLE_COLUMNS = Object.freeze({
+  distributionError: 'distribution_error',
+  distributedAt: 'distributed_at',
+  text: 'text',
+  articleBody: 'article_body',
+  articleImageUrl: 'article_image_url',
+});
+
 export async function updatePost(postId, data) {
-  const columns = {
-    distributionError: 'distribution_error',
-    distributedAt: 'distributed_at',
-    text: 'text',
-  };
+  const columns = POST_UPDATABLE_COLUMNS;
   const sets = [];
   const values = [String(postId)];
   for (const [key, column] of Object.entries(columns)) {

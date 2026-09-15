@@ -209,8 +209,25 @@ ${renderTelegraphSection()}
 ${renderBackfillSection()}
 ${renderMediaSection()}
 ${renderShortcuts()}
+${renderWebStudioSection()}
 ${renderSignOff()}
 `;
+  }
+
+  // — Bureau privé sur le web : la même base, les mêmes actions, depuis un ordinateur ou un
+  // téléphone hors Telegram. Affiché UNIQUEMENT ici, dans l'espace déjà autorisé par le serveur
+  // (/api/studio) — jamais dans l'interface publique.
+  function renderWebStudioSection() {
+    const url = PESCE?.WEB_STUDIO_URL || '';
+    if (!url) return '';
+    return `<section class="px-gutter-mobile py-space-lg flex flex-col gap-space-xs bg-surface">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[1.25rem]">desktop_windows</span>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Bureau privé sur le web</h2>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Le même bureau s'ouvre dans un navigateur, avec votre adresse et votre mot de passe (ou Google) : <strong class="text-on-surface break-all">${escapeHtml(url)}</strong>. Mêmes publications, mêmes brouillons, mêmes messages — aucune synchronisation à faire.</p>
+<button class="web-studio-copy self-start mt-1 px-space-md py-3 border border-outline-variant rounded font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-copy="${escapeAttribute(url)}">Copier l'adresse du bureau</button>
+</section>`;
   }
 
   function renderKpiTile(icon, tone, value, label) {
@@ -958,6 +975,12 @@ ${payment.refundedAt ? '' : `<button class="payment-refund border border-outline
         if (studioLink) { openExternal(studioLink.dataset.studioLink); return; }
         const recallButton = event.target.closest('.recall-post');
         if (recallButton) { recallFromMediatheque(recallButton); return; }
+        const copyButton = event.target.closest('.web-studio-copy');
+        if (copyButton) {
+          navigator.clipboard?.writeText(copyButton.dataset.copy || '')
+            .then(() => { copyButton.textContent = 'Adresse copiée'; })
+            .catch(() => { copyButton.textContent = copyButton.dataset.copy || ''; });
+        }
       });
     }
     document.querySelectorAll('[data-studio-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.studioTab)));

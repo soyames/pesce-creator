@@ -98,6 +98,9 @@
         </div>
       </div>
     </header>
+    <!-- Confirmation d'action : hors du corps du bureau, donc elle SURVIT au re-rendu qui suit
+         une publication ou une mise à jour (sans quoi le message disparaît aussitôt affiché). -->
+    <p id="studioFlash" class="hidden bg-primary-container/15 text-on-surface border-b border-outline-variant/40 px-gutter-mobile py-2 font-body-sm text-body-sm" role="status" aria-live="polite"></p>
     <div class="flex flex-1 min-h-0">
       <nav class="hidden lg:flex flex-col w-64 shrink-0 border-r border-outline-variant/40 bg-surface-container-lowest py-space-md gap-1 overflow-y-auto" aria-label="Navigation du studio web">
         <span class="font-kicker-label text-kicker-label text-on-surface-variant uppercase px-space-md mb-1">Studio</span>

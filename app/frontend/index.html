@@ -22,31 +22,8 @@
 </head>
 <body class="bg-surface text-on-surface flex flex-col min-h-screen selection:bg-primary-fixed selection:text-on-primary-fixed">
 
-  <!-- — Porte Telegram : page d'accueil hors Telegram (navigateur classique). -->
-  <main id="telegramGate" class="gateway min-h-screen min-h-dvh grid place-items-center px-gutter-mobile py-space-lg bg-surface" hidden>
-    <div class="gateway-card w-full max-w-md bg-surface-container-lowest p-space-lg flex flex-col items-center text-center shadow-sm">
-      <svg viewBox="0 0 240 50" width="240" height="50" aria-label="Pesce Studio — Édition, direction P. Hounyo" role="img">
-        <text x="0" y="28" class="masthead-title">PESCE STUDIO</text>
-        <line x1="178" y1="12" x2="178" y2="38" class="masthead-rule"></line>
-        <text x="188" y="22" class="masthead-sub">ÉDITION</text>
-        <text x="188" y="33" class="masthead-sub">DIR. P. HOUNYO</text>
-      </svg>
-      <p class="gateway-eyebrow font-kicker-label text-kicker-label text-on-surface-variant uppercase mt-space-md">Édition numérique · Cotonou / Paris</p>
-      <h1 class="font-headline-lg text-headline-lg text-on-surface">Pesce Studio</h1>
-      <p class="gateway-message font-body-md text-body-md text-on-surface-variant mt-space-sm">Ouvrez Pesce Studio depuis Telegram pour continuer.</p>
-      <p class="gateway-note font-body-sm text-body-sm text-on-surface-variant max-w-sm leading-relaxed">Le Mini App se lance depuis le bot <strong><span data-identity="botUsername"></span></strong> avec le bouton « Ouvrir Pesce Studio » — le lien du canal n'ouvre pas l'application directement.</p>
-      <a class="telegram-button font-kicker-label text-kicker-label uppercase tracking-widest mt-space-md" data-identity-href="botUrl" data-identity-href-suffix="?startapp" href="#">Ouvrir Pesce Studio dans Telegram</a>
-      <a class="font-kicker-label text-kicker-label uppercase tracking-widest text-primary hover:underline mt-space-sm py-2 px-2" data-identity-href="channelUrl" href="#">Voir le canal <span data-identity="channelHandle"></span></a>
-      <p class="gateway-note font-meta-detail text-meta-detail text-on-surface-variant mt-space-md">Pesce Studio est conçu pour être utilisé directement dans Telegram.</p>
-      <p class="gateway-note font-meta-detail text-meta-detail text-on-surface-variant mt-space-xs">
-        <a class="inline-block py-2 px-2 text-primary hover:underline" href="/privacy">Politique de confidentialité</a>
-        <span aria-hidden="true">·</span>
-        <a class="inline-block py-2 px-2 text-on-surface-variant hover:text-primary" href="/studio">Connexion</a>
-      </p>
-    </div>
-  </main>
-
-  <!-- — Application (Mini App Telegram). -->
+  <!-- — Application : Mini App dans Telegram ET journal public dans un navigateur ordinaire.
+       Un lien d'article partagé ouvre toujours le journal complet, jamais une impasse. -->
   <main id="telegramApp" class="flex flex-col relative w-full pt-28 pb-20 bg-surface min-h-screen" hidden>
     <header class="fixed top-0 w-full z-50 pt-safe bg-surface/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div class="h-28 flex flex-col justify-between px-gutter-mobile py-space-xs">
@@ -72,6 +49,13 @@
         </div>
       </div>
     </header>
+
+    <!-- — Lecture web (hors Telegram) : le journal est entièrement lisible ici. Les capacités
+         propres à Telegram (Étoiles, assistance par le bot) s'y ouvrent en un clic. -->
+    <aside id="webBanner" class="w-full bg-surface-container-low border-b border-outline-variant/50 px-gutter-mobile py-space-sm flex flex-wrap items-center justify-between gap-space-sm" hidden>
+      <p class="font-meta-detail text-meta-detail text-on-surface-variant min-w-0">Vous lisez <strong class="text-on-surface">Pesce Studio</strong> sur le web. Ouvrez le journal dans Telegram pour soutenir en Étoiles et échanger avec la rédaction.</p>
+      <a class="inline-flex items-center gap-1 px-3 py-3 rounded-lg bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-wider shrink-0" data-identity-href="botUrl" data-identity-href-suffix="?startapp" href="#">Ouvrir dans Telegram</a>
+    </aside>
 
     <!-- — À LA UNE : la page d'accueil éditoriale. -->
     <section id="a-la-une" class="content-section">

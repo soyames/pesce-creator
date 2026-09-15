@@ -6,7 +6,7 @@
 - Bot `@PesceStudioBot` administrateur du canal `@PesceHounyoOfficiel` ; webhook `message`, `channel_post`, `pre_checkout_query`.
 - **Mini App principale déclarée dans BotFather** (nécessaire pour les liens `?startapp=` — scénario D ; sinon utiliser la forme `https://t.me/PesceStudioBot/app?startapp=…`).
 - Deux comptes Telegram : le compte créatrice (Pesce) et un second compte « public ».
-- Un navigateur de bureau (pour la porte d’entrée) + Telegram mobile/desktop.
+- Un navigateur de bureau (lecture publique du journal) + Telegram mobile/desktop.
 - Toute modification d’env Vercel exige un **redéploiement** pour prendre effet.
 
 ## A. Utilisateur public — identifiant créatrice NON configuré
@@ -88,7 +88,7 @@ Publier depuis l’app Telegram (compte de la chaîne), puis vérifier la base P
 
 1. `/api/media?file_id=…` sans jeton → 403 ; jeton expiré → 403 ; jeton valide (via `/api/content`) → 200.
 2. `/api/content?type=bogus` → 200, flux complet (pas d’erreur).
-3. Navigateur hors Telegram → porte d’entrée uniquement.
+3. Navigateur hors Telegram → le journal public est lisible (aucune porte bloquante) ; « Soutenir » renvoie vers le bot Telegram.
 4. Source HTML de `/` : `#studioButton` avec `hidden`, aucun `<script src="./studio.js">`.
 5. Support mini app envoyé avec uniquement `PESCE_CREATOR_TELEGRAM_USER_IDS` (plural) configuré → la créatrice est notifiée (bug corrigé).
 6. Sans `TELEGRAM_PESCE_STUDIO_WEBHOOK_SECRET` → le webhook fonctionne et un avertissement unique apparaît dans les logs.
@@ -108,6 +108,31 @@ Publier depuis l’app Telegram (compte de la chaîne), puis vérifier la base P
 2. Studio → Soutiens : « Rembourser » (premier clic arme, second exécute) → `refundStarPayment` appelé, paiement marqué remboursé dans le studio.
 3. Couper le réseau après « Publier sur Telegram » : le Studio affiche soit « partie sur le canal (confirmation reçue) » soit « vérifiez le canal avant de réessayer » — jamais d'état indéterminé.
 4. Vidéo du canal : l'affiche (poster) Telegram s'affiche avant lecture quand Telegram fournit une miniature.
+
+## Correction d'une publication déjà en ligne (parcours créatrice)
+
+1. Studio → **Écrits** : chaque écrit publié porte **Modifier** et **Retirer**.
+2. **Modifier** → le pupitre s'ouvre en mode correction : bandeau « Correction d'une publication en ligne », titre et corps **canoniques** préchargés, couverture existante reprise, bouton **« Mettre à jour la publication »**, pas de bouton « Enregistrer l'ébauche ».
+3. Modifier le texte → **Mettre à jour la publication** → confirmation « même article, même lien, même date de publication » (le bandeau de confirmation **reste affiché** après le rechargement).
+4. Vérifier dans Neon (ou via `GET /api/content`) : **même `id`**, **même `article_url`**, **même `published_at`**, `updated_at` avancé, `message_id`/`telegram_url` inchangés, couverture conservée, **aucune seconde publication**.
+5. Ouvrir la page telegra.ph : le texte est corrigé **à la même URL** (page éditée en place).
+6. Ouvrir le canal Telegram : le message porte le nouveau titre **et conserve ses deux boutons** (📖 Lire dans Pesce Studio, ⭐ Soutenir).
+7. Mini App / navigateur : l'article affiche la nouvelle version et « Mis à jour le … ». Un article jamais corrigé n'affiche **aucune** mention de mise à jour.
+8. Couper Telegraph (jeton absent) puis corriger : la correction est enregistrée dans Pesce Studio et le message le dit franchement — la publication n'est jamais perdue.
+9. **Abandonner la correction** → le pupitre revient en rédaction, rien n'a changé en ligne.
+10. Corriger une dépêche (sans titre) : le champ titre est désactivé, seul le texte est mis à jour.
+
+## Parcours lecteur — un article n'est jamais une impasse
+
+1. Ouvrir `https://pesce-creator-nine.vercel.app/?post=<id>` dans un **navigateur ordinaire** (hors Telegram) : l'article s'ouvre, le journal est autour, un bandeau propose d'ouvrir dans Telegram.
+2. L'article affiche l'identité Pesce, la navigation publique (À la une, Écrits, Directs, Photos, Soutenir) et le bouton de soutien.
+3. En bas : **« Découvrir plus de Pesce »** avec d'autres publications réelles — jamais l'article courant, jamais un brouillon, jamais une publication retirée.
+4. **Ouvrir le journal Pesce Studio** et **Toutes les publications** ramènent dans l'application.
+5. Depuis le canal Telegram : **📖 Lire dans Pesce Studio** ouvre le Mini App **sur l'article** (`?startapp=post_<id>`).
+6. Dans le Mini App, **Partager** diffuse le lien canonique `?post=<id>` (jamais l'URL de session Telegram).
+7. Lien périmé (`?post=inexistant`) ou publication retirée : « Publication introuvable » + sorties vers le journal. Jamais de page blanche.
+8. Les anciens liens `#post-…` déjà partagés fonctionnent toujours.
+9. Hors Telegram, « Soutenir » ouvre le bot Telegram (les Étoiles n'existent que là) — aucun bouton sans effet.
 
 ## Bureau privé `/studio` — mot de passe et application installable
 

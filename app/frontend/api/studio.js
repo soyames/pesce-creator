@@ -18,11 +18,11 @@ import { getChannelBroadcastStats, getChannelLiveState, getChannelRtmp } from '.
 import { creatorTelegramUserIds, isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { signMedia, verifyMediaToken } from '../lib/media-token.js';
-import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, detectImageFormat, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
+import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, createTelegraphAccount, createTelegraphPage, detectImageFormat, editTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, telegraphPathFromUrl, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
 import { normalizeYouTubeUrl } from '../lib/youtube.js';
-import { CHANNEL_HANDLE, CHANNEL_USERNAME, CREATOR_NAME, MINI_APP_URL, SUPPORT_URL } from '../lib/config.js';
+import { articleTelegramLink, CHANNEL_HANDLE, CHANNEL_USERNAME, CREATOR_NAME, MINI_APP_URL, SUPPORT_URL } from '../lib/config.js';
 
 // Audio enregistré/importer depuis le navigateur : limite du corps JSON serverless (~4,5 Mo),
 // soit ~3,3 Mo de données audio — plusieurs minutes de note vocale en Opus.
@@ -185,6 +185,12 @@ export default async function handler(req, res) {
           distributedAt: new Date(),
         });
         await updatePost(postId, { distributionError: null });
+        // Le clavier « Lire dans Pesce Studio » est posé APRÈS l'attachement : l'identité
+        // canonique peut changer lors de la course normale avec le webhook, et le lien profond
+        // doit pointer vers la ligne réellement canonique. Au mieux : un échec laisse le
+        // message avec son bouton de soutien, jamais sans clavier.
+        await telegram(token, 'editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup: postMarkup(postId) })
+          .catch((error) => console.error('post markup update failed', postId, error.message));
         return { distributed: true, postId, messageId };
       } catch (error) {
         console.error('telegram distribution failed', canonical.id, error.message);
@@ -291,6 +297,123 @@ export default async function handler(req, res) {
         ...(distribution.messageId ? { messageId: distribution.messageId } : {}),
         draftRemoved: Boolean(draftId),
         ...(distribution.distributionError ? { distributionError: distribution.distributionError } : {}),
+      });
+    }
+
+    // — CORRECTION ÉDITORIALE d'un écrit DÉJÀ PUBLIÉ (« Mettre à jour la publication »).
+    //
+    // Règle d'identité, non négociable : la publication est corrigée EN PLACE. Même ligne Neon
+    // (même `id`), même URL publique (même page Telegraph éditée par son `path`), même date de
+    // publication, même message Telegram, mêmes soutiens et statistiques rattachés. Rien n'est
+    // dépublié, rien n'est recréé, aucun second article n'apparaît.
+    //
+    // Ordre canonique-d'abord (même règle que la publication) : Neon est écrit EN PREMIER —
+    // l'application sert donc immédiatement la dernière version. Les copies externes (page
+    // Telegraph, message Telegram) sont ensuite mises à jour au mieux ; leur échec n'annule
+    // JAMAIS la correction et est rapporté honnêtement à la créatrice.
+    if (action === 'article_update') {
+      const postId = String(body.postId || '').trim();
+      if (!postId) return res.status(400).json({ message: 'Publication manquante.' });
+      const post = await getPostById(postId);
+      if (!post) return res.status(404).json({ message: 'Publication introuvable.' });
+      if (!post.published || post.sourceDeletedAt) {
+        return res.status(409).json({ message: 'Cette publication n’est plus en ligne : republiez-la depuis le pupitre.' });
+      }
+      if (!['text', 'document', 'other'].includes(post.contentType)) {
+        return res.status(400).json({ message: 'Seuls les écrits se corrigent ici — les vidéos et audios ont leur propre pupitre.' });
+      }
+
+      // Deux formes d'écrit, corrigées par le même chemin : l'ARTICLE (titre + corps + page
+      // Telegraph) et la DÉPÊCHE (texte seul, sans page externe). La forme est déduite de la
+      // publication existante — corriger un texte ne transforme jamais l'une en l'autre.
+      const isArticle = Boolean(post.articleUrl) || Boolean(post.articleBody);
+      const title = String(body.title || '').trim().slice(0, 256);
+      const text = String(body.text || '').trim().slice(0, 4096);
+      if (!text) return res.status(400).json({ message: 'Le texte de la publication est vide.' });
+      if (isArticle && !title) return res.status(400).json({ message: 'Le titre est requis pour mettre à jour un article.' });
+
+      const imageNormalizer = (src) => allowedArticleImageSrc(src, { secret: mediaSecret() });
+      const images = validateArticleImages(body.images, { normalize: imageNormalizer });
+      if (Array.isArray(body.images) && body.images.length > 0 && images.length === 0) {
+        return res.status(400).json({ message: 'Images d’article invalides : seuls les chemins Telegraph (/file/…) et les images hébergées par Pesce Studio sont acceptés.' });
+      }
+      // La couverture déjà en ligne est CONSERVÉE quand la correction n'en fournit pas de nouvelle :
+      // corriger un texte ne doit jamais faire disparaître l'image de l'article.
+      const submittedCover = images.find((image) => image.placement === 'cover') || null;
+      const articleImageUrl = submittedCover ? submittedCover.src : (post.articleImageUrl || null);
+      const effectiveImages = images.length
+        ? images
+        : (articleImageUrl ? [{ src: articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }] : []);
+
+      // Texte distribué sur Telegram : pour un article, le résumé (titre + lien INCHANGÉ) ;
+      // pour une dépêche, le texte lui-même.
+      const distributionText = isArticle ? [title, post.articleUrl || ''].filter(Boolean).join('\n\n') : text;
+
+      // 1) CANONIQUE : Neon d'abord. Échec ici = rien n'a changé, on le dit.
+      try {
+        await updatePost(post.id, isArticle
+          ? { text: distributionText, articleBody: text, articleImageUrl }
+          : { text: distributionText });
+      } catch (error) {
+        console.error('article canonical update failed', post.id, error.message);
+        return res.status(502).json({ message: 'Impossible d’enregistrer la correction pour le moment. Rien n’a été modifié — réessayez.' });
+      }
+
+      // 2) Page Telegraph : éditée EN PLACE (même `path` → même URL publique, aucun lien cassé).
+      let telegraphUpdated = false;
+      const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
+      const telegraphPath = isArticle ? telegraphPathFromUrl(post.articleUrl) : null;
+      if (accessToken && telegraphPath) {
+        try {
+          await editTelegraphPage({
+            accessToken,
+            path: telegraphPath,
+            title,
+            content: nodesFromArticle({ text, images: effectiveImages, normalize: imageNormalizer }),
+            authorName: CREATOR_NAME,
+          });
+          telegraphUpdated = true;
+        } catch (error) {
+          console.error('telegraph page edit failed', telegraphPath, error.message);
+        }
+      }
+
+      // 3) Copie Telegram : éditée au mieux. `reply_markup` est REPOSÉ — sans lui, Telegram
+      // retirerait le bouton ⭐ Soutenir de la publication corrigée.
+      let telegramUpdated = false;
+      if (post.messageId && token) {
+        try {
+          await telegram(token, 'editMessageText', {
+            chat_id: post.channelId || CHANNEL_HANDLE,
+            message_id: Number(post.messageId),
+            text: distributionText,
+            disable_web_page_preview: false,
+            reply_markup: postMarkup(post.id),
+          });
+          telegramUpdated = true;
+        } catch (error) {
+          // « message is not modified » : Telegram refuse une édition identique — la copie est
+          // déjà à jour, ce n'est pas un échec.
+          if (/not modified/i.test(error.message || '')) telegramUpdated = true;
+          else console.error('article telegram edit failed', post.messageId, error.message);
+        }
+      }
+
+      const updated = await getPostById(post.id);
+      const copies = [];
+      if (post.articleUrl && !telegraphUpdated) copies.push('la page Telegraph');
+      if (post.messageId && !telegramUpdated) copies.push('la copie Telegram');
+      return res.status(200).json({
+        ok: true,
+        postId: post.id,
+        articleUrl: updated?.articleUrl || null,
+        publishedAt: updated?.publishedAt || null,
+        updatedAt: updated?.updatedAt || null,
+        telegraphUpdated,
+        telegramUpdated,
+        message: copies.length
+          ? `Publication mise à jour dans Pesce Studio (les lecteurs voient la nouvelle version). ${copies.join(' et ')} n’a pas pu être mise à jour — réessayez plus tard.`
+          : 'Publication mise à jour : même article, même lien, même date de publication.',
       });
     }
 
@@ -495,15 +618,27 @@ export default async function handler(req, res) {
       const messageId = Number(body.messageId);
       if (!messageId) return res.status(400).json({ message: 'Publication d’origine manquante.' });
       const text = [title, description, youtubeUrl].filter(Boolean).join('\n\n');
-      try {
-        await telegram(token, 'editMessageText', { chat_id: CHANNEL_HANDLE, message_id: messageId, text, disable_web_page_preview: false });
-      } catch (error) {
-        console.error('video edit on telegram failed', messageId, error.message);
-        return res.status(502).json({ message: 'Impossible de mettre à jour la copie Telegram de la vidéo pour le moment. Aucune modification n’a été enregistrée — réessayez.' });
-      }
+      // Canonique d'abord (même règle que les écrits) : l'application sert la nouvelle version
+      // même si Telegram refuse l'édition de sa copie.
       const canonical = await findPostByMessageId(messageId);
-      if (canonical) await updatePost(canonical.id, { text }).catch((error) => console.error('video canonical update failed', error.message));
-      return res.status(200).json({ ok: true });
+      if (canonical) {
+        try {
+          await updatePost(canonical.id, { text });
+        } catch (error) {
+          console.error('video canonical update failed', error.message);
+          return res.status(502).json({ message: 'Impossible d’enregistrer la correction de la vidéo pour le moment. Rien n’a été modifié — réessayez.' });
+        }
+      }
+      try {
+        // `reply_markup` reposé : sans lui, Telegram retire le bouton ⭐ Soutenir de la vidéo.
+        await telegram(token, 'editMessageText', { chat_id: CHANNEL_HANDLE, message_id: messageId, text, disable_web_page_preview: false, reply_markup: supportMarkup() });
+      } catch (error) {
+        if (!/not modified/i.test(error.message || '')) {
+          console.error('video edit on telegram failed', messageId, error.message);
+          return res.status(200).json({ ok: true, telegramUpdated: false, message: 'Vidéo mise à jour dans Pesce Studio (les lecteurs voient la nouvelle version). La copie Telegram n’a pas pu être mise à jour — réessayez plus tard.' });
+        }
+      }
+      return res.status(200).json({ ok: true, telegramUpdated: true });
     }
 
     // — Audio : le fichier est hébergé par Telegram (canon du média), Neon ne garde que la
@@ -791,6 +926,20 @@ function editorialImageUploadError(error) {
 
 function supportMarkup() {
   return { inline_keyboard: [[{ text: '⭐ Soutenir le travail de Pesce', url: SUPPORT_URL }]] };
+}
+
+// Clavier d'une publication DONT on connaît l'identité canonique : « Lire dans Pesce Studio »
+// ouvre le journal complet sur cet article (et non une page isolée), puis le soutien.
+// Repli sur le seul bouton de soutien si l'identifiant ne peut pas former de lien profond.
+function postMarkup(postId) {
+  const deepLink = articleTelegramLink(postId);
+  if (!deepLink) return supportMarkup();
+  return {
+    inline_keyboard: [
+      [{ text: '📖 Lire dans Pesce Studio', url: deepLink }],
+      [{ text: '⭐ Soutenir le travail de Pesce', url: SUPPORT_URL }],
+    ],
+  };
 }
 
 async function telegram(token, method, payload) {

@@ -20,6 +20,10 @@
   let sessionEmail = '';
   let articleImages = []; // images d'article (hébergées par Telegraph), état du pupitre
   let activeDraftId = null; // brouillon repris dans le compositeur : retiré à la publication
+  // Correction éditoriale : identifiant de la publication EN LIGNE reprise au pupitre. Tant
+  // qu'il est posé, le pupitre met à jour cette publication EN PLACE — il n'en crée jamais
+  // une seconde. Remis à null après la mise à jour ou l'abandon de la correction.
+  let editingPost = null;
 
   const FORMATS = [
     { label: 'Grande Enquête', placeholder: 'Inscrire un titre percutant…' },
@@ -61,6 +65,16 @@
       ));
     }
     return fetch('/api/studio', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  }
+
+  // Confirmation d'action. Elle vit HORS du corps du bureau : un rechargement des données
+  // (load(), qui re-rend tous les volets) effaçait jusqu'ici le message de confirmation à
+  // l'instant même où il s'affichait.
+  function flash(message) {
+    const element = document.getElementById('studioFlash');
+    if (!element) return;
+    element.textContent = message || '';
+    element.classList.toggle('hidden', !message);
   }
 
   // — État de connectivité : bandeau honnête, jamais de faux « hors ligne fonctionnel ».
@@ -404,10 +418,18 @@ ${nextLive ? `<div class="p-space-md bg-on-secondary-fixed text-surface rounded-
   function renderRediger() {
     const format = FORMATS.find((item) => item.label === formatLabel) || FORMATS[0];
     return `
+${editingPost ? `<div id="editingBanner" class="bg-primary-container/15 border border-outline-variant rounded-xl p-space-md flex flex-col sm:flex-row sm:items-center gap-space-sm">
+<span class="material-symbols-outlined text-[22px] text-primary shrink-0">edit_document</span>
+<div class="flex flex-col min-w-0 flex-1">
+<span class="font-kicker-label text-kicker-label text-primary uppercase">Correction d'une publication en ligne</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant">« ${escapeHtml(editingPost.headline)} » — la mise à jour garde le même article, le même lien public et la même date de publication. Aucune seconde publication n'est créée.</p>
+</div>
+<button id="cancelEdit" class="shrink-0 self-start px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Abandonner la correction</button>
+</div>` : ''}
 <div class="flex items-center justify-between">
 <div>
 <span class="font-kicker-label text-kicker-label text-primary uppercase">Pupitre d'écriture</span>
-<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Rédiger</h1>
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">${editingPost ? 'Corriger' : 'Rédiger'}</h1>
 </div>
 <div class="inline-flex p-1 bg-surface-variant rounded-lg">
 <button class="desk-mode px-space-sm py-2 rounded font-body-sm text-body-sm bg-surface-container-lowest text-on-surface shadow-sm font-semibold" type="button" data-desk-mode="redaction">Rédaction</button>
@@ -451,8 +473,8 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 </div>
 </div>
 <div class="flex flex-col sm:flex-row items-stretch gap-space-sm">
-<button id="publishSubmit" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-body-sm text-body-sm font-bold uppercase tracking-wider rounded-lg hover:bg-primary-container transition-colors flex items-center justify-center gap-2" type="button"><span class="material-symbols-outlined text-[1.2rem]">send</span> Publier</button>
-<button id="draftButton" class="sm:w-auto py-3 px-space-md bg-surface-container-lowest border border-outline-variant text-on-surface font-body-sm text-body-sm font-medium rounded-lg transition-colors flex items-center justify-center" type="button">Enregistrer l'ébauche</button>
+<button id="publishSubmit" class="flex-1 py-3 px-space-md bg-on-secondary-fixed text-surface font-body-sm text-body-sm font-bold uppercase tracking-wider rounded-lg hover:bg-primary-container transition-colors flex items-center justify-center gap-2" type="button"><span class="material-symbols-outlined text-[1.2rem]">${editingPost ? 'published_with_changes' : 'send'}</span> ${editingPost ? 'Mettre à jour la publication' : 'Publier'}</button>
+${editingPost ? '' : '<button id="draftButton" class="sm:w-auto py-3 px-space-md bg-surface-container-lowest border border-outline-variant text-on-surface font-body-sm text-body-sm font-medium rounded-lg transition-colors flex items-center justify-center" type="button">Enregistrer l\'ébauche</button>'}
 </div>
 <p id="publishStatus" class="form-status" aria-live="polite"></p>
 </form>
@@ -737,10 +759,57 @@ ${renderRecallButton(post)}
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(headline)}</h3>
 <p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml((post.text || '').split('\n').slice(1).join(' ').trim().slice(0, 200))}</p>
-<span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.telegramUrl ? `<a class="inline-block py-2.5 text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Diffusion Telegram en attente'}</span>
-${renderDistributionRetry(post)}
+<span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.updatedAt && post.publishedAt && new Date(post.updatedAt) - new Date(post.publishedAt) > 60000 ? `Mis à jour le ${formatDate(post.updatedAt)} · ` : ''}${post.telegramUrl ? `<a class="inline-block py-2.5 text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Diffusion Telegram en attente'}</span>
+<div class="flex items-center gap-space-sm flex-wrap">
+${renderEditButton(post)}
 ${renderRecallButton(post)}
+</div>
+${renderDistributionRetry(post)}
 </article>`;
+  }
+
+  // Correction d'un écrit DÉJÀ PUBLIÉ : la publication est reprise au pupitre et mise à jour
+  // EN PLACE (même article, même lien, même date). Aucune dépublication, aucun doublon.
+  function renderEditButton(post) {
+    if (!['text', 'document', 'other'].includes(post.contentType)) return '';
+    return `<button class="post-edit px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-post-edit="${escapeAttribute(post.id)}">Modifier</button>`;
+  }
+
+  // Reprend une publication en ligne dans le pupitre, sans rien toucher côté serveur.
+  function editPublishedPost(postId) {
+    const post = posts.find((item) => item.id === postId);
+    if (!post) { alert('Publication introuvable — rechargez le bureau.'); return; }
+    const isArticle = Boolean(post.articleUrl || post.articleBody);
+    const lines = String(post.text || '').split('\n').map((line) => line.trim());
+    const headline = lines.find(Boolean) || 'Publication sans titre';
+    editingPost = { id: post.id, headline, isArticle, articleUrl: post.articleUrl || null };
+    activeDraftId = null;
+    pendingPublishKey = null;
+    // La couverture déjà en ligne est reprise telle quelle : corriger le texte ne doit jamais
+    // faire disparaître l'image de l'article.
+    articleImages = post.articleImageUrl
+      ? [{ id: `cover-${post.id}`, src: post.articleImageUrl, url: post.articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }]
+      : [];
+    refreshComposerPane(); // le pupitre passe en mode correction (bandeau + « Mettre à jour »)
+    switchTab('rediger');
+    const titleInput = document.getElementById('articleTitle');
+    const textInput = document.getElementById('publishText');
+    if (titleInput) {
+      titleInput.value = isArticle ? headline : '';
+      titleInput.disabled = !isArticle; // une dépêche n'a pas de titre : ne pas en inventer un
+    }
+    if (textInput) textInput.value = isArticle ? String(post.articleBody || post.text || '') : String(post.text || '');
+    renderMediaList();
+    refreshBat();
+    textInput?.focus();
+  }
+
+  function cancelEdit() {
+    editingPost = null;
+    articleImages = [];
+    refreshComposerPane();
+    renderMediaList();
+    refreshBat();
   }
 
   function formatDuration(seconds) {
@@ -1280,7 +1349,36 @@ ${renderTelegraph()}
     studioData.drafts = studioData.drafts.filter((draft) => draft.id !== draftId);
   }
 
+  // Mise à jour d'une publication EN LIGNE : même article, même lien, même date de publication.
+  // Le serveur écrit d'abord la version canonique (Neon), puis met à jour les copies externes ;
+  // le pupitre rapporte exactement ce qui s'est passé, sans jamais l'embellir.
+  async function updatePublishedPost() {
+    const title = document.getElementById('articleTitle')?.value.trim() || '';
+    const text = document.getElementById('publishText')?.value.trim() || '';
+    const status = document.getElementById('publishStatus');
+    const button = document.getElementById('publishSubmit');
+    if (!text) { if (status) status.textContent = 'Le texte de la publication est vide.'; return; }
+    if (editingPost.isArticle && !title) { if (status) status.textContent = 'Le titre est requis pour mettre à jour un article.'; return; }
+    const images = collectArticleImages();
+    button.disabled = true; button.textContent = 'Mise à jour…';
+    try {
+      const response = await studioAction({ action: 'article_update', postId: editingPost.id, text, ...(editingPost.isArticle ? { title, images } : {}) });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) { showLogin(); return; }
+      if (!response.ok) throw new Error(data.message || 'Mise à jour impossible.');
+      flash(data.message || 'Publication mise à jour.');
+      editingPost = null;
+      articleImages = [];
+      await load();
+      switchTab('ecrits');
+    } catch (error) {
+      if (status) status.textContent = error.message || 'Mise à jour impossible — réessayez.';
+    }
+    finally { button.disabled = false; button.textContent = 'Mettre à jour la publication'; }
+  }
+
   async function publishFromStudio() {
+    if (editingPost) return updatePublishedPost();
     const title = document.getElementById('articleTitle')?.value.trim() || '';
     const text = document.getElementById('publishText')?.value.trim() || '';
     const status = document.getElementById('publishStatus');
@@ -1300,9 +1398,9 @@ ${renderTelegraph()}
       const { response, data } = await studioActionOrRetry({ action: title ? 'article_publish' : 'publish', text, publishKey: nextPublishKey(), ...(title ? { title, images } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
       if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
-      status.textContent = data.distributed === false
+      flash(data.distributed === false
         ? `PUBLICATION RÉUSSIE — ${title ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App. La diffusion Telegram a échoué : vous pouvez la relancer depuis « Écrits » sans créer de doublon.`
-        : `PUBLICATION RÉUSSIE — ${title ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App, et diffusé${title ? '' : 'e'} sur Telegram avec le bouton ⭐ Soutenir.`;
+        : `PUBLICATION RÉUSSIE — ${title ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App, et diffusé${title ? '' : 'e'} sur Telegram avec le bouton ⭐ Soutenir.`);
       pendingPublishKey = null;
       removeDraftLocally(activeDraftId);
       activeDraftId = null;
@@ -1518,12 +1616,9 @@ ${renderTelegraph()}
     location.reload();
   }
 
-  // — Liaison des événements.
-  function bindEvents() {
-    document.querySelectorAll('[data-web-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.webTab)));
-    document.querySelectorAll('[data-web-tab-goto]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.webTabGoto)));
-    document.getElementById('webLogout')?.addEventListener('click', logout);
-    document.getElementById('paramLogout')?.addEventListener('click', logout);
+  // — Liaison du PUPITRE seul : rappelable après un rendu partiel du volet « Rédiger »
+  // (entrée/sortie du mode correction) sans jamais dupliquer les écouteurs des autres volets.
+  function bindComposer() {
     document.querySelectorAll('.desk-mode').forEach((button) => button.addEventListener('click', () => switchDeskMode(button.dataset.deskMode)));
     document.querySelectorAll('.format-pill').forEach((button) => button.addEventListener('click', () => {
       formatLabel = button.dataset.format;
@@ -1542,7 +1637,34 @@ ${renderTelegraph()}
     }));
     document.getElementById('publishSubmit')?.addEventListener('click', publishFromStudio);
     document.getElementById('draftButton')?.addEventListener('click', saveDraft);
+    document.getElementById('cancelEdit')?.addEventListener('click', cancelEdit);
+    document.getElementById('publishText')?.addEventListener('input', () => {
+      const words = document.getElementById('publishWords');
+      const count = wordCount(document.getElementById('publishText').value);
+      if (words) words.textContent = `${count.toLocaleString('fr-FR')} mot${count > 1 ? 's' : ''}`;
+      refreshBat();
+    });
+    document.getElementById('articleTitle')?.addEventListener('input', refreshBat);
     bindMediaEvents();
+    refreshBat();
+  }
+
+  // Re-rendu du volet « Rédiger » seul (bascule correction ↔ rédaction) : le reste du bureau
+  // n'est pas touché, et seuls les écouteurs du pupitre sont reposés.
+  function refreshComposerPane() {
+    const pane = document.querySelector('[data-web-pane="rediger"]');
+    if (!pane) return;
+    pane.innerHTML = renderRediger();
+    bindComposer();
+  }
+
+  // — Liaison des événements.
+  function bindEvents() {
+    document.querySelectorAll('[data-web-tab]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.webTab)));
+    document.querySelectorAll('[data-web-tab-goto]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.webTabGoto)));
+    document.getElementById('webLogout')?.addEventListener('click', logout);
+    document.getElementById('paramLogout')?.addEventListener('click', logout);
+    bindComposer();
     bindVideoComposer();
     bindAudioComposer();
     // Délégation du corps : « Insérer dans un article » (Photothèque) et copie RTMP (régie).
@@ -1555,6 +1677,8 @@ ${renderTelegraph()}
       }
       const distributionRetry = event.target.closest('.distribution-retry');
       if (distributionRetry) { retryDistribution(distributionRetry); return; }
+      const editButton = event.target.closest('.post-edit');
+      if (editButton) { editPublishedPost(editButton.dataset.postEdit); return; }
       const recallButton = event.target.closest('.recall-post');
       if (recallButton) { recallPostFromStudio(recallButton); return; }
       const rtmpCopy = event.target.closest('.rtmp-copy');
@@ -1653,6 +1777,9 @@ ${renderKpi('favorite', Number(data.reactions || 0).toLocaleString('fr-FR'), 'R�
     document.querySelectorAll('.draft-delete').forEach((button) => button.addEventListener('click', () => deleteDraftRow(button)));
     document.querySelectorAll('.draft-load').forEach((button) => button.addEventListener('click', () => {
       const text = button.dataset.draft || '';
+      // Reprendre un brouillon quitte toujours le mode correction : on écrit un NOUVEAU texte,
+      // on ne corrige pas la publication en ligne qui était ouverte au pupitre.
+      if (editingPost) { editingPost = null; articleImages = []; refreshComposerPane(); renderMediaList(); }
       activeDraftId = button.dataset.draftId || null; // publication → brouillon retiré
       const { kind, title } = draftKind(text);
       if (kind === 'Audio') {
@@ -1682,13 +1809,6 @@ ${renderKpi('favorite', Number(data.reactions || 0).toLocaleString('fr-FR'), 'R�
     document.querySelectorAll('[data-workspace]').forEach((button) => button.addEventListener('click', () => switchTab(button.dataset.workspace)));
     document.querySelectorAll('.ticket-reply').forEach((button) => button.addEventListener('click', () => replyTicket(button)));
     document.querySelectorAll('.ticket-resolve').forEach((button) => button.addEventListener('click', () => resolveTicket(button)));
-    document.getElementById('publishText')?.addEventListener('input', () => {
-      const words = document.getElementById('publishWords');
-      if (words) words.textContent = `${wordCount(document.getElementById('publishText').value).toLocaleString('fr-FR')} mot${wordCount(document.getElementById('publishText').value) > 1 ? 's' : ''}`;
-      refreshBat();
-    });
-    document.getElementById('articleTitle')?.addEventListener('input', refreshBat);
-    refreshBat();
   }
 
   function switchDeskMode(mode) {

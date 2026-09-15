@@ -29,7 +29,8 @@ if (!BROWSER) { console.error('Edge/Chrome introuvable.'); process.exit(1); }
 
 const SHOTS = [
   // [nom, largeur, hauteur, URL, condition de prêt (évaluée dans la page)]
-  ['gate-390', 390, 844, `http://127.0.0.1:${PREVIEW_PORT}/`, `document.getElementById('telegramGate') && !document.getElementById('telegramGate').hidden && document.fonts.status === 'loaded'`],
+  ['web-public-390', 390, 844, `http://127.0.0.1:${PREVIEW_PORT}/?preview=web`, `!document.getElementById('telegramApp').hidden && document.getElementById('homeLead').children.length > 0`],
+  ['web-article-390', 390, 844, `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&post=post-9`, `!document.getElementById('reader').hidden && document.querySelector('#readerContent h1') !== null`],
   ['home-390', 390, 844, `http://127.0.0.1:${PREVIEW_PORT}/?preview=1`, `!document.getElementById('telegramApp').hidden && document.getElementById('homeLead').children.length > 0`],
   ['home-820', 820, 1180, `http://127.0.0.1:${PREVIEW_PORT}/?preview=1`, `!document.getElementById('telegramApp').hidden && document.getElementById('homeLead').children.length > 0`],
   ['home-1280', 1280, 1000, `http://127.0.0.1:${PREVIEW_PORT}/?preview=1`, `!document.getElementById('telegramApp').hidden && document.getElementById('homeLead').children.length > 0`],
