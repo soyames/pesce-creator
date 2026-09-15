@@ -92,7 +92,10 @@ test('articleBodyFromPage : corps reconstruit depuis la page Telegraph de l’ar
 });
 
 test('serveur : la resynchronisation complète le corps manquant (jamais d’écrasement)', () => {
-  assert.ok(PRODUCTION['api/studio.js'].includes('articleBodyFromPage(page)'), 'resync : corps non lu sur la page Telegraph');
+  // Le corps est lu sur la page Telegraph, après retrait du pied ajouté par Pesce Studio —
+  // sans ce retrait, le pied serait recopié dans le corps canonique de l'article.
+  assert.ok(PRODUCTION['api/studio.js'].includes('articleBodyFromPage(sourcePage)'), 'resync : corps non lu sur la page Telegraph');
+  assert.ok(PRODUCTION['api/studio.js'].includes('const sourcePage = { ...page, content: stripArticleFooter(page.content) }'), 'resync : le pied serait recopié dans le corps');
   assert.ok(PRODUCTION['api/studio.js'].includes('bodyRecovered: Boolean(bodyRecovered)'), 'resync : récupération non signalée à la créatrice');
   assert.ok(
     PRODUCTION['lib/db.js'].includes("if (!existing.articleBody && post.articleBody) add('article_body', post.articleBody)"),

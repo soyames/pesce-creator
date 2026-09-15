@@ -80,6 +80,27 @@ const ROUTES = [
     ],
   },
   {
+    // Depuis « Lecture Article », les onglets du bas doivent RÉELLEMENT ouvrir leur page :
+    // le lecteur est une surcouche, il faut qu'elle se referme (sinon rien ne semble se passer).
+    name: 'lecteur-navigation', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&post=post-9`, widths: [390],
+    readyExpr: `(function () {
+      if (!window.__navFlow) {
+        if (document.getElementById('reader').hidden || !document.querySelector('#readerContent h1')) return false;
+        window.__navFlow = 'started';
+        setTimeout(function () { document.querySelector('.nav-button[data-section="ecrits"]').click(); }, 400);
+        return false;
+      }
+      return document.getElementById('reader').hidden && !document.getElementById('ecrits').hidden;
+    })()`,
+    asserts: [
+      ['l\'onglet ferme le lecteur', `document.getElementById('reader').hidden`, true],
+      ['la section demandée est bien ouverte', `!document.getElementById('ecrits').hidden && document.getElementById('a-la-une').hidden`, true],
+      ['l\'en-tête suit la section', `document.getElementById('headerLabel').textContent`, 'Publications'],
+      ['l\'onglet actif est mis en évidence', `document.querySelector('.nav-button[data-section="ecrits"]').classList.contains('text-primary')`, true],
+      ['la section affiche son contenu', `document.getElementById('publicationFeed').children.length > 0`, true],
+    ],
+  },
+  {
     // Retour depuis la page d'hébergement Telegraph : le lecteur qui a ouvert telegra.ph
     // retrouve l'article DANS le journal, par le chemin de la page (clé stable).
     name: 'web-retour-telegraph', url: `http://127.0.0.1:${PREVIEW_PORT}/?preview=web&article=Le-numerique-africain-a-besoin-de-confiance-09-11-2`, widths: [390],

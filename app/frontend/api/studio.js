@@ -521,10 +521,13 @@ export default async function handler(req, res) {
       const chat = await telegram(token, 'getChat', { chat_id: CHANNEL_HANDLE });
       const chatId = Number(chat.result?.id);
       if (!chatId) return res.status(502).json({ message: 'Canal Telegram introuvable.' });
-      const cover = articleCoverFromPage(page);
+      // Le pied ajouté par Pesce Studio est retiré avant extraction : sans cela il serait
+      // recopié dans le corps canonique de l'article.
+      const sourcePage = { ...page, content: stripArticleFooter(page.content) };
+      const cover = articleCoverFromPage(sourcePage);
       // Le corps intégral lu sur la page Telegraph complète la ligne canonique (article_body)
       // quand il manquait : la lecture dans le Mini App ne dépend plus jamais de la page externe.
-      const bodyRecovered = articleBodyFromPage(page);
+      const bodyRecovered = articleBodyFromPage(sourcePage);
       const post = {
         id: `${chatId}_${messageId}`,
         source: 'studio',
@@ -806,10 +809,11 @@ export default async function handler(req, res) {
     // la page telle qu'elle est, on retire un éventuel pied déjà posé, on rajoute le pied à jour
     // et on réécrit la MÊME page (même `path` → même URL). Aucune republication, aucun doublon,
     // aucune ligne Neon modifiée. Idempotent : relancer ne crée jamais de second pied.
-    if (action === 'telegraph_footer_backfill') {
+    if (action === 'relink_articles') {
       const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
       const posts = await listChannelPosts({ limit: 50 });
       const articles = posts.filter((post) => telegraphPathFromUrl(post.articleUrl));
+      let bodiesRecovered = 0;
       let pagesUpdated = 0;
       let messagesUpdated = 0;
       let pagesFailed = 0;
@@ -819,18 +823,49 @@ export default async function handler(req, res) {
         const path = telegraphPathFromUrl(post.articleUrl);
         const title = String(post.text || '').split('\n').map((line) => line.trim()).find((line) => line && !/^https?:\/\//.test(line)) || 'Pesce Studio';
 
-        // a) La page Telegraph reçoit (ou reçoit à nouveau) son pied de retour vers le journal.
-        // Le contenu existant est relu et réécrit tel quel : seul le pied change.
-        if (accessToken) {
+        // a) LE CORPS CANONIQUE D'ABORD. Un article publié avant que Neon ne conserve le texte
+        // intégral n'a que son titre en base : il est illisible dans le Mini App et le lecteur
+        // n'a d'autre choix que d'aller sur Telegraph. On relit donc la page (lecture publique,
+        // sans jeton : même les articles d'un autre compte sont récupérables) et on rapatrie le
+        // texte. C'est ce qui rend les anciens articles réellement lisibles dans le journal.
+        let page = null;
+        try {
+          page = await getTelegraphPage({ accessToken, path });
+        } catch (error) {
+          console.error('telegraph page read failed', path, error.message);
+        }
+        // Le pied ajouté par Pesce Studio est retiré AVANT extraction : sans cela il finirait
+        // recopié dans le corps de l'article.
+        const sourceContent = Array.isArray(page?.content) ? stripArticleFooter(page.content) : null;
+        if (sourceContent) {
+          const recovered = {};
+          if (!post.articleBody) {
+            const recoveredBody = articleBodyFromPage({ ...page, content: sourceContent });
+            if (recoveredBody) recovered.articleBody = recoveredBody;
+          }
+          if (!post.articleImageUrl) {
+            const recoveredCover = articleCoverFromPage({ ...page, content: sourceContent });
+            if (recoveredCover) recovered.articleImageUrl = recoveredCover;
+          }
+          if (Object.keys(recovered).length) {
+            try {
+              await updatePost(post.id, recovered);
+              bodiesRecovered += recovered.articleBody ? 1 : 0;
+            } catch (error) {
+              console.error('article body recovery failed', post.id, error.message);
+            }
+          }
+        }
+
+        // b) La page Telegraph reçoit (ou reçoit à nouveau) son pied de retour vers le journal.
+        // Le contenu existant est réécrit tel quel : seul le pied change.
+        if (accessToken && sourceContent) {
           try {
-            const page = await getTelegraphPage({ accessToken, path });
-            const content = Array.isArray(page?.content) ? page.content : null;
-            if (!content) throw new Error('contenu de page illisible');
             await editTelegraphPage({
               accessToken,
               path,
               title: page.title || title,
-              content: [...stripArticleFooter(content), ...telegraphFooter(path)],
+              content: [...sourceContent, ...telegraphFooter(path)],
               authorName: page.author_name || CREATOR_NAME,
             });
             pagesUpdated += 1;
@@ -838,6 +873,8 @@ export default async function handler(req, res) {
             console.error('telegraph footer backfill failed', path, error.message);
             pagesFailed += 1;
           }
+        } else if (accessToken) {
+          pagesFailed += 1;
         }
 
         // b) Le message du canal cesse de renvoyer vers l'hébergeur : son lien devient le lien
@@ -867,14 +904,16 @@ export default async function handler(req, res) {
       }
 
       const parts = [`${articles.length} article(s) vérifié(s)`];
-      parts.push(accessToken ? `${pagesUpdated} page(s) Telegraph mise(s) à jour` : 'pages Telegraph ignorées (Telegraph non configuré)');
+      parts.push(`${bodiesRecovered} texte(s) d’article rapatrié(s) dans Pesce Studio (désormais lisibles dans le Mini App)`);
+      parts.push(accessToken ? `${pagesUpdated} page(s) Telegraph mise(s) à jour` : 'pages Telegraph inchangées (Telegraph non configuré)');
       parts.push(`${messagesUpdated} message(s) du canal redirigé(s) vers le journal`);
       if (pagesFailed || messagesFailed) {
-        parts.push(`${pagesFailed} page(s) et ${messagesFailed} message(s) non modifiables (publication postée à la main ou page d’un autre compte)`);
+        parts.push(`${pagesFailed} page(s) et ${messagesFailed} message(s) non modifiables (publication postée à la main, ou page d’un autre compte Telegraph)`);
       }
       return res.status(200).json({
         ok: true,
         checked: articles.length,
+        bodiesRecovered,
         pagesUpdated,
         messagesUpdated,
         pagesFailed,

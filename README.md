@@ -208,7 +208,13 @@ Toute modification d’environnement exige un redéploiement pour prendre effet.
 
 Une page telegra.ph appartient à Telegram : on ne peut ni y ajouter de navigation ou de boutons, ni y installer une redirection. Ce qu'elle peut porter, ce sont des liens — chaque article publié se termine donc par **« Lire cet article dans Pesce Studio »**, qui rouvre l'article dans le journal.
 
-Les articles publiés avant cette évolution se rattrapent en une fois : **Paramètres → « Rediriger les articles déjà publiés »**. Les anciens messages du canal cessent de pointer vers telegra.ph et les anciennes pages reçoivent leur pied de retour. L'action modifie les messages et les pages sur place ; la relancer ne crée jamais de doublon. Une publication postée à la main depuis Telegram n'est pas modifiable par le bot et est comptée comme telle dans le compte rendu.
+Les articles publiés **avant** cette évolution n'ont, eux, que leur titre en base : leur texte n'existe que sur Telegraph, donc le journal n'a rien à afficher. Ils se rattrapent en une fois : **Paramètres → « Rediriger les articles déjà publiés »**. Pour chaque article, l'action :
+
+1. **rapatrie le texte intégral** depuis la page Telegraph (lecture publique — même les articles d'un autre compte sont récupérables), ce qui rend l'article lisible dans le journal ;
+2. fait pointer le **message du canal** vers cette lecture plutôt que vers telegra.ph ;
+3. ajoute le **pied de retour** en bas de la page Telegraph.
+
+Tout est modifié sur place ; relancer ne crée jamais de doublon et n'écrase jamais un texte déjà enregistré. Une publication postée à la main depuis Telegram n'est pas modifiable par le bot et est comptée comme telle dans le compte rendu.
 
 ### Corriger une publication déjà en ligne
 

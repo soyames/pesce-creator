@@ -1294,8 +1294,8 @@ ${renderTelegraph()}
 <p id="reconcileStatus" class="form-status" aria-live="polite"></p>
 </section>
 <section class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm xl:col-span-2">
-<h2 class="font-headline-sm text-headline-sm text-on-surface">Ramener les anciens articles dans le journal</h2>
-<p class="font-body-md text-body-md text-on-surface-variant">Les articles publiés avant cette évolution renvoient encore vers leur page telegra.ph, hébergée par Telegram — une page qui ne peut porter ni navigation, ni suggestions, ni bouton de soutien. Cette action reprend vos articles déjà publiés et, pour chacun : le <strong class="text-on-surface">message du canal</strong> pointe désormais vers la lecture dans Pesce Studio, et la <strong class="text-on-surface">page Telegraph</strong> reçoit en bas un lien « Lire cet article dans Pesce Studio ». Les pages et les messages sont modifiés sur place (mêmes adresses, contenu inchangé) ; relancer ne crée jamais de doublon. Les nouveaux articles sont déjà publiés de cette façon.</p>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">Rendre les anciens articles lisibles dans le journal</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Les articles publiés avant cette évolution ne sont pas lisibles dans le Mini App : leur texte n'existe que sur leur page telegra.ph, hébergée par Telegram. Cette action reprend chacun de vos articles déjà publiés et : <strong class="text-on-surface">rapatrie le texte intégral</strong> dans Pesce Studio (l'article devient lisible dans le journal), fait pointer le <strong class="text-on-surface">message du canal</strong> vers cette lecture, et ajoute en bas de la <strong class="text-on-surface">page Telegraph</strong> un lien « Lire cet article dans Pesce Studio ». Les pages et les messages sont modifiés sur place (mêmes adresses, texte inchangé) ; relancer ne crée jamais de doublon. Les nouveaux articles sont déjà publiés de cette façon.</p>
 <button id="telegraphFooterButton" class="self-start px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button">Rediriger les articles déjà publiés</button>
 <p id="telegraphFooterStatus" class="form-status" aria-live="polite"></p>
 </section>
@@ -1720,7 +1720,7 @@ ${renderKpi('favorite', Number(data.reactions || 0).toLocaleString('fr-FR'), 'R�
       const status = document.getElementById('telegraphFooterStatus');
       button.disabled = true; button.textContent = 'Redirection en cours…';
       try {
-        const response = await studioAction({ action: 'telegraph_footer_backfill' });
+        const response = await studioAction({ action: 'relink_articles' });
         const data = await response.json().catch(() => ({}));
         if (response.status === 401) { showLogin(); return; }
         if (!response.ok) throw new Error(data.message || 'Redirection impossible.');

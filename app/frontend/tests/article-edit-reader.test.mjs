@@ -182,6 +182,30 @@ test('reposer le pied ne l’empile jamais, et ne coupe jamais l’article', () 
   assert.deepEqual(stripArticleFooter(null), []);
 });
 
+test('rattrapage : le texte d’un ancien article est rapatrié, sans recopier le pied', () => {
+  const source = read('api/studio.js');
+  const start = source.indexOf("action === 'relink_articles'");
+  assert.ok(start > 0, 'action de rattrapage absente');
+  const block = source.slice(start, source.indexOf("action === 'backfill_support'"));
+
+  // Le corps canonique est rapatrié quand il manque : c'est CE qui rend l'ancien article
+  // lisible dans le Mini App (sans lui, le lecteur n'aurait que le titre).
+  assert.ok(block.includes('if (!post.articleBody)'), 'le texte des anciens articles n’est pas rapatrié');
+  assert.ok(block.includes('articleBodyFromPage('), 'le texte n’est pas relu depuis la page');
+  assert.ok(block.includes('if (!post.articleImageUrl)'), 'la couverture manquante n’est pas rapatriée');
+  // Un corps déjà présent n'est jamais écrasé par la page externe.
+  assert.ok(!/articleBody: articleBodyFromPage/.test(block), 'le corps canonique peut être écrasé');
+
+  // Le pied posé par Pesce Studio est retiré AVANT extraction, sinon il finirait dans le corps.
+  assert.ok(block.includes('stripArticleFooter(page.content)'), 'le pied serait recopié dans le corps de l’article');
+  const stripIndex = block.indexOf('stripArticleFooter(page.content)');
+  assert.ok(stripIndex < block.indexOf('articleBodyFromPage('), 'le corps est extrait avant le retrait du pied');
+
+  // Même précaution dans la resynchronisation manuelle d'un article.
+  const resync = source.slice(source.indexOf("action === 'resync_message'"), source.indexOf("action === 'article_image_upload'"));
+  assert.ok(resync.includes('stripArticleFooter(page.content)'), 'la resynchronisation recopierait le pied dans le corps');
+});
+
 // ——————————————————————————————————————————————————————————————————————————
 // C. Autorisation : personne ne corrige une publication sans preuve d'identité serveur
 // ——————————————————————————————————————————————————————————————————————————
@@ -359,6 +383,17 @@ test('lecteur : découverte d’autres publications, sans l’article courant ni
   assert.ok(!/fetch\(/.test(block), 'la découverte ouvre une source de données parallèle');
   assert.ok(block.includes('Découvrir plus de Pesce'), 'section de découverte absente');
   assert.ok(block.includes('data-reader-home') && block.includes('data-reader-section="ecrits"'), 'aucune sortie explicite vers le journal');
+});
+
+test('lecteur : la navigation referme l’article — une surcouche ne bloque jamais les onglets', () => {
+  const app = read('app.js');
+  const block = app.slice(app.indexOf('function openSection(id) {'), app.indexOf('// — Routage par délégation'));
+  // Le lecteur est posé AU-DESSUS des sections : sans fermeture, appuyer sur un onglet
+  // changeait bien la section, mais l'article restait à l'écran et rien ne semblait se passer.
+  assert.ok(block.includes('if (readerOpen) closeReader();'), 'la navigation laisse le lecteur ouvert par-dessus la section');
+  const closeIndex = block.indexOf('closeReader()');
+  const sectionIndex = block.indexOf('sections.forEach(');
+  assert.ok(closeIndex > 0 && closeIndex < sectionIndex, 'le lecteur est fermé après le changement de section');
 });
 
 test('partage : le lien partagé est le lien canonique, jamais l’URL de session Telegram', () => {

@@ -122,6 +122,10 @@ function applyHeaderState(id) {
 
 function openSection(id) {
   if (!SECTIONS.includes(id)) return;
+  // Le lecteur est une surcouche POSÉE AU-DESSUS des sections : sans le refermer, changer de
+  // section ne se voit pas — c'est l'article qui reste à l'écran. Toute navigation passe par
+  // ici, donc c'est le seul endroit où la refermer.
+  if (readerOpen) closeReader();
   sections.forEach((section) => { section.hidden = section.id !== id; });
   navButtons.forEach((button) => {
     const active = button.dataset.section === id;
