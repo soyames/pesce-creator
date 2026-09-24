@@ -451,7 +451,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="articleTitle">Titre de l'article</label>
 <input id="articleTitle" class="editorial-input" type="text" maxlength="256" placeholder="${escapeAttribute(format.placeholder)}">
-<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Avec un titre : l'article intégral est enregistré dans Pesce Studio et lu dans le journal, avec son propre lien partageable. Sans titre : publication texte simple sur Telegram (4 096 caractères maximum).</p>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Le corps d'un article n'a pas de limite de mots et la couverture est facultative. Sans titre, un texte court est envoyé tel quel sur Telegram ; au-delà de 4 096 caractères, Pesce Studio crée automatiquement un article avec son propre lien de lecture.</p>
 </div>
 <div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase">Média de l'article</label>
@@ -1410,18 +1410,15 @@ ${renderTelegraph()}
       if (status) status.textContent = 'Les images nécessitent un titre : ajoutez un titre pour publier un article illustré.';
       return;
     }
-    if (title && !images.some((image) => image.placement === 'cover')) {
-      if (status) status.textContent = 'Une image de couverture est requise pour publier un article — utilisez « Ajouter un média ».';
-      return;
-    }
     button.disabled = true; button.textContent = 'Publication…';
     try {
       const { response, data } = await studioActionOrRetry({ action: title ? 'article_publish' : 'publish', text, publishKey: nextPublishKey(), ...(title ? { title, images } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
       if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
+      const article = Boolean(title || text.length > 4096);
       flash(data.distributed === false
-        ? `PUBLICATION RÉUSSIE — ${title ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App. La diffusion Telegram a échoué : vous pouvez la relancer depuis « Écrits » sans créer de doublon.`
-        : `PUBLICATION RÉUSSIE — ${title ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App, et diffusé${title ? '' : 'e'} sur Telegram avec le bouton ⭐ Soutenir.`);
+        ? `PUBLICATION RÉUSSIE — ${article ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App. La diffusion Telegram a échoué : vous pouvez la relancer depuis « Écrits » sans créer de doublon.`
+        : `PUBLICATION RÉUSSIE — ${article ? 'l’article' : 'la publication'} est disponible dans Pesce Studio et le Mini App, et diffusé${article ? '' : 'e'} sur Telegram avec le bouton ⭐ Soutenir.`);
       pendingPublishKey = null;
       removeDraftLocally(activeDraftId);
       activeDraftId = null;
