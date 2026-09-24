@@ -497,11 +497,11 @@ ${recall}
 
   // — RÉDIGER : pupitre d'écriture (publication Telegram ou article Telegraph), aperçu BAT réel.
   const FORMATS = [
-    { label: 'Grande Enquête', placeholder: 'Inscrire un titre percutant…', hint: 'Le titre transforme le texte en article Telegraph (telegra.ph), lu en Instant View.' },
-    { label: 'Chronique / Opinion', placeholder: 'Titre de la chronique…', hint: 'Le titre transforme le texte en article Telegraph (telegra.ph), lu en Instant View.' },
+    { label: 'Grande Enquête', placeholder: 'Inscrire un titre percutant…', hint: 'Le titre crée un article intégral dans Pesce Studio, avec son propre lien.' },
+    { label: 'Chronique / Opinion', placeholder: 'Titre de la chronique…', hint: 'Le titre crée un article intégral dans Pesce Studio, avec son propre lien.' },
     { label: 'Dépêche Telegram', placeholder: 'Écrivez votre dépêche…', hint: 'Sans titre : publication texte simple envoyée sur le canal.' },
-    { label: 'Entretien', placeholder: 'Titre de l\'entretien…', hint: 'Le titre transforme le texte en article Telegraph (telegra.ph), lu en Instant View.' },
-    { label: 'Note de terrain', placeholder: 'Titre de la note…', hint: 'Le titre transforme le texte en article Telegraph (telegra.ph), lu en Instant View.' },
+    { label: 'Entretien', placeholder: 'Titre de l\'entretien…', hint: 'Le titre crée un article intégral dans Pesce Studio, avec son propre lien.' },
+    { label: 'Note de terrain', placeholder: 'Titre de la note…', hint: 'Le titre crée un article intégral dans Pesce Studio, avec son propre lien.' },
   ];
 
   function renderRediger() {
@@ -545,7 +545,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <div class="bg-surface-container-low p-space-md rounded-lg shadow-sm">
 <div class="flex items-center justify-between mb-space-sm">
 <span class="font-kicker-label text-kicker-label text-primary uppercase">Rendu Épreuve Finale (BAT)</span>
-<span class="bg-primary/10 text-primary px-2 py-0.5 rounded font-meta-detail text-meta-detail font-medium" id="batFormatBadge">Format Telegraph / Instant View</span>
+<span class="bg-primary/10 text-primary px-2 py-0.5 rounded font-meta-detail text-meta-detail font-medium" id="batFormatBadge">Article Pesce Studio</span>
 </div>
 <article class="bg-surface-container-lowest p-space-lg rounded shadow-sm flex flex-col gap-space-sm" id="batPreview"></article>
 </div>
@@ -553,7 +553,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <div class="bg-surface-container-low rounded-lg p-space-md md:p-space-lg shadow-sm flex flex-col gap-space-md">
 <div class="flex flex-col gap-space-xs">
 <div class="flex items-center gap-space-xs text-primary font-headline-sm text-headline-sm"><span class="material-symbols-outlined text-[1.4rem]">verified</span><span>Épreuve &amp; Pipeline de distribution</span></div>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Cette publication sera synchronisée sur le canal officiel <strong class="text-on-surface">${escapeHtml(PESCE.CHANNEL_HANDLE)}</strong>${' — et archivée en article Telegraph si un titre est fourni.'}</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Cette publication sera enregistrée dans Pesce Studio et annoncée sur le canal officiel <strong class="text-on-surface">${escapeHtml(PESCE.CHANNEL_HANDLE)}</strong>.</p>
 </div>
 <div class="flex flex-col gap-space-xs bg-surface-container-lowest p-space-md rounded-lg shadow-sm">
 <label class="flex items-center gap-space-sm cursor-pointer"><input checked="" class="w-4 h-4 rounded text-primary accent-primary" type="checkbox"><span class="font-body-sm text-body-sm text-on-surface font-medium">Titre et texte vérifiés</span></label>
@@ -581,7 +581,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
     const standfirst = paragraphs[0] || '';
     const body = paragraphs.slice(1).join('\n\n');
     if (title) {
-      badge.textContent = 'Format Telegraph / Instant View';
+      badge.textContent = 'Article Pesce Studio';
       preview.innerHTML = `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">${escapeHtml(formatLabel.toUpperCase())}</span>
 <h1 class="font-headline-md text-headline-md text-on-surface">${escapeHtml(title)}</h1>
 ${standfirst ? `<p class="font-editorial-standfirst text-editorial-standfirst italic text-tertiary">${escapeHtml(standfirst.slice(0, 240))}${standfirst.length > 240 ? '…' : ''}</p>` : ''}

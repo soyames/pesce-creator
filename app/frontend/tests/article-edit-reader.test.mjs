@@ -343,7 +343,8 @@ test('un article distribué envoie le lecteur DANS le journal, pas sur la page d
 
   // La page Telegraph reste référencée dans Neon : elle héberge toujours l'article et reste
   // proposée en lecture secondaire, elle n'est simplement plus la destination du canal.
-  assert.ok(source.includes('articleUrl: page.url'), 'la référence Telegraph a été perdue');
+  assert.ok(update.includes('telegraphPathFromUrl(post.articleUrl)'), 'la mise à jour des anciens articles Telegraph a été perdue');
+  assert.ok(publish.includes('articleBody: text'), 'le nouveau corps n’est pas enregistré dans Neon');
 });
 
 test('lecture : le lien de distribution n’apparaît jamais dans le corps lu', async () => {

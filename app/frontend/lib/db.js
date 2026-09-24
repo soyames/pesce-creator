@@ -92,6 +92,7 @@ const mapPost = (row) => row && ({
   articleUrl: row.article_url,
   articleImageUrl: row.article_image_url,
   articleBody: row.article_body ?? null,
+  articleImages: row.article_images ?? null,
   sourceDeletedAt: row.source_deleted_at,
   published: row.published === true,
   publishedAt: row.published_at,
@@ -105,8 +106,8 @@ export async function upsertChannelPost(post) {
        id, source, origin, publish_key, distributed_at, distribution_error,
        channel_id, channel_username, message_id, content_type, text, telegram_url,
        media_file_id, media_mime_type, media_file_name, media_duration, media_width, media_height,
-       media_thumbnail_file_id, article_url, article_image_url, article_body, published, published_at, received_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, now())
+       media_thumbnail_file_id, article_url, article_image_url, article_body, published, published_at, received_at, updated_at, article_images
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, now(), $26::jsonb)
      ON CONFLICT (id) DO UPDATE SET
        source = EXCLUDED.source,
        -- Modèle d'origine : le premier enregistrement gagne. Une publication Studio (origin='studio')
@@ -128,7 +129,8 @@ export async function upsertChannelPost(post) {
        -- webhook/backfill qui ne porte pas le corps.
        article_url = COALESCE(NULLIF(EXCLUDED.article_url, ''), pesce_posts.article_url),
        article_image_url = COALESCE(NULLIF(EXCLUDED.article_image_url, ''), pesce_posts.article_image_url),
-       article_body = COALESCE(NULLIF(EXCLUDED.article_body, ''), pesce_posts.article_body)`,
+       article_body = COALESCE(NULLIF(EXCLUDED.article_body, ''), pesce_posts.article_body),
+       article_images = COALESCE(EXCLUDED.article_images, pesce_posts.article_images)`,
     [
       post.id, post.source, post.origin ?? null, post.publishKey ?? null, post.distributedAt ?? null, post.distributionError ?? null,
       post.channelId ?? null, post.channelUsername ?? null, post.messageId ?? null,
@@ -137,6 +139,7 @@ export async function upsertChannelPost(post) {
       post.mediaWidth ?? null, post.mediaHeight ?? null, post.mediaThumbnailFileId ?? null,
       post.articleUrl ?? null, post.articleImageUrl ?? null, post.articleBody ?? null,
       post.published === true, post.publishedAt ?? new Date(), post.receivedAt ?? new Date(),
+      post.articleImages == null ? null : JSON.stringify(post.articleImages),
     ]
   );
   return post.id;
@@ -434,6 +437,7 @@ export const POST_UPDATABLE_COLUMNS = Object.freeze({
   text: 'text',
   articleBody: 'article_body',
   articleImageUrl: 'article_image_url',
+  articleImages: 'article_images',
 });
 
 export async function updatePost(postId, data) {
@@ -442,8 +446,8 @@ export async function updatePost(postId, data) {
   const values = [String(postId)];
   for (const [key, column] of Object.entries(columns)) {
     if (data[key] !== undefined) {
-      values.push(data[key] ?? null);
-      sets.push(`${column} = $${values.length}`);
+      values.push(key === 'articleImages' && data[key] != null ? JSON.stringify(data[key]) : (data[key] ?? null));
+      sets.push(`${column} = $${values.length}${key === 'articleImages' ? '::jsonb' : ''}`);
     }
   }
   if (sets.length === 0) return String(postId);
@@ -476,6 +480,7 @@ export async function attachTelegramDistribution(postId, data) {
       add('article_url', provisional.articleUrl);
       add('article_image_url', provisional.articleImageUrl);
       add('article_body', provisional.articleBody);
+      add('article_images', provisional.articleImages == null ? null : JSON.stringify(provisional.articleImages));
       add('content_type', provisional.contentType);
       add('text', provisional.text);
       add('telegram_url', telegramUrl);

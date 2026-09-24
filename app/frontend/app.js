@@ -976,7 +976,7 @@ function renderArchiveBridge() {
 function renderTextCard(post) {
   const { headline, standfirst } = headlineAndStandfirst(post);
   return `<article class="bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs editorial-card cursor-pointer" data-post-id="${escapeAttribute(post.id)}">
-<div class="flex items-center justify-between"><span class="font-kicker-label text-kicker-label uppercase text-primary font-bold">${escapeHtml(kickerOf(post))}</span><span class="font-meta-detail text-meta-detail text-on-surface-variant">${escapeHtml(relativeTime(post.publishedAt))} · ${readingTime(post.text)} min</span></div>
+<div class="flex items-center justify-between"><span class="font-kicker-label text-kicker-label uppercase text-primary font-bold">${escapeHtml(kickerOf(post))}</span><span class="font-meta-detail text-meta-detail text-on-surface-variant">${escapeHtml(relativeTime(post.publishedAt))} · ${readingTime(readerBodySource(post))} min</span></div>
 ${post.articleImageUrl ? `<div class="relative w-full aspect-[16/9] overflow-hidden bg-surface-container"><img class="w-full h-full object-cover" src="${escapeAttribute(post.articleImageUrl)}" alt="Couverture de l'article" loading="lazy"></div>` : ''}
 <h3 class="font-headline-sm text-headline-sm text-on-surface leading-snug">${escapeHtml(headline)}</h3>
 <p class="font-body-md text-body-md text-on-surface-variant line-clamp-2">${escapeHtml(standfirst || '')}</p>
@@ -1128,7 +1128,7 @@ function renderReader(post) {
     : '';
   const media = readerMedia(post, standfirst);
   const { prev, next } = neighborPosts(post.id);
-  const body = readerBody(readerBodySource(post));
+  const body = readerBody(readerBodySource(post), post.articleImages);
   return `<article class="flex flex-col px-margin-mobile py-space-md max-w-xl mx-auto w-full">
 <div class="flex items-center gap-space-xs mb-space-sm">
 <span class="inline-block w-2 h-2 rounded-full bg-primary-container"></span>
@@ -1250,7 +1250,7 @@ function readerMedia(post, caption) {
   if (!url && post.articleImageUrl) {
     return `<figure class="mb-space-lg"><div class="relative rounded-xl overflow-hidden shadow-sm bg-surface-container">
 <img class="w-full h-64 object-cover" src="${escapeAttribute(post.articleImageUrl)}" alt="Couverture de l'article">
-<div class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-inverse-surface/70 text-inverse-on-surface text-[10px] font-kicker-label tracking-wide uppercase">Telegraph</div>
+${post.articleUrl ? '<div class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-inverse-surface/70 text-inverse-on-surface text-[10px] font-kicker-label tracking-wide uppercase">Telegraph</div>' : ''}
 </div></figure>`;
   }
   if (post.contentType === 'photo' && url) {

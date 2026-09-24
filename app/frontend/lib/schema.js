@@ -166,6 +166,14 @@ ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS article_body TEXT;
 `,
   },
   {
+    // Références et placement des illustrations (aucun binaire). Les articles natifs n'ont
+    // plus besoin d'une page Telegraph pour conserver leurs images dans le journal.
+    name: '011_article_images.sql',
+    sql: `
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS article_images JSONB;
+`,
+  },
+  {
     // Modèle d'origine des publications + état de distribution explicite :
     //   - origin 'studio'  : publication créée dans Pesce Studio (canonique). La suppression de
     //     sa copie Telegram (distribution) ne la retire JAMAIS de l'application.
