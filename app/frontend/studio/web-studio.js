@@ -1406,13 +1406,13 @@ ${renderTelegraph()}
     const button = document.getElementById('publishSubmit');
     if (!text) return;
     const images = collectArticleImages();
-    if (images.length > 0 && !title) {
+    if (images.length > 0 && !title && text.length <= 4096) {
       if (status) status.textContent = 'Les images nécessitent un titre : ajoutez un titre pour publier un article illustré.';
       return;
     }
     button.disabled = true; button.textContent = 'Publication…';
     try {
-      const { response, data } = await studioActionOrRetry({ action: title ? 'article_publish' : 'publish', text, publishKey: nextPublishKey(), ...(title ? { title, images } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
+      const { response, data } = await studioActionOrRetry({ action: title ? 'article_publish' : 'publish', text, publishKey: nextPublishKey(), ...(title ? { title } : {}), ...(title || text.length > 4096 ? { images } : {}), ...(activeDraftId ? { draftId: activeDraftId } : {}) });
       if (response.status === 401) return;
       if (!response.ok) throw new Error(data.message || 'Publication impossible.');
       const article = Boolean(title || text.length > 4096);
