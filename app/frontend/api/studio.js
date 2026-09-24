@@ -18,7 +18,7 @@ import { getChannelBroadcastStats, getChannelLiveState, getChannelRtmp } from '.
 import { creatorTelegramUserIds, isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { signMedia, verifyMediaToken } from '../lib/media-token.js';
-import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, articleFooterNodes, createTelegraphAccount, createTelegraphPage, detectImageFormat, editTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, stripArticleFooter, telegraphPathFromUrl, uploadTelegraphImage, validateArticleImages } from '../lib/telegraph.js';
+import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, articleFooterNodes, createTelegraphAccount, createTelegraphPage, detectImageFormat, editTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, stripArticleFooter, telegraphPathFromUrl, uploadTelegraphImage, validateArticleImages, telegraphContentFits } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
 import { normalizeYouTubeUrl } from '../lib/youtube.js';
@@ -217,7 +217,8 @@ export default async function handler(req, res) {
 
     // — Publication texte simple (dépêche).
     if (action === 'publish') {
-      const text = String(body.text || '').trim().slice(0, 4096);
+      const text = String(body.text || '').trim();
+      if (text.length > 4096) return res.status(400).json({ message: 'Une publication texte Telegram ne peut pas dépasser 4 096 caractères. Ajoutez un titre et une couverture pour publier un article plus long.' });
       if (!text) return res.status(400).json({ message: 'Le texte de la publication est vide.' });
       const draftId = String(body.draftId || '') || null;
       const publishKey = publishKeyOf(body, draftId);
@@ -242,7 +243,7 @@ export default async function handler(req, res) {
     // — Article Telegraph (couverture obligatoire, hébergement Telegraph).
     if (action === 'article_publish') {
       const title = String(body.title || '').trim().slice(0, 256);
-      const text = String(body.text || '').trim().slice(0, 4096);
+      const text = String(body.text || '').trim();
       if (!title || !text) return res.status(400).json({ message: 'Le titre et le texte sont requis pour un article.' });
       // Sources d'image acceptées : chemins Telegraph natifs OU références signées de notre
       // propre proxy média (couvertures hébergées par Telegram en repli). Rien d'autre.
@@ -255,6 +256,9 @@ export default async function handler(req, res) {
       const cover = images.find((image) => image.placement === 'cover');
       if (!cover) {
         return res.status(400).json({ message: 'Une image de couverture est requise pour publier un article — ajoutez un média dans le pupitre (le Studio web le permet).' });
+      }
+      if (!telegraphContentFits(nodesFromArticle({ text, images, normalize: imageNormalizer, footer: telegraphFooter() }))) {
+        return res.status(413).json({ message: 'Cet article dépasse la taille maximale de 64 Ko autorisée par Telegraph. Raccourcissez-le avant de le publier ; votre texte n’a pas été coupé.' });
       }
       const draftId = String(body.draftId || '') || null;
       const publishKey = publishKeyOf(body, draftId);
@@ -353,9 +357,10 @@ export default async function handler(req, res) {
       // publication existante — corriger un texte ne transforme jamais l'une en l'autre.
       const isArticle = Boolean(post.articleUrl) || Boolean(post.articleBody);
       const title = String(body.title || '').trim().slice(0, 256);
-      const text = String(body.text || '').trim().slice(0, 4096);
+      const text = String(body.text || '').trim();
       if (!text) return res.status(400).json({ message: 'Le texte de la publication est vide.' });
       if (isArticle && !title) return res.status(400).json({ message: 'Le titre est requis pour mettre à jour un article.' });
+      if (!isArticle && text.length > 4096) return res.status(400).json({ message: 'Une publication texte Telegram ne peut pas dépasser 4 096 caractères. Le texte existant n’a pas été modifié.' });
 
       const imageNormalizer = (src) => allowedArticleImageSrc(src, { secret: mediaSecret() });
       const images = validateArticleImages(body.images, { normalize: imageNormalizer });
@@ -369,6 +374,9 @@ export default async function handler(req, res) {
       const effectiveImages = images.length
         ? images
         : (articleImageUrl ? [{ src: articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }] : []);
+      if (isArticle && telegraphPathFromUrl(post.articleUrl) && !telegraphContentFits(nodesFromArticle({ text, images: effectiveImages, normalize: imageNormalizer, footer: telegraphFooter(telegraphPathFromUrl(post.articleUrl)) }))) {
+        return res.status(413).json({ message: 'Cet article dépasse la taille maximale de 64 Ko autorisée par Telegraph. La version publiée n’a pas été modifiée.' });
+      }
 
       // Texte distribué sur Telegram : pour un article, titre + lien de LECTURE dans le journal
       // (l'identité canonique est déjà fixée ici) ; pour une dépêche, le texte lui-même.
@@ -742,7 +750,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'draft') {
-      const text = String(body.text || '').trim().slice(0, 4096);
+      const text = String(body.text || '').trim();
       if (!text) return res.status(400).json({ message: 'Le brouillon est vide.' });
       const id = newDraftId();
       await createDraft({ id, text, status: 'draft', authorTelegramUserId: actorId });

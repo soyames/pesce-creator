@@ -469,7 +469,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 </div>
 <div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="publishText">Corps du tapuscrit</label>
-<textarea id="publishText" class="editorial-input" rows="16" maxlength="4096" placeholder="Écrivez votre publication…" required></textarea>
+<textarea id="publishText" class="editorial-input" rows="16" placeholder="Écrivez votre publication…" required></textarea>
 <div class="flex items-center justify-between pt-space-xs text-on-surface-variant font-meta-detail text-meta-detail">
 <span id="publishWords">0 mot</span>
 <span class="flex items-center gap-1 text-primary"><span class="material-symbols-outlined text-[1rem]">check_circle</span> Publication directe sur le canal</span>
@@ -523,8 +523,8 @@ ${editingPost ? '' : '<button id="draftButton" class="sm:w-auto py-3 px-space-md
       badge.textContent = 'Format Telegraph / Instant View';
       const bodyParts = [];
       paragraphs.forEach((paragraph, index) => {
-        const html = `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph.slice(0, 400))}</p>`;
-        if (index === 0) bodyParts.push(`<p class="font-editorial-standfirst text-editorial-standfirst italic text-tertiary">${escapeHtml(paragraph.slice(0, 240))}</p>`);
+        const html = `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph)}</p>`;
+        if (index === 0) bodyParts.push(`<p class="font-editorial-standfirst text-editorial-standfirst italic text-tertiary">${escapeHtml(paragraph)}</p>`);
         else bodyParts.push(html);
         for (const image of inline.filter((item) => item.afterParagraph === index + 1)) bodyParts.push(figureHtml(image));
       });
@@ -537,7 +537,7 @@ ${bodyParts.join('')}
     } else {
       badge.textContent = 'Dépêche Telegram (texte simple)';
       preview.innerHTML = paragraphs.length
-        ? `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">DÉPÊCHE TELEGRAM</span>${paragraphs.map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph.slice(0, 400))}</p>`).join('')}${images.length ? '<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Les images nécessitent un titre (article Telegraph).</p>' : '<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Envoyée telle quelle sur le canal.</p>'}`
+        ? `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">DÉPÊCHE TELEGRAM</span>${paragraphs.map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph)}</p>`).join('')}${images.length ? '<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Les images nécessitent un titre (article Telegraph).</p>' : '<p class="font-body-md text-body-md text-on-surface-variant pt-space-xs">Envoyée telle quelle sur le canal (4 096 caractères maximum).</p>'}`
         : '<p class="font-body-md text-body-md text-on-surface-variant">Commencez à écrire : l\'épreuve apparaîtra ici.</p>';
     }
   }
