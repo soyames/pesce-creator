@@ -533,7 +533,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 </div>
 <div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="publishText">Corps du tapuscrit</label>
-<textarea id="publishText" class="editorial-input" rows="12" maxlength="4096" placeholder="Écrivez votre publication…" required></textarea>
+<textarea id="publishText" class="editorial-input" rows="12" placeholder="Écrivez votre publication…" required></textarea>
 </div>
 <div class="flex items-center justify-between pt-space-sm text-on-surface-variant font-meta-detail text-meta-detail">
 <span id="publishWords">0 mot</span>
@@ -585,7 +585,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
       preview.innerHTML = `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">${escapeHtml(formatLabel.toUpperCase())}</span>
 <h1 class="font-headline-md text-headline-md text-on-surface">${escapeHtml(title)}</h1>
 ${standfirst ? `<p class="font-editorial-standfirst text-editorial-standfirst italic text-tertiary">${escapeHtml(standfirst.slice(0, 240))}${standfirst.length > 240 ? '…' : ''}</p>` : ''}
-${body ? `<div class="flex flex-col gap-space-md">${body.split('\n\n').map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph.slice(0, 400))}</p>`).join('')}</div>` : ''}
+${body ? `<div class="flex flex-col gap-space-md">${body.split('\n\n').map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph)}</p>`).join('')}</div>` : ''}
 <p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Publié ensuite sur le canal avec le bouton ⭐ Soutenir.</p>`;
     } else {
       badge.textContent = 'Dépêche Telegram (texte simple)';
