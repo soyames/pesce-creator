@@ -32,6 +32,15 @@ const MAX_STUDIO_AUDIO_BYTES = 3 * 1024 * 1024;
 // longue durée (1 an) — la couverture doit rester visible bien après sa publication.
 const COVER_MEDIA_TTL_SECONDS = 365 * 24 * 3600;
 
+export function writtenPublicationRoute(action, body) {
+  const text = String(body.text || '').trim();
+  if (action !== 'publish' || text.length <= 4096) return { action, title: body.title };
+  return {
+    action: 'article_publish',
+    title: text.split('\n').find((line) => line.trim())?.trim().slice(0, 256) || 'Article Pesce Studio',
+  };
+}
+
 function mediaSecret() {
   return process.env.PESCE_MEDIA_SIGNING_SECRET || process.env.TELEGRAM_PESCE_BOT_TOKEN;
 }
@@ -136,7 +145,12 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ message: 'Méthode non autorisée.' });
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-    const action = String(body.action || '').trim();
+    let action = String(body.action || '').trim();
+    // Telegram cannot carry a long plain-text message. Keep short untitled posts as
+    // they are, but publish longer ones as native articles with the full body in Neon.
+    const route = writtenPublicationRoute(action, body);
+    action = route.action;
+    if (action === 'article_publish' && route.title) body.title = route.title;
 
     // — Cycle de vie PUBLICATION (règle produit) : la persistance canonique Neon PRÉCÈDE la
     // distribution Telegram. Une erreur de persistance signifie « rien n'a été publié » (reprise
@@ -253,12 +267,9 @@ export default async function handler(req, res) {
       if (Array.isArray(body.images) && body.images.length > 0 && images.length === 0) {
         return res.status(400).json({ message: 'Images d’article invalides : seuls les chemins Telegraph (/file/…) et les images hébergées par Pesce Studio sont acceptés.' });
       }
-      // Règle éditoriale inchangée : une couverture est requise. Les images restent hébergées
-      // par Telegraph ou par le proxy Telegram ; seules leurs références sont stockées ici.
+      // La couverture est facultative : un article long doit aussi pouvoir être publié
+      // sans téléverser d'image. Les références d'images fournies restent validées.
       const cover = images.find((image) => image.placement === 'cover');
-      if (!cover) {
-        return res.status(400).json({ message: 'Une image de couverture est requise pour publier un article — ajoutez un média dans le pupitre (le Studio web le permet).' });
-      }
       const draftId = String(body.draftId || '') || null;
       const publishKey = publishKeyOf(body, draftId);
       let canonical = publishKey ? await findPostByPublishKey(publishKey) : null;
@@ -268,7 +279,7 @@ export default async function handler(req, res) {
             publishKey,
             contentType: 'text',
             text: title,
-            articleImageUrl: cover.src,
+            articleImageUrl: cover?.src || null,
             articleBody: text,
             articleImages: images,
           });
