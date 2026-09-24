@@ -5,9 +5,28 @@ import { fileURLToPath } from 'node:url';
 import { nodesFromArticle, telegraphContentFits } from '../lib/telegraph.js';
 import { serializePost } from '../api/content.js';
 import PESCE from '../lib/config.js';
+import { writtenPublicationRoute } from '../api/studio.js';
 import '../lib/reader-format.js';
 
 const read = (path) => readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8');
+
+test('long untitled text becomes an article without truncation or required cover', () => {
+  const body = `Première ligne de l'article\n\n${'paragraphe '.repeat(12000)}\n\nDernière phrase.`;
+  assert.ok(body.length > 100000);
+  assert.deepEqual(writtenPublicationRoute('publish', { text: body }), {
+    action: 'article_publish', title: "Première ligne de l'article",
+  });
+  assert.deepEqual(writtenPublicationRoute('publish', { text: 'Brève dépêche' }), {
+    action: 'publish', title: undefined,
+  });
+  assert.equal(writtenPublicationRoute('article_publish', { title: 'Titre original', text: body }).title, 'Titre original');
+  const api = read('api/studio.js');
+  const article = api.slice(api.indexOf("if (action === 'article_publish')"), api.indexOf("if (action === 'article_update')"));
+  assert.match(article, /articleBody: text/);
+  assert.match(article, /articleImageUrl: cover\?\.src \|\| null/);
+  assert.doesNotMatch(article, /if \(!cover\)/);
+  assert.doesNotMatch(read('studio/web-studio.js'), /if \(title && !images\.some/);
+});
 
 test('long article: both editors accept it and publication, draft and update retain the body', () => {
   for (const editor of ['studio.js', 'studio/web-studio.js']) {
