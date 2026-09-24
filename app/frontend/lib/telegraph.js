@@ -9,6 +9,11 @@ const TELEGRAPH_API = 'https://api.telegra.ph';
 // donnent ~4 Mo de corps encodé : la borne garantit que la requête atteint bien le serveur.
 export const MAX_TELEGRAPH_IMAGE_BYTES = 3 * 1024 * 1024;
 
+// La limite porte sur le JSON des nœuds, en octets UTF-8, et inclut images et pied de page.
+export function telegraphContentFits(nodes) {
+  return Buffer.byteLength(JSON.stringify(nodes), 'utf8') <= 64 * 1024;
+}
+
 export async function telegraphCall(method, params) {
   const response = await fetch(`${TELEGRAPH_API}/${method}`, {
     method: 'POST',
