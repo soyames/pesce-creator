@@ -16,7 +16,7 @@
 // Hors connexion : la coquille s'ouvre et affiche un état de connectivité honnête. Aucune
 // publication n'est mise en file d'attente — une mutation qui ne peut pas atteindre le serveur
 // est refusée, jamais simulée.
-const CACHE = 'pesce-studio-shell-v1';
+const CACHE = 'pesce-studio-shell-v2';
 
 // Portée du worker : tout ce qui est hors de ce préfixe n'est pas son affaire.
 const SCOPE_PREFIX = '/studio';
@@ -96,14 +96,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Sous-ressources : uniquement celles de la liste blanche. Le cache sert immédiatement puis
-  // se rafraîchit en arrière-plan ; tout le reste part au réseau sans interception.
+  // Sous-ressources : réseau d'abord pour que le pupitre ne conserve pas un ancien composeur
+  // après une mise à jour ; la copie statique en cache ne sert qu'en cas de panne réseau.
   if (!isCacheableAsset(url)) return;
   event.respondWith((async () => {
-    const cached = await caches.match(request);
-    const network = fetch(request)
-      .then(async (response) => { await cacheIfAllowed(request, response); return response; })
-      .catch(() => null);
-    return cached || (await network) || Response.error();
+    try {
+      const response = await fetch(request);
+      if (response.ok) { await cacheIfAllowed(request, response); return response; }
+    } catch { /* La coquille déjà mise en cache reste utilisable hors connexion. */ }
+    return (await caches.match(request)) || Response.error();
   })());
 });

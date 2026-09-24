@@ -152,7 +152,7 @@ test('lecture : publications sans corps — comportement historique conservé (d
 // — Interface : le lecteur du Mini App consomme le corps intégral.
 test('interface : openReader/renderReader rendent le corps intégral (articleBody) dans le Mini App', () => {
   const app = PRODUCTION['app.js'];
-  assert.ok(app.includes('readerBody(readerBodySource(post))'), 'corps non rendu dans le lecteur');
+  assert.ok(app.includes('readerBody(readerBodySource(post), post.articleImages)'), 'corps et illustrations non rendus dans le lecteur');
   assert.ok(app.includes('readingLabel(readerBodySource(post))'), 'temps de lecture basé sur le résumé au lieu du corps');
   assert.ok(app.includes('Boolean(post.articleBody && String(post.articleBody).trim())'), 'détection du corps intégral absente');
   assert.ok(app.includes('post.articleUrl || (articleUrlOf(post)'), 'référence Telegraph préférée au champ canonique');

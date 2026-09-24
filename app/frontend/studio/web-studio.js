@@ -451,7 +451,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="articleTitle">Titre de l'article</label>
 <input id="articleTitle" class="editorial-input" type="text" maxlength="256" placeholder="${escapeAttribute(format.placeholder)}">
-<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Avec un titre : votre texte devient un article Telegraph (telegra.ph), lu en Instant View, publié avec le bouton ⭐ Soutenir. Sans titre : publication texte simple.</p>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Avec un titre : l'article intégral est enregistré dans Pesce Studio et lu dans le journal, avec son propre lien partageable. Sans titre : publication texte simple sur Telegram (4 096 caractères maximum).</p>
 </div>
 <div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase">Média de l'article</label>
@@ -486,7 +486,7 @@ ${editingPost ? '' : '<button id="draftButton" class="sm:w-auto py-3 px-space-md
 <div class="bg-surface-container-low rounded-xl p-space-lg flex flex-col gap-space-sm h-fit">
 <div class="flex items-center justify-between">
 <span class="font-kicker-label text-kicker-label text-primary uppercase">Rendu Épreuve Finale (BAT)</span>
-<span class="bg-primary/10 text-primary px-2 py-0.5 rounded font-meta-detail text-meta-detail font-medium" id="batFormatBadge">Format Telegraph / Instant View</span>
+<span class="bg-primary/10 text-primary px-2 py-0.5 rounded font-meta-detail text-meta-detail font-medium" id="batFormatBadge">Article Pesce Studio</span>
 </div>
 <article class="bg-surface-container-lowest p-space-lg rounded-lg shadow-sm flex flex-col gap-space-sm" id="batPreview"></article>
 </div>
@@ -494,7 +494,7 @@ ${editingPost ? '' : '<button id="draftButton" class="sm:w-auto py-3 px-space-md
 </div>
 <div class="bg-surface-container-low rounded-xl p-space-lg flex flex-col gap-space-md h-fit">
 <div class="flex items-center gap-space-xs text-primary font-headline-sm text-headline-sm"><span class="material-symbols-outlined text-[1.4rem]">verified</span><span>Épreuve &amp; Pipeline de distribution</span></div>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Cette publication sera synchronisée sur le canal officiel <strong class="text-on-surface">${escapeHtml(channelHandle())}</strong> — et archivée en article Telegraph si un titre est fourni.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Cette publication sera enregistrée dans Pesce Studio et annoncée sur le canal officiel <strong class="text-on-surface">${escapeHtml(channelHandle())}</strong>.</p>
 <div class="flex flex-col gap-space-xs bg-surface-container-lowest p-space-md rounded-lg">
 <label class="flex items-center gap-space-sm cursor-pointer"><input checked class="w-4 h-4 rounded text-primary accent-primary" type="checkbox"><span class="font-body-sm text-body-sm text-on-surface font-medium">Titre et texte vérifiés</span></label>
 <label class="flex items-center gap-space-sm cursor-pointer"><input checked class="w-4 h-4 rounded text-primary accent-primary" type="checkbox"><span class="font-body-sm text-body-sm text-on-surface font-medium">Conformité à la charte déontologique du Studio</span></label>
@@ -520,7 +520,7 @@ ${editingPost ? '' : '<button id="draftButton" class="sm:w-auto py-3 px-space-md
     const inline = images.filter((image) => image.placement !== 'cover');
     const figureHtml = (image) => `<figure class="my-space-sm"><img class="w-full rounded-lg" src="${escapeAttribute(image.url)}" alt="${escapeAttribute(image.caption || 'Image d\'article')}">${(image.caption || image.credit) ? `<figcaption class="font-meta-detail text-meta-detail text-on-surface-variant mt-1 text-center italic">${escapeHtml([image.caption, image.credit].filter(Boolean).join(' — '))}</figcaption>` : ''}</figure>`;
     if (title) {
-      badge.textContent = 'Format Telegraph / Instant View';
+      badge.textContent = 'Article Pesce Studio';
       const bodyParts = [];
       paragraphs.forEach((paragraph, index) => {
         const html = `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph)}</p>`;
@@ -537,7 +537,7 @@ ${bodyParts.join('')}
     } else {
       badge.textContent = 'Dépêche Telegram (texte simple)';
       preview.innerHTML = paragraphs.length
-        ? `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">DÉPÊCHE TELEGRAM</span>${paragraphs.map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph)}</p>`).join('')}${images.length ? '<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Les images nécessitent un titre (article Telegraph).</p>' : '<p class="font-body-md text-body-md text-on-surface-variant pt-space-xs">Envoyée telle quelle sur le canal (4 096 caractères maximum).</p>'}`
+        ? `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">DÉPÊCHE TELEGRAM</span>${paragraphs.map((paragraph) => `<p class="font-body-md text-body-md text-on-surface leading-relaxed">${escapeHtml(paragraph)}</p>`).join('')}${images.length ? '<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Les images nécessitent un titre (article Pesce Studio).</p>' : '<p class="font-body-md text-body-md text-on-surface-variant pt-space-xs">Envoyée telle quelle sur le canal (4 096 caractères maximum).</p>'}`
         : '<p class="font-body-md text-body-md text-on-surface-variant">Commencez à écrire : l\'épreuve apparaîtra ici.</p>';
     }
   }
@@ -761,9 +761,10 @@ ${renderRecallButton(post)}
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}</span>
 </div>
 <h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(headline)}</h3>
-<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml((post.text || '').split('\n').slice(1).join(' ').trim().slice(0, 200))}</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml((post.articleBody || (post.text || '').split('\n').slice(1).join(' ')).trim().slice(0, 200))}</p>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.updatedAt && post.publishedAt && new Date(post.updatedAt) - new Date(post.publishedAt) > 60000 ? `Mis à jour le ${formatDate(post.updatedAt)} · ` : ''}${post.telegramUrl ? `<a class="inline-block py-2.5 text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Diffusion Telegram en attente'}</span>
 <div class="flex items-center gap-space-sm flex-wrap">
+<button class="post-link px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-post-link-copy="${escapeAttribute(post.id)}">Copier le lien de lecture</button>
 ${renderEditButton(post)}
 ${renderRecallButton(post)}
 </div>
@@ -790,9 +791,9 @@ ${renderDistributionRetry(post)}
     pendingPublishKey = null;
     // La couverture déjà en ligne est reprise telle quelle : corriger le texte ne doit jamais
     // faire disparaître l'image de l'article.
-    articleImages = post.articleImageUrl
-      ? [{ id: `cover-${post.id}`, src: post.articleImageUrl, url: post.articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }]
-      : [];
+    articleImages = Array.isArray(post.articleImages) && post.articleImages.length
+      ? post.articleImages.map((image, index) => ({ ...image, id: `image-${post.id}-${index}`, url: image.src }))
+      : (post.articleImageUrl ? [{ id: `cover-${post.id}`, src: post.articleImageUrl, url: post.articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }] : []);
     refreshComposerPane(); // le pupitre passe en mode correction (bandeau + « Mettre à jour »)
     switchTab('rediger');
     const titleInput = document.getElementById('articleTitle');
@@ -1149,7 +1150,7 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
 <div><span class="font-kicker-label text-kicker-label text-primary uppercase">Configuration</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Telegraph — hébergement des articles</h1></div>
 <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
 <div class="flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-[22px]">article</span><h2 class="font-headline-sm text-headline-sm text-on-surface">Compte configuré</h2></div>
-<p class="font-body-md text-body-md text-on-surface-variant">Créez et publiez vos articles depuis « Rédiger » : un titre transforme votre texte en article Telegraph (telegra.ph), lu en Instant View et publié sur le canal avec le bouton ⭐ Soutenir.</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Les nouveaux articles sont enregistrés intégralement dans Pesce Studio. Telegraph reste disponible pour les anciens articles et l’hébergement des images.</p>
 <button class="self-start mt-space-xs px-space-md py-3 bg-on-secondary-fixed text-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-primary transition-colors rounded-lg" type="button" data-web-tab-goto="rediger">Rédiger un article</button>
 </div>`;
     }
@@ -1157,7 +1158,7 @@ ${items.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${it
 <div><span class="font-kicker-label text-kicker-label text-primary uppercase">Configuration</span><h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight">Telegraph — hébergement des articles</h1></div>
 <div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
 <div class="flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-[22px]">article</span><h2 class="font-headline-sm text-headline-sm text-on-surface">Telegraph n'est pas encore configuré</h2></div>
-<p class="font-body-md text-body-md text-on-surface-variant">Créez le compte, puis sauvegardez le jeton reçu dans la variable d'environnement <strong>TELEGRAPH_ACCESS_TOKEN</strong> (Vercel) et redéployez.</p>
+<p class="font-body-md text-body-md text-on-surface-variant">Les nouveaux articles ne nécessitent pas de compte Telegraph. La configuration ci-dessous sert aux anciennes pages et aux images hébergées sur Telegraph.</p>
 <button id="telegraphSetupButton" class="self-start mt-space-xs px-space-md py-3 border border-outline-variant bg-surface-container-lowest text-on-surface font-kicker-label text-kicker-label uppercase tracking-widest hover:bg-surface-container-low transition-colors rounded-lg" type="button">Configurer Telegraph</button>
 <p id="telegraphStatus" class="form-status" aria-live="polite"></p>
 </div>`;
@@ -1406,7 +1407,7 @@ ${renderTelegraph()}
     if (!text) return;
     const images = collectArticleImages();
     if (images.length > 0 && !title) {
-      if (status) status.textContent = 'Les images nécessitent un titre : ajoutez un titre pour publier un article Telegraph illustré.';
+      if (status) status.textContent = 'Les images nécessitent un titre : ajoutez un titre pour publier un article illustré.';
       return;
     }
     if (title && !images.some((image) => image.placement === 'cover')) {
@@ -1698,6 +1699,13 @@ ${renderTelegraph()}
       const distributionRetry = event.target.closest('.distribution-retry');
       if (distributionRetry) { retryDistribution(distributionRetry); return; }
       const editButton = event.target.closest('.post-edit');
+      const linkButton = event.target.closest('.post-link');
+      if (linkButton) {
+        const url = PESCE.articleLink(linkButton.dataset.postLinkCopy);
+        if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(() => flash('Lien de lecture copié.')).catch(() => flash(`Lien de lecture : ${url}`));
+        else flash(`Lien de lecture : ${url}`);
+        return;
+      }
       if (editButton) { editPublishedPost(editButton.dataset.postEdit); return; }
       const recallButton = event.target.closest('.recall-post');
       if (recallButton) { recallPostFromStudio(recallButton); return; }

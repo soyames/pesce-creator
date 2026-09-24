@@ -18,7 +18,7 @@ import { getChannelBroadcastStats, getChannelLiveState, getChannelRtmp } from '.
 import { creatorTelegramUserIds, isCreatorTelegramUser, telegramUserFromInitData, validateTelegramInitData } from '../lib/telegram-auth.js';
 import { newDraftId, newLiveId } from '../lib/tickets.js';
 import { signMedia, verifyMediaToken } from '../lib/media-token.js';
-import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, articleFooterNodes, createTelegraphAccount, createTelegraphPage, detectImageFormat, editTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, stripArticleFooter, telegraphPathFromUrl, uploadTelegraphImage, validateArticleImages, telegraphContentFits } from '../lib/telegraph.js';
+import { articleBodyFromPage, articleCoverFromPage, articleExcerptFromPage, articleFooterNodes, createTelegraphAccount, detectImageFormat, editTelegraphPage, getTelegraphPage, MAX_TELEGRAPH_IMAGE_BYTES, nodesFromArticle, nodesFromPlainText, normalizeTelegraphImage, stripArticleFooter, telegraphPathFromUrl, uploadTelegraphImage, validateArticleImages, telegraphContentFits } from '../lib/telegraph.js';
 import { webSessionEmailFromRequest } from '../lib/web-session.js';
 import { isWebAdminEmail } from '../lib/google-auth.js';
 import { normalizeYouTubeUrl } from '../lib/youtube.js';
@@ -141,7 +141,7 @@ export default async function handler(req, res) {
     // — Cycle de vie PUBLICATION (règle produit) : la persistance canonique Neon PRÉCÈDE la
     // distribution Telegram. Une erreur de persistance signifie « rien n'a été publié » (reprise
     // sûre) ; une erreur de distribution signifie « publié, diffusion en attente » (relançable).
-    async function persistCanonicalPost({ publishKey, contentType = 'text', text, articleUrl = null, articleImageUrl = null, articleBody = null }) {
+    async function persistCanonicalPost({ publishKey, contentType = 'text', text, articleUrl = null, articleImageUrl = null, articleBody = null, articleImages = null }) {
       if (publishKey) {
         const existing = await findPostByPublishKey(publishKey);
         if (existing) return existing; // reprise idempotente : la publication existe déjà
@@ -158,6 +158,7 @@ export default async function handler(req, res) {
         articleUrl,
         articleImageUrl,
         articleBody,
+        articleImages,
         published: true,
         publishedAt: new Date(),
         receivedAt: new Date(),
@@ -240,7 +241,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // — Article Telegraph (couverture obligatoire, hébergement Telegraph).
+    // — Article natif : le corps est conservé dans Neon et lu dans le journal.
     if (action === 'article_publish') {
       const title = String(body.title || '').trim().slice(0, 256);
       const text = String(body.text || '').trim();
@@ -252,61 +253,28 @@ export default async function handler(req, res) {
       if (Array.isArray(body.images) && body.images.length > 0 && images.length === 0) {
         return res.status(400).json({ message: 'Images d’article invalides : seuls les chemins Telegraph (/file/…) et les images hébergées par Pesce Studio sont acceptés.' });
       }
-      // Règle éditoriale : tout article publié a une image de couverture (hébergée par Telegraph).
+      // Règle éditoriale inchangée : une couverture est requise. Les images restent hébergées
+      // par Telegraph ou par le proxy Telegram ; seules leurs références sont stockées ici.
       const cover = images.find((image) => image.placement === 'cover');
       if (!cover) {
         return res.status(400).json({ message: 'Une image de couverture est requise pour publier un article — ajoutez un média dans le pupitre (le Studio web le permet).' });
-      }
-      if (!telegraphContentFits(nodesFromArticle({ text, images, normalize: imageNormalizer, footer: telegraphFooter() }))) {
-        return res.status(413).json({ message: 'Cet article dépasse la taille maximale de 64 Ko autorisée par Telegraph. Raccourcissez-le avant de le publier ; votre texte n’a pas été coupé.' });
       }
       const draftId = String(body.draftId || '') || null;
       const publishKey = publishKeyOf(body, draftId);
       let canonical = publishKey ? await findPostByPublishKey(publishKey) : null;
       if (!canonical) {
-        const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
-        if (!accessToken) return res.status(503).json({ message: 'Telegraph n’est pas encore configuré. Utilisez « Configurer Telegraph » dans le studio, puis enregistrez le jeton dans TELEGRAPH_ACCESS_TOKEN.' });
-        let page;
         try {
-          page = await createTelegraphPage({ accessToken, title, content: nodesFromArticle({ text, images, normalize: imageNormalizer, footer: telegraphFooter() }), authorName: CREATOR_NAME });
-        } catch (error) {
-          console.error('telegraph page creation failed', error.message);
-          return res.status(502).json({ message: 'Impossible de créer l’article Telegraph pour le moment. L’article n’a pas été publié — réessayez dans un instant.' });
-        }
-        if (!page?.url || !page?.path) {
-          console.error('telegraph page creation returned no url', page);
-          return res.status(502).json({ message: 'Telegraph n’a pas confirmé la création de l’article. L’article n’a pas été publié.' });
-        }
-        // Vérification : la page créée contient bien la figure de couverture — jamais de
-        // publication d'article sans couverture, même si l'upload a réussi plus tôt.
-        let pageCover = null;
-        try {
-          const pageWithContent = await getTelegraphPage({ accessToken, path: page.path });
-          // La couverture peut être un chemin /file/ natif OU notre URL signée exacte.
-          pageCover = articleCoverFromPage(pageWithContent, { allowedSrc: cover.src });
-        } catch (error) {
-          console.error('telegraph page verification failed', page.path, error.message);
-        }
-        if (!pageCover) {
-          console.error('telegraph page created without cover figure', page.url);
-          return res.status(502).json({ message: 'L’article a été créé sur Telegraph sans image de couverture. L’article n’a pas été publié — ajoutez une image et réessayez.' });
-        }
-        try {
-          // Le corps de l'article est persisté canoniquement dans Neon (article_body) : la
-          // lecture dans le Mini App ne dépend JAMAIS de la page Telegraph, qui reste un
-          // hébergement externe secondaire. `text` garde le résumé de distribution Telegram —
-          // il est aligné sur le lien de lecture dès que l'identité canonique est connue.
           canonical = await persistCanonicalPost({
             publishKey,
             contentType: 'text',
             text: title,
-            articleUrl: page.url,
             articleImageUrl: cover.src,
             articleBody: text,
+            articleImages: images,
           });
         } catch (error) {
           console.error('canonical persist failed', error);
-          return res.status(502).json({ message: 'Impossible d’enregistrer l’article pour le moment. L’article n’a pas été publié — réessayez (aucun doublon ne sera créé).' });
+          return res.status(502).json({ message: 'Impossible d’enregistrer l’article pour le moment. Rien n’a été publié — votre texte reste dans le pupitre, réessayez.' });
         }
       }
       if (draftId) await deleteDraft(draftId).catch((error) => console.error('draft removal failed', draftId, error.message));
@@ -373,10 +341,9 @@ export default async function handler(req, res) {
       const articleImageUrl = submittedCover ? submittedCover.src : (post.articleImageUrl || null);
       const effectiveImages = images.length
         ? images
-        : (articleImageUrl ? [{ src: articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }] : []);
-      if (isArticle && telegraphPathFromUrl(post.articleUrl) && !telegraphContentFits(nodesFromArticle({ text, images: effectiveImages, normalize: imageNormalizer, footer: telegraphFooter(telegraphPathFromUrl(post.articleUrl)) }))) {
-        return res.status(413).json({ message: 'Cet article dépasse la taille maximale de 64 Ko autorisée par Telegraph. La version publiée n’a pas été modifiée.' });
-      }
+        : (Array.isArray(post.articleImages) && post.articleImages.length
+          ? post.articleImages
+          : (articleImageUrl ? [{ src: articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }] : []));
 
       // Texte distribué sur Telegram : pour un article, titre + lien de LECTURE dans le journal
       // (l'identité canonique est déjà fixée ici) ; pour une dépêche, le texte lui-même.
@@ -385,7 +352,7 @@ export default async function handler(req, res) {
       // 1) CANONIQUE : Neon d'abord. Échec ici = rien n'a changé, on le dit.
       try {
         await updatePost(post.id, isArticle
-          ? { text: distributionText, articleBody: text, articleImageUrl }
+          ? { text: distributionText, articleBody: text, articleImageUrl, articleImages: effectiveImages }
           : { text: distributionText });
       } catch (error) {
         console.error('article canonical update failed', post.id, error.message);
@@ -396,7 +363,7 @@ export default async function handler(req, res) {
       let telegraphUpdated = false;
       const accessToken = process.env.TELEGRAPH_ACCESS_TOKEN;
       const telegraphPath = isArticle ? telegraphPathFromUrl(post.articleUrl) : null;
-      if (accessToken && telegraphPath) {
+      if (accessToken && telegraphPath && telegraphContentFits(nodesFromArticle({ text, images: effectiveImages, normalize: imageNormalizer, footer: telegraphFooter(telegraphPath) }))) {
         try {
           await editTelegraphPage({
             accessToken,
