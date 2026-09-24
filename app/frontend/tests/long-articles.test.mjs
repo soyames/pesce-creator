@@ -26,6 +26,7 @@ test('long untitled text becomes an article without truncation or required cover
   assert.match(article, /articleImageUrl: cover\?\.src \|\| null/);
   assert.doesNotMatch(article, /if \(!cover\)/);
   assert.doesNotMatch(read('studio/web-studio.js'), /if \(title && !images\.some/);
+  assert.match(read('studio/web-studio.js'), /title \|\| text\.length > 4096 \? \{ images \}/);
 });
 
 test('long article: both editors accept it and publication, draft and update retain the body', () => {
