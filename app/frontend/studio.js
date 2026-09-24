@@ -529,7 +529,7 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="articleTitle">Titre de l'article</label>
 <input id="articleTitle" class="editorial-input" type="text" maxlength="256" placeholder="${escapeAttribute(format.placeholder)}">
-<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">${escapeHtml(format.hint)}</p>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">${escapeHtml(format.hint)} Sans titre, un texte de plus de 4 096 caractères devient automatiquement un article complet dans le journal. Aucune couverture requise.</p>
 </div>
 <div class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="publishText">Corps du tapuscrit</label>
@@ -736,7 +736,7 @@ ${payment.refundedAt ? '' : `<button class="payment-refund border border-outline
       form.reset();
       status.textContent = data.distributed === false
         ? 'PUBLICATION RÉUSSIE — la publication est disponible dans Pesce Studio. La diffusion Telegram a échoué (relançable depuis le Studio web).'
-        : (title
+        : (title || text.length > 4096
           ? 'PUBLICATION RÉUSSIE — l’article est disponible dans Pesce Studio et le Mini App, et diffusé sur Telegram.'
           : 'PUBLICATION RÉUSSIE — la publication est disponible dans Pesce Studio et le Mini App, et diffusée sur Telegram.');
       refreshBat();
