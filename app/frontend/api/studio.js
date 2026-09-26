@@ -237,7 +237,12 @@ export default async function handler(req, res) {
     // — Publication texte simple (dépêche).
     if (action === 'publish') {
       const text = String(body.text || '').trim();
-      if (text.length > 4096) return res.status(400).json({ message: 'Une publication texte Telegram ne peut pas dépasser 4 096 caractères. Ajoutez un titre et une couverture pour publier un article plus long.' });
+      // Filet de sécurité : un texte de plus de 4 096 caractères a déjà été promu en article par
+      // `writtenPublicationRoute` (plus haut) — ce refus ne devrait donc jamais se déclencher. On
+      // le conserve au cas où la promotion serait contournée, en disant la VRAIE raison (la limite
+      // d'un message Telegram), jamais une règle qui n'existe plus : ni couverture obligatoire, ni
+      // page Telegraph, ni limite de longueur pour un article.
+      if (text.length > 4096) return res.status(400).json({ message: 'Une publication texte Telegram ne peut pas dépasser 4 096 caractères (limite d’un message Telegram). Ajoutez un titre : votre texte devient un article sans limite de longueur, lisible dans Pesce Studio.' });
       if (!text) return res.status(400).json({ message: 'Le texte de la publication est vide.' });
       const draftId = String(body.draftId || '') || null;
       const publishKey = publishKeyOf(body, draftId);

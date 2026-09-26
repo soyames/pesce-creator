@@ -342,13 +342,13 @@ ${(currentLives || []).filter((live) => !['live', 'scheduled'].includes(live.sta
     if (studioData?.telegraphConfigured) {
       return `<section class="px-gutter-mobile py-space-md bg-surface flex flex-col gap-space-sm" id="studioTelegraphSection">
 <div class="flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-[20px]">article</span><h3 class="font-headline-sm text-headline-sm text-on-surface">Articles Telegraph</h3></div>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Compte configuré. Créez et publiez vos articles depuis « Rédiger » : un titre transforme votre texte en article Telegraph (telegra.ph), lu en Instant View et publié sur le canal avec le bouton ⭐ Soutenir.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Compte configuré. Vos articles s’écrivent dans « Rédiger » et sont enregistrés intégralement dans Pesce Studio — <strong>sans limite de longueur</strong> — puis se lisent dans le Mini App. Telegraph reste utile pour les anciennes pages et l’hébergement des images.</p>
 <button class="self-start px-space-md py-3 border border-outline-variant bg-surface-container-lowest text-on-surface font-kicker-label text-kicker-label uppercase tracking-wider hover:bg-surface-container-low transition-colors" type="button" data-studio-tab-goto="rediger">Rédiger un article</button>
 </section>`;
     }
     return `<section class="px-gutter-mobile py-space-md bg-surface flex flex-col gap-space-sm" id="studioTelegraphSection">
 <div class="flex items-center gap-1.5"><span class="material-symbols-outlined text-primary text-[20px]">article</span><h3 class="font-headline-sm text-headline-sm text-on-surface">Articles Telegraph</h3></div>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Telegraph n'est pas encore configuré. Créez le compte, puis sauvegardez le jeton reçu dans la variable d'environnement <strong>TELEGRAPH_ACCESS_TOKEN</strong> (Vercel) et redéployez.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Telegraph n’est pas encore configuré. <strong>Vos nouveaux articles n’en ont pas besoin</strong> : ils s’enregistrent dans Pesce Studio et se lisent dans le Mini App. Cette configuration sert aux anciennes pages et aux images hébergées sur Telegraph. Créez le compte, puis sauvegardez le jeton reçu dans la variable d’environnement <strong>TELEGRAPH_ACCESS_TOKEN</strong> (Vercel) et redéployez.</p>
 <button id="telegraphSetupButton" class="self-start px-space-md py-3 border border-outline-variant bg-surface-container-lowest text-on-surface font-kicker-label text-kicker-label uppercase tracking-wider hover:bg-surface-container-low transition-colors" type="button">Configurer Telegraph</button>
 <p id="telegraphStatus" class="form-status" aria-live="polite"></p>
 </section>`;
