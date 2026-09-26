@@ -265,7 +265,7 @@ await run('sessions web : création, validation, expiration, destruction', async
 await run('vue d’ensemble du studio', async () => {
   const overview = await getStudioOverview();
   assert.equal(typeof overview.totals.total, 'number');
-  for (const key of ['text', 'photo', 'audio', 'video', 'document', 'other']) {
+  for (const key of ['text', 'photo', 'audio', 'video', 'document', 'other', 'citation']) {
     assert.equal(typeof overview.totals[key], 'number', `totals.${key} manquant`);
   }
   assert.equal(typeof overview.stars, 'number');

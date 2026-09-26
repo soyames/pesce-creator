@@ -30,6 +30,15 @@ function iso(offsetMs) { return new Date(Date.now() + offsetMs).toISOString(); }
 
 const FIXTURE_POSTS = [
   {
+    // La citation est la publication la PLUS RÉCENTE du jeu : sans l'exclusion de la une, elle
+    // prendrait la place du lead — la fixture rend donc la règle observable.
+    id: 'post-13', source: 'studio', origin: 'studio', contentType: 'citation', messageId: 101,
+    text: 'La liberté n’est pas un cadeau, c’est une conquête.',
+    quoteAttribution: 'Nelson Mandela',
+    telegramUrl: `${CHANNEL_URL}/101`,
+    publishedAt: iso(-1 * 3600e3), updatedAt: iso(-1 * 3600e3),
+  },
+  {
     id: 'post-1', source: 'telegram', contentType: 'text',
     text: 'Jeunesse ouest-africaine et souveraineté monétaire : les coulisses du débat qui bouscule les capitales\n\nPendant trois mois, nous avons suivi les économistes de terrain, les collectifs citoyens et les décideurs à Cotonou, Dakar et Abidjan pour percer le silence institutionnel.\n\nPar une tiède soirée de mousson dans un café feutré de la rue des Cocotiers, un jeune chercheur pose deux billets sur la table en acajou : l’un est frappé de la BCEAO, l’autre est une coupure neuve de devises numériques expérimentales. « Regarde bien ces deux bouts de papier, dit-il à voix basse. Ils ne racontent pas la même histoire, et surtout, ils ne parlent pas de la même souveraineté. »\n\nCe geste d’apparence anodin résume la faille géologique qui secoue aujourd’hui les milieux intellectuels de l’Afrique de l’Ouest. Loin des débats diplomatiques convenus tenus dans les salons cossus des capitales partenaires, une nouvelle garde de praticiens, d’ingénieurs en cryptographie et d’universitaires s’empare du tabou monétaire avec une minutie méthodique.\n\nÀ Abidjan comme à Dakar, les colloques ne se tiennent plus seulement dans les amphithéâtres officiels. Des ateliers improvisés regroupent analystes de marché et collectifs citoyens pour disséquer les mécanismes de réserves obligatoires et les règles de parité fixe. On y confronte les modèles asiatiques aux impératifs d’industrialisation du continent.\n\nPour beaucoup de ces jeunes cadres, l’enjeu ne réside plus dans une contestation purement symbolique, mais dans la création de passerelles monétaires panafricaines autonomes capables de résister aux chocs d’inflation importée et de financer les infrastructures de transformation locale.\n\nVersion intégrale : https://telegra.ph/Fixture-Preview-09-11',
     telegramUrl: `${CHANNEL_URL}/100`, mediaFileId: 'lead-photo', mediaWidth: 1200, mediaHeight: 750,
@@ -109,7 +118,7 @@ const FIXTURE_LIVES = [
 
 function fixtureStudioOverview(isVisitor) {
   return {
-    totals: { total: 483, text: 320, video: 96, photo: 55, audio: 12 },
+    totals: { total: 484, text: 320, video: 96, photo: 55, audio: 12, citation: 1 },
     stars: 8420, supporters: 96,
     audience: { opens: 4210, uniqueUsers: 980, last7Days: 421 },
     liveSchedules: FIXTURE_LIVES,

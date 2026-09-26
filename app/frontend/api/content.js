@@ -8,7 +8,10 @@ import { backfillTelegraphArticles } from '../lib/article-backfill.js';
 import { syncChannelOnce } from '../lib/channel-sync.js';
 import { CHANNEL_URL, CHANNEL_USERNAME } from '../lib/config.js';
 
-const CONTENT_TYPES = new Set(['text', 'photo', 'audio', 'video', 'document', 'other']);
+// `citation` a sa propre rubrique publique. Un type inconnu reste ignoré SANS erreur — mais il
+// renvoie alors tout le flux : livrer une pastille avant que le serveur ne connaisse son type
+// afficherait « Citations » rempli de publications qui n'en sont pas.
+const CONTENT_TYPES = new Set(['text', 'photo', 'audio', 'video', 'document', 'other', 'citation']);
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Méthode non autorisée.' });

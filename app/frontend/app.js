@@ -290,6 +290,7 @@ const POST_LABELS = {
   video: { category: 'VIDÉO', action: 'Regarder' },
   audio: { category: 'AUDIO', action: 'Écouter' },
   document: { category: 'DOCUMENT', action: 'Lire la publication' },
+  citation: { category: 'CITATION', action: 'Lire la citation' },
   other: { category: 'PUBLICATION', action: 'Lire la publication' },
 };
 
@@ -299,6 +300,7 @@ const KICKERS = {
   video: 'Grand Format Vidéo',
   audio: 'Reportage Sonore',
   document: 'Document',
+  citation: 'Citation',
   other: 'Publication',
 };
 
@@ -556,7 +558,7 @@ async function loadHome() {
       if (formats) formats.hidden = true;
       return;
     }
-    const textPosts = posts.filter(hasText);
+    const textPosts = posts.filter((post) => hasText(post) && post.contentType !== 'citation');
     const videoPosts = posts.filter((post) => post.contentType === 'video');
     const audioPosts = posts.filter((post) => post.contentType === 'audio');
     const photoPosts = posts.filter((post) => post.contentType === 'photo');
@@ -742,6 +744,9 @@ const FILTERS = {
   videos: { label: 'Vidéos', type: 'video' },
   audios: { label: 'Audios', type: 'audio' },
   entretiens: { label: 'Entretiens', type: 'text' },
+  // Seule rubrique adossée à un type RÉELLEMENT distinct : `enquetes`, `societe`, `opinion` et
+  // `entretiens` partagent le type `text` et ne se distinguent que par leur libellé.
+  citations: { label: 'Citations', type: 'citation' },
 };
 
 let currentFilter = 'tout';
@@ -801,7 +806,7 @@ async function fetchPublications(filterKey) {
 // Composition « à la une des écrits » : lead, tribune, entretien, reportage sonore, grand format vidéo, archives.
 function renderFrontPage(posts) {
   const used = new Set();
-  const textPosts = posts.filter(hasText);
+  const textPosts = posts.filter((post) => hasText(post) && post.contentType !== 'citation');
   const photoPosts = posts.filter((post) => post.contentType === 'photo');
   const videoPosts = posts.filter((post) => post.contentType === 'video');
   const audioPosts = posts.filter((post) => post.contentType === 'audio');
@@ -830,6 +835,15 @@ function renderFrontPage(posts) {
     blocks.push(`<div class="flex flex-col gap-space-md">
 <div class="flex items-center gap-2"><span class="w-2 h-2 bg-primary rounded-full"></span><h3 class="font-headline-sm text-headline-sm text-on-surface">Derniers écrits</h3></div>
 ${remainingTexts.map(renderTextCard).join('')}
+</div>`);
+  }
+  // Les citations ont leur propre bloc : un rendez-vous quotidien ne prend ni la une ni la place
+  // des écrits, mais il doit rester visible sans qu'on ait à ouvrir sa rubrique.
+  const citationPosts = posts.filter((post) => post.contentType === 'citation');
+  if (citationPosts.length) {
+    blocks.push(`<div class="flex flex-col gap-space-md">
+<div class="flex items-center gap-2"><span class="w-2 h-2 bg-primary rounded-full"></span><h3 class="font-headline-sm text-headline-sm text-on-surface">Citations</h3></div>
+${citationPosts.map(renderCitationCard).join('')}
 </div>`);
   }
   blocks.push(renderArchiveBridge());
@@ -883,6 +897,22 @@ function renderTribuneCard(post) {
 <span class="font-meta-detail text-meta-detail italic">Par ${escapeHtml(PESCE.CREATOR_NAME)} • Cotonou</span>
 <button class="py-2 font-kicker-label text-kicker-label text-primary uppercase font-bold tracking-wider hover:underline" type="button" data-reader="${escapeAttribute(post.id)}">Parcourir l'essai →</button>
 </div>
+</article>`;
+}
+
+// Carte d'une CITATION : la citation, puis son auteur sur sa propre ligne. On ne passe
+// délibérément PAS par `headlineAndStandfirst`, qui couperait la citation à 110 caractères et
+// fondrait l'auteur dans le texte — les deux informations que le lecteur doit pouvoir distinguer.
+function renderCitationCard(post) {
+  const quote = String(post.text || '').trim().replace(/\n/g, '<br>');
+  const attribution = String(post.quoteAttribution || '').trim();
+  return `<article class="bg-surface-container-lowest p-space-md shadow-sm flex flex-col gap-space-xs editorial-card cursor-pointer" data-post-id="${escapeAttribute(post.id)}">
+<div class="flex items-center justify-between"><span class="font-kicker-label text-kicker-label uppercase text-primary font-bold">${escapeHtml(kickerOf(post))}</span><span class="font-meta-detail text-meta-detail text-on-surface-variant">${escapeHtml(relativeTime(post.publishedAt))}</span></div>
+<div class="border-l-4 border-primary pl-space-md py-space-xs my-space-xs flex flex-col gap-space-sm">
+<p class="font-editorial-standfirst text-editorial-standfirst italic text-on-surface leading-relaxed">« ${escapeHtml(quote)} »</p>
+${attribution ? `<span class="font-kicker-label text-kicker-label uppercase tracking-wider text-primary">— ${escapeHtml(attribution)}</span>` : ''}
+</div>
+<div class="pt-space-xs flex items-center justify-between"><span class="font-meta-detail text-meta-detail text-on-surface-variant">${escapeHtml(PESCE.CREATOR_NAME)}</span><button class="py-2 font-kicker-label text-kicker-label text-primary uppercase font-bold tracking-wider hover:underline" type="button" data-reader="${escapeAttribute(post.id)}">Lire →</button></div>
 </article>`;
 }
 
@@ -988,6 +1018,7 @@ ${post.articleImageUrl ? `<div class="relative w-full aspect-[16/9] overflow-hid
 function renderFilteredList(posts) {
   return posts.map((post) => {
     const { headline } = headlineAndStandfirst(post);
+    if (post.contentType === 'citation') return renderCitationCard(post);
     if (post.contentType === 'video') return renderVideoEntry(post);
     if (post.contentType === 'audio') return renderAudioModule(post);
     if (post.contentType === 'photo') {
@@ -1062,6 +1093,10 @@ async function openReader(postId) {
   const content = document.getElementById('readerContent');
   if (!reader || !content) return;
   currentReaderPost = post;
+  // Le bandeau du lecteur annonce ce qu'on lit réellement : une citation n'est pas un article,
+  // et l'annoncer comme tel serait un petit mensonge d'interface.
+  const docLabel = document.getElementById('readerDocLabel');
+  if (docLabel) docLabel.textContent = post && post.contentType === 'citation' ? 'Lecture Citation' : 'Lecture Article';
   bookmarkActive = isBookmarked(post?.id || null);
   content.innerHTML = post
     ? renderReader(post)
@@ -1107,6 +1142,9 @@ function neighborPosts(postId) {
 }
 
 function renderReader(post) {
+  // Une citation n'est pas un article : elle n'a ni titre, ni chapeau, ni corps — la citation EST
+  // le contenu. Le rendu le dit, plutôt que de déguiser une phrase en dossier.
+  const isCitation = post.contentType === 'citation';
   const { headline, standfirst } = headlineAndStandfirst(post);
   const articleUrl = post.articleUrl || (articleUrlOf(post) || [])[0] || null;
   // Corps intégral dans le Mini App : articleBody (Neon) quand il existe — la lecture ne dépend
@@ -1124,18 +1162,21 @@ function renderReader(post) {
     ? ` · Mis à jour ${sameDay ? `à ${updated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : `le ${updated.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}`}`
     : '';
   const dateLine = published && !isNaN(published)
-    ? `${published.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}${updatedLabel} · ${readingLabel(readerBodySource(post))}`
+    // Le temps de lecture n'a aucun sens pour une citation : on n'annonce qu'une date.
+    ? `${published.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}${updatedLabel}${isCitation ? '' : ` · ${readingLabel(readerBodySource(post))}`}`
     : '';
   const media = readerMedia(post, standfirst);
   const { prev, next } = neighborPosts(post.id);
-  const body = readerBody(readerBodySource(post), post.articleImages);
+  const body = isCitation
+    ? citationReaderBody(post.text, post.quoteAttribution)
+    : readerBody(readerBodySource(post), post.articleImages);
   return `<article class="flex flex-col px-margin-mobile py-space-md max-w-xl mx-auto w-full">
 <div class="flex items-center gap-space-xs mb-space-sm">
 <span class="inline-block w-2 h-2 rounded-full bg-primary-container"></span>
 <span class="font-kicker-label text-kicker-label uppercase text-primary-container tracking-wider">${escapeHtml(kickerOf(post))} · Pesce Studio</span>
 </div>
-<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight mb-space-md">${escapeHtml(headline)}</h1>
-${standfirst ? `<p class="font-editorial-standfirst text-editorial-standfirst italic text-on-surface-variant mb-space-lg leading-relaxed">${escapeHtml(standfirst)}</p>` : ''}
+${isCitation ? '' : `<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface tracking-tight mb-space-md">${escapeHtml(headline)}</h1>`}
+${!isCitation && standfirst ? `<p class="font-editorial-standfirst text-editorial-standfirst italic text-on-surface-variant mb-space-lg leading-relaxed">${escapeHtml(standfirst)}</p>` : ''}
 <div class="bg-surface-container-low rounded-xl p-space-md mb-space-lg flex flex-col gap-space-md">
 <div class="flex items-center gap-space-sm">
 <img class="w-12 h-12 rounded-full object-cover shadow-sm flex-shrink-0" src="./assets/profilePesce.png" alt="Portrait de Pesce Hounyo">
@@ -1157,10 +1198,10 @@ ${dateLine ? `<span class="font-meta-detail text-meta-detail text-secondary text
 </button>
 </div>
 ${media}
-<div class="bg-surface-container rounded-lg p-space-sm mb-space-lg flex items-start gap-space-sm">
+${isCitation ? '' : `<div class="bg-surface-container rounded-lg p-space-sm mb-space-lg flex items-start gap-space-sm">
 <span class="material-symbols-outlined text-[18px] text-primary flex-shrink-0 mt-0.5">shield_with_heart</span>
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[12px] leading-snug"><strong class="text-on-surface font-semibold">Garantie d'indépendance :</strong> Ce reportage d'investigation a été réalisé sans aucun soutien institutionnel ni subvention politique, exclusivement financé par les contributions des lecteurs de Pesce Studio.</p>
-</div>
+</div>`}
 <div class="reader-body flex flex-col gap-space-md text-on-surface">${body}</div>
 ${articleUrl ? `<div class="bg-surface-container-low rounded-lg p-space-sm mt-space-lg flex items-center justify-between">
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${inlineBody ? 'Version également disponible sur Telegraph' : 'Version intégrale sur Telegraph'}</span>
@@ -1175,9 +1216,9 @@ ${articleUrl ? `<div class="bg-surface-container-low rounded-lg p-space-sm mt-sp
 </div>
 <div class="mt-space-xl bg-surface-container-low rounded-xl p-space-lg flex flex-col items-center text-center shadow-sm">
 <div class="w-12 h-12 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed mb-space-sm"><span class="material-symbols-outlined text-[26px]">star</span></div>
-<h3 class="font-headline-sm text-headline-sm text-on-surface font-semibold mb-space-xs">Vous appréciez cette enquête ?</h3>
+<h3 class="font-headline-sm text-headline-sm text-on-surface font-semibold mb-space-xs">${isCitation ? 'Vous appréciez ce travail ?' : 'Vous appréciez cette enquête ?'}</h3>
 <p class="font-body-sm text-body-sm text-on-surface-variant max-w-sm mb-space-md">Permettez à Pesce Hounyo de poursuivre ses reportages de terrain indépendants à travers l'Afrique de l'Ouest.</p>
-<button class="w-full py-3 px-space-md rounded-lg bg-on-surface text-surface font-kicker-label uppercase text-[12px] tracking-wider font-bold active:scale-[0.98] transition-transform flex items-center justify-center gap-2 hover:bg-primary" type="button" data-reader-support><span>⭐ Soutenir cette enquête (Telegram Stars)</span></button>
+<button class="w-full py-3 px-space-md rounded-lg bg-on-surface text-surface font-kicker-label uppercase text-[12px] tracking-wider font-bold active:scale-[0.98] transition-transform flex items-center justify-center gap-2 hover:bg-primary" type="button" data-reader-support><span>${isCitation ? '⭐ Soutenir ce travail (Telegram Stars)' : '⭐ Soutenir cette enquête (Telegram Stars)'}</span></button>
 <span class="font-meta-detail text-[11px] text-secondary mt-2">Paiement sécurisé instantané dans Telegram</span>
 </div>
 <div class="mt-space-lg bg-surface-container rounded-xl p-space-md flex flex-col gap-space-sm">
@@ -1187,7 +1228,7 @@ ${articleUrl ? `<div class="bg-surface-container-low rounded-lg p-space-sm mt-sp
 <span class="font-kicker-label text-kicker-label uppercase text-on-surface font-bold">Débat &amp; Réactions</span>
 </div>
 </div>
-<p class="font-body-sm text-body-sm text-on-surface-variant">Que pensez-vous de ce dossier ? Participez au salon d'analyse ouvert sur notre canal officiel.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">${isCitation ? 'Qu’en pensez-vous ? Participez aux échanges ouverts sur notre canal officiel.' : 'Que pensez-vous de ce dossier ? Participez au salon d\'analyse ouvert sur notre canal officiel.'}</p>
 <button class="w-full py-3 px-space-md rounded-lg bg-surface-container-high text-on-surface font-kicker-label text-[12px] uppercase tracking-wide font-semibold hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-1.5" type="button" data-channel><span>Rejoindre la discussion Telegram</span><span class="material-symbols-outlined text-[16px]">arrow_forward</span></button>
 </div>
 ${renderReaderDiscovery(post)}
@@ -1284,7 +1325,7 @@ ${caption ? `<figcaption class="mt-2 text-center font-meta-detail text-meta-deta
 // Corps de lecture : partagé avec les tests (lib/reader-format.js, chargé avant app.js) —
 // le corps d'article canonique (articleBody) est rendu quand il existe, sinon la dépêche ;
 // chaque paragraphe est échappé avant insertion.
-const { readerBody, readerBodySource } = globalThis.PESCE_READER_FORMAT;
+const { readerBody, readerBodySource, citationReaderBody } = globalThis.PESCE_READER_FORMAT;
 
 // Micro-interactions du lecteur : favori (persistant) et partage.
 // Les favoris sont conservés sur l'appareil (localStorage) : l'état survit au rechargement.
@@ -1438,7 +1479,7 @@ function routeFromHash() {
   if (!hash) return null;
   if (hash === 'studio' || /^studio-(bureau|rediger|brouillons|pistes|audience)$/.test(hash)) return { studio: true };
   if (SECTIONS.includes(hash)) return { section: hash };
-  const filterMatch = hash.match(/^ecrits-(tout|enquetes|societe|opinion|videos|audios|entretiens)$/);
+  const filterMatch = hash.match(/^ecrits-(tout|enquetes|societe|opinion|videos|audios|entretiens|citations)$/);
   if (filterMatch) return { section: 'ecrits', filter: filterMatch[1] };
   // Ancre historique : l'identifiant complet commence par « post- » et est conservé tel quel.
   // Les liens déjà partagés sous cette forme continuent de fonctionner.

@@ -37,5 +37,23 @@
     return body + inline.filter((image) => Math.max(1, Number(image.afterParagraph) || 1) > paragraphs.length).map(figure).join('');
   }
 
-  global.PESCE_READER_FORMAT = { escapeHtml, readerBody, readerBodySource };
+  // Corps de lecture d'une CITATION : une citation attribuée, jamais un article. La citation et
+  // son auteur sont échappés séparément et rendus sur deux lignes distinctes — l'auteur n'est
+  // jamais fondu dans la citation, sans quoi le lecteur ne saurait plus qui parle. Le balisage
+  // suit la forme canonique d'une citation (<figure> + <blockquote> + <figcaption>) plutôt qu'un
+  // paragraphe stylé : la structure porte le sens, pas seulement l'apparence.
+  function citationReaderBody(quote, attribution) {
+    const text = String(quote || '').trim();
+    const author = String(attribution || '').trim();
+    if (!text && !author) return readerBody('');
+    const body = text
+      ? `<blockquote class="border-l-4 border-primary pl-space-md py-space-xs"><p class="font-editorial-standfirst text-editorial-standfirst italic text-on-surface leading-relaxed">${escapeHtml(text).replace(/\n/g, '<br>')}</p></blockquote>`
+      : '';
+    const caption = author
+      ? `<figcaption class="font-kicker-label text-kicker-label uppercase tracking-wider text-primary mt-space-sm">— ${escapeHtml(author)}</figcaption>`
+      : '';
+    return `<figure class="flex flex-col my-space-sm">${body}${caption}</figure>`;
+  }
+
+  global.PESCE_READER_FORMAT = { escapeHtml, readerBody, readerBodySource, citationReaderBody };
 })(globalThis);

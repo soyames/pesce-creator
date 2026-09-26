@@ -155,7 +155,7 @@ export default async function handler(req, res) {
     // — Cycle de vie PUBLICATION (règle produit) : la persistance canonique Neon PRÉCÈDE la
     // distribution Telegram. Une erreur de persistance signifie « rien n'a été publié » (reprise
     // sûre) ; une erreur de distribution signifie « publié, diffusion en attente » (relançable).
-    async function persistCanonicalPost({ publishKey, contentType = 'text', text, articleUrl = null, articleImageUrl = null, articleBody = null, articleImages = null }) {
+    async function persistCanonicalPost({ publishKey, contentType = 'text', text, articleUrl = null, articleImageUrl = null, articleBody = null, articleImages = null, quoteAttribution = null }) {
       if (publishKey) {
         const existing = await findPostByPublishKey(publishKey);
         if (existing) return existing; // reprise idempotente : la publication existe déjà
@@ -173,6 +173,7 @@ export default async function handler(req, res) {
         articleImageUrl,
         articleBody,
         articleImages,
+        quoteAttribution,
         published: true,
         publishedAt: new Date(),
         receivedAt: new Date(),
@@ -184,7 +185,10 @@ export default async function handler(req, res) {
     // une seule publication) ; un échec est enregistré et n'efface rien.
     // `textFor(id)` : texte dépendant de l'identité canonique (lien de LECTURE dans le Mini App).
     // `text` reste accepté pour les publications dont le texte n'en dépend pas (dépêches, vidéos).
-    async function distributePost(canonical, { text, textFor = null, disablePreview = false }) {
+    // `mirrorText` : le texte canonique doit-il refléter le message du canal ? Vrai pour un article
+    // (son `text` EST le texte de distribution). Faux pour une CITATION, dont `text` est la
+    // citation elle-même : le message du canal n'en est qu'un rendu dérivé.
+    async function distributePost(canonical, { text, textFor = null, disablePreview = false, mirrorText = true }) {
       const bodyFor = (id) => (textFor ? textFor(id) : text);
       if (canonical.messageId) {
         // Déjà distribuée (ou le webhook a déjà porté l'identité) : jamais de second envoi.
@@ -218,7 +222,7 @@ export default async function handler(req, res) {
             text: bodyFor(postId),
             disable_web_page_preview: disablePreview,
             reply_markup: postMarkup(postId),
-          }).then(() => updatePost(postId, { text: bodyFor(postId) }))
+          }).then(() => (mirrorText ? updatePost(postId, { text: bodyFor(postId) }) : null))
             .catch((error) => console.error('post link correction failed', postId, error.message));
         }
         return { distributed: true, postId, messageId };
@@ -308,6 +312,61 @@ export default async function handler(req, res) {
       });
     }
 
+    // — CITATION : une phrase courte + le nom de son auteur. Ni titre, ni image, ni page
+    // d'hébergement — rien n'est hébergé à l'extérieur, donc aucune copie externe à réconcilier.
+    // `text` porte LA CITATION elle-même (le lecteur y retombe, faute de corps d'article) ; le
+    // message du canal en est un rendu DÉRIVÉ, reconstructible à tout moment à partir de
+    // (citation, auteur, identifiant canonique) — c'est pourquoi il n'est jamais persisté.
+    if (action === 'citation_publish') {
+      const quote = String(body.text || '').trim();
+      const attribution = String(body.quoteAttribution || '').trim();
+      // Validation AVANT tout accès base : un refus éditorial ne doit jamais s'accompagner d'une
+      // écriture — et c'est ce qui rend ces refus vérifiables sans base de données.
+      if (!quote) return res.status(400).json({ message: 'Le texte de la citation est vide.' });
+      if (quote.length > MAX_CITATION_QUOTE_LENGTH) {
+        return res.status(400).json({ message: 'Une citation ne peut pas dépasser 1 000 caractères. Raccourcissez-la — rien n’a été publié.' });
+      }
+      if (!attribution) {
+        return res.status(400).json({ message: 'L’auteur de la citation est requis (un nom, « Anonyme » ou « Proverbe »).' });
+      }
+      if (attribution.length > MAX_CITATION_ATTRIBUTION_LENGTH) {
+        return res.status(400).json({ message: 'Le nom de l’auteur ne peut pas dépasser 120 caractères. Rien n’a été publié.' });
+      }
+      const draftId = String(body.draftId || '') || null;
+      const publishKey = publishKeyOf(body, draftId);
+      let canonical;
+      try {
+        canonical = await persistCanonicalPost({
+          publishKey,
+          contentType: 'citation',
+          text: quote,
+          quoteAttribution: attribution,
+        });
+      } catch (error) {
+        console.error('citation canonical persist failed', error);
+        return res.status(502).json({ message: 'Impossible d’enregistrer la citation pour le moment. Rien n’a été publié — réessayez.' });
+      }
+      if (draftId) await deleteDraft(draftId).catch((error) => console.error('draft removal failed', draftId, error.message));
+      // `mirrorText: false` — et surtout AUCUN alignement de `text` sur le message distribué
+      // (contrairement à l'article, qui resynchronise son texte juste après). Pour une citation,
+      // `text` EST le contenu lu : y recopier le message afficherait l'attribution en double et
+      // ferait entrer le lien de distribution dans la citation publique. Le message étant une
+      // fonction pure de (citation, auteur, identifiant), il reste reconstructible à tout moment —
+      // aucune divergence possible entre les deux.
+      const distribution = await distributePost(canonical, {
+        textFor: (id) => citationDistributionText(quote, attribution, id),
+        disablePreview: true,
+        mirrorText: false,
+      });
+      return res.status(200).json({
+        ok: true, published: true, postId: distribution.postId,
+        distributed: distribution.distributed,
+        ...(distribution.messageId ? { messageId: distribution.messageId } : {}),
+        draftRemoved: Boolean(draftId),
+        ...(distribution.distributionError ? { distributionError: distribution.distributionError } : {}),
+      });
+    }
+
     // — CORRECTION ÉDITORIALE d'un écrit DÉJÀ PUBLIÉ (« Mettre à jour la publication »).
     //
     // Règle d'identité, non négociable : la publication est corrigée EN PLACE. Même ligne Neon
@@ -327,19 +386,30 @@ export default async function handler(req, res) {
       if (!post.published || post.sourceDeletedAt) {
         return res.status(409).json({ message: 'Cette publication n’est plus en ligne : republiez-la depuis le pupitre.' });
       }
-      if (!['text', 'document', 'other'].includes(post.contentType)) {
+      if (!['text', 'document', 'other', 'citation'].includes(post.contentType)) {
         return res.status(400).json({ message: 'Seuls les écrits se corrigent ici — les vidéos et audios ont leur propre pupitre.' });
       }
 
-      // Deux formes d'écrit, corrigées par le même chemin : l'ARTICLE (titre + corps + page
-      // Telegraph) et la DÉPÊCHE (texte seul, sans page externe). La forme est déduite de la
-      // publication existante — corriger un texte ne transforme jamais l'une en l'autre.
-      const isArticle = Boolean(post.articleUrl) || Boolean(post.articleBody);
+      // Trois formes d'écrit, corrigées par le même chemin : l'ARTICLE (titre + corps + page
+      // Telegraph), la DÉPÊCHE (texte seul, sans page externe) et la CITATION (citation +
+      // auteur). La forme est déduite de la publication existante — corriger un texte ne
+      // transforme jamais l'une en l'autre. `isCitation` prime sur l'inférence « article » :
+      // une citation peut citer un lien d'hébergement et avoir été enrichie d'une référence
+      // externe lors d'une relecture du canal sans être un article pour autant.
+      const isCitation = post.contentType === 'citation';
+      const isArticle = !isCitation && (Boolean(post.articleUrl) || Boolean(post.articleBody));
       const title = String(body.title || '').trim().slice(0, 256);
       const text = String(body.text || '').trim();
+      const attribution = isCitation ? String(body.quoteAttribution || '').trim() : '';
       if (!text) return res.status(400).json({ message: 'Le texte de la publication est vide.' });
       if (isArticle && !title) return res.status(400).json({ message: 'Le titre est requis pour mettre à jour un article.' });
-      if (!isArticle && text.length > 4096) return res.status(400).json({ message: 'Une publication texte Telegram ne peut pas dépasser 4 096 caractères. Le texte existant n’a pas été modifié.' });
+      if (isCitation) {
+        // Les MÊMES plafonds qu'à la publication : sans cela, une correction ferait grandir une
+        // citation au-delà de ce que la publication accepte — les plafonds ne voudraient rien dire.
+        if (text.length > MAX_CITATION_QUOTE_LENGTH) return res.status(400).json({ message: 'Une citation ne peut pas dépasser 1 000 caractères. La citation publiée n’a pas été modifiée.' });
+        if (!attribution) return res.status(400).json({ message: 'L’auteur de la citation est requis. La citation publiée n’a pas été modifiée.' });
+        if (attribution.length > MAX_CITATION_ATTRIBUTION_LENGTH) return res.status(400).json({ message: 'Le nom de l’auteur ne peut pas dépasser 120 caractères. La citation publiée n’a pas été modifiée.' });
+      } else if (!isArticle && text.length > 4096) return res.status(400).json({ message: 'Une publication texte Telegram ne peut pas dépasser 4 096 caractères. Le texte existant n’a pas été modifié.' });
 
       const imageNormalizer = (src) => allowedArticleImageSrc(src, { secret: mediaSecret() });
       const images = validateArticleImages(body.images, { normalize: imageNormalizer });
@@ -357,14 +427,21 @@ export default async function handler(req, res) {
           : (articleImageUrl ? [{ src: articleImageUrl, caption: '', credit: '', placement: 'cover', afterParagraph: 1 }] : []));
 
       // Texte distribué sur Telegram : pour un article, titre + lien de LECTURE dans le journal
-      // (l'identité canonique est déjà fixée ici) ; pour une dépêche, le texte lui-même.
-      const distributionText = isArticle ? articleDistributionText(title, post.id) : text;
+      // (l'identité canonique est déjà fixée ici) ; pour une citation, citation + auteur + lien ;
+      // pour une dépêche, le texte lui-même.
+      const distributionText = isCitation
+        ? citationDistributionText(text, attribution, post.id)
+        : (isArticle ? articleDistributionText(title, post.id) : text);
 
       // 1) CANONIQUE : Neon d'abord. Échec ici = rien n'a changé, on le dit.
+      // Pour une citation, `text` reste la citation et l'auteur va dans sa propre colonne : le
+      // texte lu par le lecteur ne contient donc jamais le lien de distribution.
       try {
-        await updatePost(post.id, isArticle
-          ? { text: distributionText, articleBody: text, articleImageUrl, articleImages: effectiveImages }
-          : { text: distributionText });
+        await updatePost(post.id, isCitation
+          ? { text, quoteAttribution: attribution }
+          : (isArticle
+            ? { text: distributionText, articleBody: text, articleImageUrl, articleImages: effectiveImages }
+            : { text: distributionText }));
       } catch (error) {
         console.error('article canonical update failed', post.id, error.message);
         return res.status(502).json({ message: 'Impossible d’enregistrer la correction pour le moment. Rien n’a été modifié — réessayez.' });
@@ -398,7 +475,7 @@ export default async function handler(req, res) {
             chat_id: post.channelId || CHANNEL_HANDLE,
             message_id: Number(post.messageId),
             text: distributionText,
-            disable_web_page_preview: isArticle,
+            disable_web_page_preview: isArticle || isCitation,
             reply_markup: postMarkup(post.id),
           });
           telegramUpdated = true;
@@ -749,12 +826,18 @@ export default async function handler(req, res) {
       if (!postId) return res.status(400).json({ message: 'Publication manquante.' });
       const post = await getPostById(postId);
       if (!post) return res.status(404).json({ message: 'Publication introuvable.' });
-      if (!['text', 'video', 'document', 'other'].includes(post.contentType)) {
+      if (!['text', 'video', 'document', 'other', 'citation'].includes(post.contentType)) {
         return res.status(400).json({ message: 'Seules les publications texte et vidéo peuvent être rediffusées depuis le studio.' });
       }
       const text = String(post.text || '').trim();
       if (!text) return res.status(400).json({ message: 'Le texte de la publication est vide.' });
-      const distribution = await distributePost(post, { text });
+      // Une citation est rediffusée avec son rendu de canal (citation + auteur + lien de lecture)
+      // et non avec son seul texte : sinon la reprise d'une diffusion échouée publierait une
+      // citation sans son auteur ni son accès, et `text` se retrouverait désaligné.
+      const isCitation = post.contentType === 'citation';
+      const distribution = await distributePost(post, isCitation
+        ? { textFor: (id) => citationDistributionText(post.text, post.quoteAttribution, id), disablePreview: true, mirrorText: false }
+        : { text });
       return res.status(200).json({
         ok: true,
         distributed: distribution.distributed,
@@ -1096,6 +1179,19 @@ function readLink(postId) {
 // Texte distribué sur le canal pour un ARTICLE : titre + lien de lecture dans le journal.
 function articleDistributionText(title, postId) {
   return `${title}\n\n${readLink(postId)}`;
+}
+
+// Une citation est COURTE par nature. Ces plafonds laissent une marge très large sous la limite
+// Telegram de 4 096 caractères pour un message : guillemets + tiret + auteur (120 max) + lien de
+// lecture (~80 caractères au pire) restent très en deçà. Refus franc au-delà — jamais de troncature.
+export const MAX_CITATION_QUOTE_LENGTH = 1000;
+export const MAX_CITATION_ATTRIBUTION_LENGTH = 120;
+
+// Texte distribué sur le canal pour une CITATION : la citation, son auteur, puis le lien de
+// LECTURE (une citation n'a pas de page d'hébergement : on lit dans le journal). C'est un rendu
+// DÉRIVÉ, jamais persisté — `text` en base reste la citation seule, telle que le lecteur la lit.
+export function citationDistributionText(quote, attribution, postId) {
+  return [`« ${String(quote || '').trim()} »`, `— ${String(attribution || '').trim()}`, readLink(postId)].filter(Boolean).join('\n\n');
 }
 
 // Redirection d'une publication DÉJÀ EN LIGNE : on CONSERVE le texte existant (titre, chapô,

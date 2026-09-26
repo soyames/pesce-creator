@@ -25,12 +25,16 @@
   // une seconde. Remis à null après la mise à jour ou l'abandon de la correction.
   let editingPost = null;
 
+  // `kind` n'est renseigné que pour « Citations » : c'est le seul type qui change la FORME du
+  // pupitre (deux champs, ni titre ni média). Les autres restent descriptifs — leur libellé ne
+  // décide de rien, seule la présence d'un titre décide de la forme publiée.
   const FORMATS = [
     { label: 'Grande Enquête', placeholder: 'Inscrire un titre percutant…' },
     { label: 'Chronique / Opinion', placeholder: 'Titre de la chronique…' },
     { label: 'Dépêche Telegram', placeholder: 'Écrivez votre dépêche…' },
     { label: 'Entretien', placeholder: 'Titre de l’entretien…' },
     { label: 'Note de terrain', placeholder: 'Titre de la note…' },
+    { label: 'Citations', kind: 'citation', placeholder: 'Écrivez la citation…' },
   ];
 
   function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char])); }
@@ -448,12 +452,12 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 </div>
 </div>
 <form id="publishForm" class="flex flex-col gap-space-md">
-<div class="flex flex-col gap-space-xs">
+<div id="titleField" class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="articleTitle">Titre de l'article</label>
 <input id="articleTitle" class="editorial-input" type="text" maxlength="256" placeholder="${escapeAttribute(format.placeholder)}">
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Le corps d'un article n'a pas de limite de mots et la couverture est facultative. Sans titre, un texte court est envoyé tel quel sur Telegram ; au-delà de 4 096 caractères, Pesce Studio crée automatiquement un article avec son propre lien de lecture.</p>
 </div>
-<div class="flex flex-col gap-space-xs">
+<div id="mediaField" class="flex flex-col gap-space-xs">
 <label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase">Média de l'article</label>
 <div id="articleMediaList" class="flex flex-col gap-space-sm"></div>
 <button id="mediaAddButton" class="self-start px-space-md py-2.5 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button"><span class="material-symbols-outlined text-[18px] align-middle">add_photo_alternate</span> Ajouter un média</button>
@@ -467,8 +471,13 @@ ${FORMATS.map((entry) => `<button class="format-pill px-3 py-2 rounded-lg font-m
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">Les images sont hébergées par Telegraph — ou, à défaut, par Pesce Studio via Telegram — et apparaissent dans l'article publié (couverture en tête, images insérées après le paragraphe choisi).</p>
 </div>
 </div>
+<div id="attributionField" class="hidden flex-col gap-space-xs">
+<label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="citationAttribution">Auteur de la citation</label>
+<input id="citationAttribution" class="editorial-input" type="text" maxlength="120" placeholder="Nom de l’auteur, de l’œuvre, ou « Proverbe »">
+<p class="font-meta-detail text-meta-detail text-on-surface-variant text-[11px]">La citation est publiée entre guillemets, suivie de ce nom. Ni titre ni image ne sont nécessaires.</p>
+</div>
 <div class="flex flex-col gap-space-xs">
-<label class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="publishText">Corps du tapuscrit</label>
+<label id="publishTextLabel" class="font-kicker-label text-kicker-label text-on-surface-variant uppercase" for="publishText">Corps du tapuscrit</label>
 <textarea id="publishText" class="editorial-input" rows="16" placeholder="Écrivez votre publication…" required></textarea>
 <div class="flex items-center justify-between pt-space-xs text-on-surface-variant font-meta-detail text-meta-detail">
 <span id="publishWords">0 mot</span>
@@ -508,12 +517,58 @@ ${editingPost ? '' : '<button id="draftButton" class="sm:w-auto py-3 px-space-md
     return PESCE?.CHANNEL_HANDLE || 'le canal officiel';
   }
 
+  // Le type « Citations » change la FORME du pupitre : deux champs (la citation, son auteur),
+  // ni titre ni média. On bascule la visibilité de nœuds DÉJÀ rendus au lieu de re-rendre le
+  // volet : un re-rendu effacerait le texte en cours de saisie. Changer de type ne doit jamais
+  // faire perdre une phrase commencée.
+  function applyFormatVisibility() {
+    const format = FORMATS.find((item) => item.label === formatLabel) || FORMATS[0];
+    const isCitation = format.kind === 'citation';
+    // `hidden` et `flex` sont deux utilitaires d'affichage : on les bascule ENSEMBLE pour ne
+    // jamais laisser les deux posés en même temps (leur ordre de priorité serait indécidable).
+    const show = (element, visible) => {
+      if (!element) return;
+      element.classList.toggle('hidden', !visible);
+      element.classList.toggle('flex', visible);
+    };
+    show(document.getElementById('titleField'), !isCitation);
+    show(document.getElementById('mediaField'), !isCitation);
+    show(document.getElementById('attributionField'), isCitation);
+    const textLabel = document.getElementById('publishTextLabel');
+    if (textLabel) textLabel.textContent = isCitation ? 'Texte de la citation' : 'Corps du tapuscrit';
+    const textInput = document.getElementById('publishText');
+    if (textInput) textInput.placeholder = isCitation ? 'Écrivez la citation, sans guillemets…' : 'Écrivez votre publication…';
+    const attributionInput = document.getElementById('citationAttribution');
+    if (attributionInput) attributionInput.required = isCitation;
+  }
+
+  // Le type sélectionné décide de la forme, jamais du libellé seul.
+  function isCitationFormat() {
+    const format = FORMATS.find((item) => item.label === formatLabel) || FORMATS[0];
+    return format.kind === 'citation';
+  }
+
   function refreshBat() {
     const preview = document.getElementById('batPreview');
     const badge = document.getElementById('batFormatBadge');
     const title = document.getElementById('articleTitle')?.value.trim() || '';
     const text = document.getElementById('publishText')?.value.trim() || '';
     if (!preview || !badge) return;
+    // Épreuve d'une CITATION : elle se juge comme une citation, pas comme un article — c'est
+    // exactement ce que le lecteur verra dans le journal.
+    if (isCitationFormat()) {
+      const attribution = document.getElementById('citationAttribution')?.value.trim() || '';
+      badge.textContent = 'Citation (texte seul)';
+      preview.innerHTML = text
+        ? `<span class="font-kicker-label text-kicker-label text-primary uppercase tracking-widest">CITATION</span>
+<figure class="flex flex-col my-space-sm border-l-4 border-primary pl-space-md py-space-xs">
+<blockquote><p class="font-editorial-standfirst text-editorial-standfirst italic text-on-surface leading-relaxed">« ${escapeHtml(text)} »</p></blockquote>
+${attribution ? `<figcaption class="font-kicker-label text-kicker-label uppercase tracking-wider text-primary mt-space-sm">— ${escapeHtml(attribution)}</figcaption>` : ''}
+</figure>
+<p class="font-meta-detail text-meta-detail text-on-surface-variant pt-space-xs">Publiée sur le canal avec le bouton ⭐ Soutenir, puis lisible dans Pesce Studio.</p>`
+        : '<p class="font-body-md text-body-md text-on-surface-variant">Commencez à écrire : l\'épreuve apparaîtra ici.</p>';
+      return;
+    }
     const paragraphs = text.split('\n\n').map((paragraph) => paragraph.trim()).filter(Boolean);
     const images = collectArticleImages();
     const cover = images.find((image) => image.placement === 'cover');
@@ -697,7 +752,10 @@ ${drafts.length ? `<div class="grid grid-cols-1 xl:grid-cols-2 gap-space-md">${d
 
   // — ÉCRITS / VIDÉOS / AUDIOS / PHOTOS : publications réelles du canal (mêmes données que le public).
   function renderPostList(type, title) {
-    const items = posts.filter((post) => post.contentType === type);
+    // « Écrits » rassemble TOUT ce qui s'écrit au pupitre : les dépêches/articles (type `text`)
+    // ET les citations. Sans cela une citation publiée serait introuvable dans le bureau — donc
+    // incorrigible, alors que la règle du projet est de corriger en place.
+    const items = posts.filter((post) => (type === 'text' ? ['text', 'citation'].includes(post.contentType) : post.contentType === type));
     const kindLabel = { text: 'Écrit', video: 'Vidéo', audio: 'Audio', photo: 'Photo' }[type] || 'Publication';
     return `
 <div class="flex items-center justify-between">
@@ -755,13 +813,20 @@ ${mediaUrl ? `<audio class="w-full" controls preload="none" src="${escapeAttribu
 ${renderRecallButton(post)}
 </article>`;
     }
+    const isCitation = post.contentType === 'citation';
+    const attribution = isCitation ? String(post.quoteAttribution || '').trim() : '';
+    // Une citation est courte : on l'affiche ENTIÈRE (le `headline` générique ne garderait que la
+    // première ligne, alors que la citation publiée, elle, est rendue dans son intégralité).
+    const citationText = isCitation ? (String(post.text || '').trim() || headline) : headline;
     return `<article class="bg-surface-container-lowest rounded-xl shadow-sm p-space-md flex flex-col gap-space-xs">
 <div class="flex items-center justify-between">
-<span class="font-kicker-label text-[0.6875rem] text-primary uppercase">Écrit</span>
+<span class="font-kicker-label text-[0.6875rem] text-primary uppercase">${isCitation ? 'Citation' : 'Écrit'}</span>
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${formatDate(post.publishedAt)}</span>
 </div>
-<h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${escapeHtml(headline)}</h3>
-<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml((post.articleBody || (post.text || '').split('\n').slice(1).join(' ')).trim().slice(0, 200))}</p>
+<h3 class="font-headline-sm text-[1.125rem] leading-snug text-on-surface">${isCitation ? `« ${escapeHtml(citationText)} »` : escapeHtml(headline)}</h3>
+${isCitation
+  ? `<p class="font-kicker-label text-kicker-label uppercase tracking-wider text-primary">— ${escapeHtml(attribution || 'Auteur manquant')}</p>`
+  : `<p class="font-body-sm text-body-sm text-on-surface-variant line-clamp-2">${escapeHtml((post.articleBody || (post.text || '').split('\n').slice(1).join(' ')).trim().slice(0, 200))}</p>`}
 <span class="font-meta-detail text-meta-detail text-on-surface-variant">${post.updatedAt && post.publishedAt && new Date(post.updatedAt) - new Date(post.publishedAt) > 60000 ? `Mis à jour le ${formatDate(post.updatedAt)} · ` : ''}${post.telegramUrl ? `<a class="inline-block py-2.5 text-primary font-bold hover:underline" href="${escapeAttribute(post.telegramUrl)}" target="_blank" rel="noopener">Voir sur Telegram</a>` : 'Diffusion Telegram en attente'}</span>
 <div class="flex items-center gap-space-sm flex-wrap">
 <button class="post-link px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-post-link-copy="${escapeAttribute(post.id)}">Copier le lien de lecture</button>
@@ -775,7 +840,7 @@ ${renderDistributionRetry(post)}
   // Correction d'un écrit DÉJÀ PUBLIÉ : la publication est reprise au pupitre et mise à jour
   // EN PLACE (même article, même lien, même date). Aucune dépublication, aucun doublon.
   function renderEditButton(post) {
-    if (!['text', 'document', 'other'].includes(post.contentType)) return '';
+    if (!['text', 'document', 'other', 'citation'].includes(post.contentType)) return '';
     return `<button class="post-edit px-space-md py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-post-edit="${escapeAttribute(post.id)}">Modifier</button>`;
   }
 
@@ -783,10 +848,15 @@ ${renderDistributionRetry(post)}
   function editPublishedPost(postId) {
     const post = posts.find((item) => item.id === postId);
     if (!post) { alert('Publication introuvable — rechargez le bureau.'); return; }
-    const isArticle = Boolean(post.articleUrl || post.articleBody);
+    const isCitation = post.contentType === 'citation';
+    const isArticle = !isCitation && Boolean(post.articleUrl || post.articleBody);
     const lines = String(post.text || '').split('\n').map((line) => line.trim());
     const headline = lines.find(Boolean) || 'Publication sans titre';
-    editingPost = { id: post.id, headline, isArticle, articleUrl: post.articleUrl || null };
+    editingPost = { id: post.id, headline, isArticle, isCitation, articleUrl: post.articleUrl || null };
+    // Le pupitre doit s'ouvrir DANS le type de la publication reprise : corriger une citation
+    // depuis le pupitre d'un article ferait disparaître son auteur du formulaire, et la
+    // correction repartirait alors sans lui.
+    if (isCitation) formatLabel = 'Citations';
     activeDraftId = null;
     pendingPublishKey = null;
     // La couverture déjà en ligne est reprise telle quelle : corriger le texte ne doit jamais
@@ -803,6 +873,8 @@ ${renderDistributionRetry(post)}
       titleInput.disabled = !isArticle; // une dépêche n'a pas de titre : ne pas en inventer un
     }
     if (textInput) textInput.value = isArticle ? String(post.articleBody || post.text || '') : String(post.text || '');
+    const attributionInput = document.getElementById('citationAttribution');
+    if (attributionInput) attributionInput.value = isCitation ? String(post.quoteAttribution || '') : '';
     renderMediaList();
     refreshBat();
     textInput?.focus();
@@ -825,7 +897,7 @@ ${renderDistributionRetry(post)}
   // Relance de diffusion (échec précédent enregistré) : la publication canonique reste, seule la
   // copie Telegram manque — même ligne, même identité : jamais de doublon.
   function renderDistributionRetry(post) {
-    if (!post.distributionError || post.distributedAt || !['text', 'video', 'document', 'other'].includes(post.contentType)) return '';
+    if (!post.distributionError || post.distributedAt || !['text', 'video', 'document', 'other', 'citation'].includes(post.contentType)) return '';
     return `<div class="flex items-center gap-2 pt-1">
 <button class="distribution-retry px-space-sm py-3 border border-outline-variant rounded-lg font-kicker-label text-kicker-label uppercase text-on-surface hover:bg-surface-container-low transition-colors" type="button" data-distribution-retry="${escapeAttribute(post.id)}">Relancer la diffusion Telegram</button>
 <p class="font-meta-detail text-meta-detail text-on-surface-variant text-[0.6875rem]">Diffusion en attente</p>
@@ -1380,10 +1452,21 @@ ${renderTelegraph()}
     const button = document.getElementById('publishSubmit');
     if (!text) { if (status) status.textContent = 'Le texte de la publication est vide.'; return; }
     if (editingPost.isArticle && !title) { if (status) status.textContent = 'Le titre est requis pour mettre à jour un article.'; return; }
-    const images = collectArticleImages();
+    // Une citation se corrige par le MÊME chemin que les autres écrits (article_update) : même
+    // ligne, même identifiant, même lien public, même message Telegram ré-édité. Jamais par une
+    // seconde publication — ce serait un doublon et un second message sur le canal.
+    const isCitation = Boolean(editingPost.isCitation);
+    const attribution = isCitation ? (document.getElementById('citationAttribution')?.value.trim() || '') : '';
+    if (isCitation && !attribution) { if (status) status.textContent = 'L’auteur de la citation est requis.'; return; }
+    const images = isCitation ? [] : collectArticleImages();
     button.disabled = true; button.textContent = 'Mise à jour…';
     try {
-      const response = await studioAction({ action: 'article_update', postId: editingPost.id, text, ...(editingPost.isArticle ? { title, images } : {}) });
+      const response = await studioAction({
+        action: 'article_update',
+        postId: editingPost.id,
+        text,
+        ...(isCitation ? { quoteAttribution: attribution } : (editingPost.isArticle ? { title, images } : {})),
+      });
       const data = await response.json().catch(() => ({}));
       if (response.status === 401) { showLogin(); return; }
       if (!response.ok) throw new Error(data.message || 'Mise à jour impossible.');
@@ -1400,11 +1483,48 @@ ${renderTelegraph()}
 
   async function publishFromStudio() {
     if (editingPost) return updatePublishedPost();
-    const title = document.getElementById('articleTitle')?.value.trim() || '';
+    const isCitation = isCitationFormat();
+    // Un titre saisi avant de basculer sur « Citations » ne doit pas ressurgir : le champ est
+    // masqué, mais sa valeur est toujours là — on l'ignore explicitement plutôt que de la subir.
+    const title = isCitation ? '' : (document.getElementById('articleTitle')?.value.trim() || '');
     const text = document.getElementById('publishText')?.value.trim() || '';
     const status = document.getElementById('publishStatus');
     const button = document.getElementById('publishSubmit');
     if (!text) return;
+    if (isCitation) {
+      const attribution = document.getElementById('citationAttribution')?.value.trim() || '';
+      if (!attribution) {
+        if (status) status.textContent = 'L’auteur de la citation est requis — la citation n’a pas été publiée.';
+        return;
+      }
+      button.disabled = true; button.textContent = 'Publication…';
+      try {
+        const { response, data } = await studioActionOrRetry({
+          action: 'citation_publish',
+          text,
+          quoteAttribution: attribution,
+          publishKey: nextPublishKey(),
+          ...(activeDraftId ? { draftId: activeDraftId } : {}),
+        });
+        if (response.status === 401) return;
+        if (!response.ok) throw new Error(data.message || 'Publication impossible.');
+        flash(data.distributed === false
+          ? 'PUBLICATION RÉUSSIE — la citation est disponible dans Pesce Studio et le Mini App. La diffusion Telegram a échoué : vous pouvez la relancer depuis « Écrits » sans créer de doublon.'
+          : 'PUBLICATION RÉUSSIE — la citation est disponible dans Pesce Studio et le Mini App, et diffusée sur Telegram avec le bouton ⭐ Soutenir.');
+        pendingPublishKey = null;
+        removeDraftLocally(activeDraftId);
+        activeDraftId = null;
+        document.getElementById('publishForm')?.reset();
+        applyFormatVisibility();
+        refreshBat();
+        await load();
+      } catch (error) {
+        // Persistance canonique d'abord côté serveur : une erreur signifie que RIEN n'a été publié.
+        if (status) status.textContent = error.message || 'Publication impossible — réessayez.';
+      }
+      finally { button.disabled = false; button.textContent = 'Publier'; }
+      return;
+    }
     const images = collectArticleImages();
     if (images.length > 0 && !title && text.length <= 4096) {
       if (status) status.textContent = 'Les images nécessitent un titre : ajoutez un titre pour publier un article illustré.';
@@ -1651,6 +1771,7 @@ ${renderTelegraph()}
       const format = FORMATS.find((item) => item.label === formatLabel);
       const title = document.getElementById('articleTitle');
       if (format && title) title.placeholder = format.placeholder;
+      applyFormatVisibility();
       refreshBat();
     }));
     document.getElementById('publishSubmit')?.addEventListener('click', publishFromStudio);
@@ -1663,7 +1784,9 @@ ${renderTelegraph()}
       refreshBat();
     });
     document.getElementById('articleTitle')?.addEventListener('input', refreshBat);
+    document.getElementById('citationAttribution')?.addEventListener('input', refreshBat);
     bindMediaEvents();
+    applyFormatVisibility();
     refreshBat();
   }
 

@@ -215,4 +215,17 @@ CREATE TABLE IF NOT EXISTS pesce_login_attempts (
 CREATE INDEX IF NOT EXISTS pesce_login_attempts_scope_at_idx ON pesce_login_attempts (scope, created_at DESC);
 `,
   },
+  {
+    // Citations : une phrase courte + le nom de son auteur. Aucune image, aucun titre, aucune page
+    // Telegraph — rien n'est hébergé à l'extérieur, donc aucune métadonnée externe à réconcilier.
+    // `content_type = 'citation'` est le discriminant, et `text` porte LA CITATION elle-même (un
+    // article a deux colonnes de texte, une citation n'en a qu'une : `text` doit servir le lecteur,
+    // qui y retombe quand `article_body` est nul). Le message du canal est un rendu DÉRIVÉ de
+    // (citation, auteur, identifiant) — il n'est jamais persisté. `quote_attribution` est la seule
+    // donnée que le webhook ne peut pas connaître : il n'ingère que le texte du message.
+    name: '012_citation_attribution.sql',
+    sql: `
+ALTER TABLE pesce_posts ADD COLUMN IF NOT EXISTS quote_attribution TEXT;
+`,
+  },
 ];

@@ -93,6 +93,7 @@ const mapPost = (row) => row && ({
   articleImageUrl: row.article_image_url,
   articleBody: row.article_body ?? null,
   articleImages: row.article_images ?? null,
+  quoteAttribution: row.quote_attribution ?? null,
   sourceDeletedAt: row.source_deleted_at,
   published: row.published === true,
   publishedAt: row.published_at,
@@ -106,8 +107,8 @@ export async function upsertChannelPost(post) {
        id, source, origin, publish_key, distributed_at, distribution_error,
        channel_id, channel_username, message_id, content_type, text, telegram_url,
        media_file_id, media_mime_type, media_file_name, media_duration, media_width, media_height,
-       media_thumbnail_file_id, article_url, article_image_url, article_body, published, published_at, received_at, updated_at, article_images
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, now(), $26::jsonb)
+       media_thumbnail_file_id, article_url, article_image_url, article_body, quote_attribution, published, published_at, received_at, updated_at, article_images
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, now(), $27::jsonb)
      ON CONFLICT (id) DO UPDATE SET
        source = EXCLUDED.source,
        -- Modèle d'origine : le premier enregistrement gagne. Une publication Studio (origin='studio')
@@ -130,6 +131,10 @@ export async function upsertChannelPost(post) {
        article_url = COALESCE(NULLIF(EXCLUDED.article_url, ''), pesce_posts.article_url),
        article_image_url = COALESCE(NULLIF(EXCLUDED.article_image_url, ''), pesce_posts.article_image_url),
        article_body = COALESCE(NULLIF(EXCLUDED.article_body, ''), pesce_posts.article_body),
+       -- L'attribution d'une citation est écrite par le Studio et n'existe dans AUCUN sync
+       -- webhook/canal (le webhook n'ingère que le texte du message) : sans cette protection,
+       -- la première relecture du canal effacerait l'auteur de la citation.
+       quote_attribution = COALESCE(NULLIF(EXCLUDED.quote_attribution, ''), pesce_posts.quote_attribution),
        article_images = COALESCE(EXCLUDED.article_images, pesce_posts.article_images)`,
     [
       post.id, post.source, post.origin ?? null, post.publishKey ?? null, post.distributedAt ?? null, post.distributionError ?? null,
@@ -138,6 +143,7 @@ export async function upsertChannelPost(post) {
       post.mediaMimeType ?? null, post.mediaFileName ?? null, post.mediaDuration ?? null,
       post.mediaWidth ?? null, post.mediaHeight ?? null, post.mediaThumbnailFileId ?? null,
       post.articleUrl ?? null, post.articleImageUrl ?? null, post.articleBody ?? null,
+      post.quoteAttribution ?? null,
       post.published === true, post.publishedAt ?? new Date(), post.receivedAt ?? new Date(),
       post.articleImages == null ? null : JSON.stringify(post.articleImages),
     ]
@@ -426,9 +432,13 @@ export async function recallPost(postId) {
   return result.rowCount > 0;
 }
 
-// Mise à jour ciblée d'une publication (état de distribution, texte, contenu d'article) —
-// liste blanche stricte. L'IDENTITÉ CANONIQUE est intouchable : ni `id`, ni `published`, ni
-// `published_at`, ni `article_url`, ni l'identité Telegram ne peuvent être modifiés ici.
+// Mise à jour ciblée d'une publication (état de distribution, texte, contenu d'article ou de
+// citation) — liste blanche stricte. L'IDENTITÉ CANONIQUE est intouchable : ni `id`, ni
+// `published`, ni `published_at`, ni `article_url`, ni `content_type`, ni l'identité Telegram ne
+// peuvent être modifiés ici. `quoteAttribution` est du CONTENU (l'auteur d'une citation), jamais
+// un discriminant de type : `content_type` reste hors de cette liste, donc une correction ne peut
+// pas transformer une dépêche en citation ni l'inverse — et les garde-fous de fusion qui
+// s'appuient sur `content_type` restent fiables.
 // Une correction éditoriale ne recrée jamais la publication : même ligne, même URL publique,
 // même date de publication ; seul `updated_at` avance.
 export const POST_UPDATABLE_COLUMNS = Object.freeze({
@@ -438,6 +448,7 @@ export const POST_UPDATABLE_COLUMNS = Object.freeze({
   articleBody: 'article_body',
   articleImageUrl: 'article_image_url',
   articleImages: 'article_images',
+  quoteAttribution: 'quote_attribution',
 });
 
 export async function updatePost(postId, data) {
@@ -481,6 +492,9 @@ export async function attachTelegramDistribution(postId, data) {
       add('article_image_url', provisional.articleImageUrl);
       add('article_body', provisional.articleBody);
       add('article_images', provisional.articleImages == null ? null : JSON.stringify(provisional.articleImages));
+      // L'attribution ne vit que sur la ligne provisoire du Studio : sans cette copie, elle
+      // disparaîtrait DÉFINITIVEMENT avec la ligne supprimée juste après.
+      add('quote_attribution', provisional.quoteAttribution);
       add('content_type', provisional.contentType);
       add('text', provisional.text);
       add('telegram_url', telegramUrl);
@@ -540,7 +554,12 @@ export async function mergeTelegramCopyIntoPost(postId, incoming) {
   addIfMissing('media_thumbnail_file_id', incoming.mediaThumbnailFileId);
   if (typeof incoming.text === 'string' && incoming.text.trim()) {
     values.push(incoming.text);
-    sets.push(`text = $${values.length}`);
+    // Le `text` canonique d'une CITATION est la citation elle-même, alors que le message du canal
+    // en est un rendu DÉRIVÉ (citation + auteur + lien de lecture) : le recopier afficherait
+    // l'attribution en double dans le journal et ferait dépendre le texte publié de l'ordre
+    // d'arrivée du webhook. `content_type` sert ici de marqueur stable, précisément parce qu'il
+    // n'est jamais modifiable par une correction (absent de POST_UPDATABLE_COLUMNS).
+    sets.push(`text = CASE WHEN content_type = 'citation' THEN text ELSE $${values.length} END`);
   }
   if (sets.length === 0) return String(postId);
   values.push(String(postId));
@@ -714,7 +733,9 @@ export async function getStudioOverview() {
     getAudienceStats(),
   ]);
 
-  const totals = { total: 0, text: 0, photo: 0, audio: 0, video: 0, document: 0, other: 0 };
+  // Chaque type connu est initialisé à zéro : sans cela, une rubrique encore vide serait absente
+  // du JSON (indicateur manquant) au lieu d'afficher un zéro honnête.
+  const totals = { total: 0, text: 0, photo: 0, audio: 0, video: 0, document: 0, other: 0, citation: 0 };
   for (const row of totalsResult.rows) {
     totals[row.content_type] = row.count;
     totals.total += row.count;
